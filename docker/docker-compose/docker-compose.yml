@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  # Rust Backend
+  backend:
+    build:
+      context: ../../backend
+      dockerfile: ../docker/dockerfiles/backend.Dockerfile
+    ports:
+      - "3000:3000"
+    volumes:
+      - ../../backend:/app
+      - backend-cargo-cache:/usr/local/cargo/registry
+      - backend-target:/app/target
+    environment:
+      - DATABASE_URL=sqlite:///data/pinas.db
+      - JWT_SECRET=dev-secret-change-in-production
+      - RUST_LOG=debug
+      - RUST_BACKTRACE=1
+    command: cargo watch -x run
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # SvelteKit Frontend
+  frontend:
+    build:
+      context: ../../frontend
+      dockerfile: ../docker/dockerfiles/frontend.Dockerfile
+    ports:
+      - "5173:5173"
+    volumes:
+      - ../../frontend:/app
+      - frontend-node-modules:/app/node_modules
+    environment:
+      - NODE_ENV=development
+    command: npm run dev -- --host 0.0.0.0
+    depends_on:
+      - backend
+
+volumes:
+  backend-cargo-cache:
+  backend-target:
+  frontend-node-modules:

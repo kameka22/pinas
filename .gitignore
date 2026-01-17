@@ -1,0 +1,35 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+backend/target/
+frontend/build/
+frontend/.svelte-kit/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+build.log
+
+# External sources (not part of this project)
+extra/*
+
+backend/data
+
+# Database
+*.db
+*.db-journal

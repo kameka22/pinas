@@ -1,0 +1,20 @@
+[Unit]
+Description=PiNAS - NAS Management Service
+After=network-online.target kodi.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment=PINAS_FILES_ROOT=/storage/.pinas/files
+Environment=PINAS_DATABASE_URL=sqlite:/storage/.pinas/data/pinas.db?mode=rwc
+Environment=PINAS_BIND_ADDRESS=0.0.0.0:3000
+Environment=PINAS_LOG_LEVEL=info
+ExecStartPre=/usr/bin/pinas-init.sh
+ExecStart=/usr/bin/pinas
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,136 @@
+name: Build LibreELEC Image with PiNAS
+
+on:
+  workflow_dispatch:  # Manual trigger
+  push:
+    branches: [main]
+    paths:
+      - 'backend/**'
+      - 'frontend/**'
+      - 'libreelec/**'
+      - '.github/workflows/build-libreelec.yml'
+
+env:
+  LIBREELEC_BRANCH: libreelec-12.0
+  PROJECT: RPi
+  DEVICE: RPi5
+  ARCH: aarch64
+
+jobs:
+  build-backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-action@stable
+        with:
+          targets: aarch64-unknown-linux-musl
+
+      - name: Install cross
+        run: cargo install cross --git https://github.com/cross-rs/cross
+
+      - name: Build backend
+        run: |
+          cd backend
+          cross build --release --target aarch64-unknown-linux-musl
+
+      - name: Verify binary
+        run: |
+          file backend/target/aarch64-unknown-linux-musl/release/pinas
+          ls -lh backend/target/aarch64-unknown-linux-musl/release/pinas
+
+      - name: Upload backend artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pinas-binary
+          path: backend/target/aarch64-unknown-linux-musl/release/pinas
+          retention-days: 1
+
+  build-frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build frontend
+        run: |
+          cd frontend
+          npm ci
+          npm run build
+
+      - name: Upload frontend artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-build
+          path: frontend/build/
+          retention-days: 1
+
+  build-libreelec:
+    needs: [build-backend, build-frontend]
+    runs-on: ubuntu-latest
+    timeout-minutes: 360  # 6 hours max
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download backend artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: pinas-binary
+          path: libreelec/packages/pinas/bin/
+
+      - name: Make binary executable
+        run: chmod +x libreelec/packages/pinas/bin/pinas
+
+      - name: Clone LibreELEC
+        run: |
+          git clone --depth 1 --branch ${{ env.LIBREELEC_BRANCH }} \
+            https://github.com/LibreELEC/LibreELEC.tv.git
+
+      - name: Install PiNAS package
+        run: |
+          cp -r libreelec/packages/pinas LibreELEC.tv/packages/
+          echo 'PKG_DEPENDS_TARGET="$PKG_DEPENDS_TARGET pinas"' >> \
+            LibreELEC.tv/packages/virtual/mediacenter/package.mk
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /opt/hostedtoolcache/CodeQL
+          sudo docker image prune --all --force
+          df -h
+
+      - name: Build LibreELEC image
+        run: |
+          cd LibreELEC.tv
+          PROJECT=${{ env.PROJECT }} \
+          DEVICE=${{ env.DEVICE }} \
+          ARCH=${{ env.ARCH }} \
+          make image
+
+      - name: Upload LibreELEC image
+        uses: actions/upload-artifact@v4
+        with:
+          name: libreelec-pinas-image
+          path: LibreELEC.tv/target/*.img.gz
+          retention-days: 7
+
+      - name: Create Release
+        if: github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ github.run_number }}
+          name: PiNAS LibreELEC Build ${{ github.run_number }}
+          files: LibreELEC.tv/target/*.img.gz
+          draft: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
