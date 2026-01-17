@@ -10,6 +10,7 @@ use axum::{
 };
 use serde::Serialize;
 use tower_http::cors::{Any, CorsLayer};
+use tower_http::services::{ServeDir, ServeFile};
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -76,7 +77,9 @@ fn create_router(state: AppState) -> Router {
         .allow_methods(Any)
         .allow_headers(Any);
 
-    Router::new()
+    let static_dir = state.config.static_dir.clone();
+
+    let mut app = Router::new()
         // Health check
         .route("/api/health", get(health_check))
         // API routes
@@ -88,11 +91,20 @@ fn create_router(state: AppState) -> Router {
         .nest("/api/users", api::users::router())
         // WebSocket
         .route("/api/ws", get(api::ws::ws_handler))
-        // Middleware
-        .layer(TraceLayer::new_for_http())
-        .layer(cors)
         // State
-        .with_state(state)
+        .with_state(state);
+
+    // Serve static frontend files if configured
+    if let Some(dir) = static_dir {
+        let index_path = format!("{}/index.html", dir);
+        tracing::info!("Serving static files from: {}", dir);
+        app = app.fallback_service(
+            ServeDir::new(&dir).fallback(ServeFile::new(&index_path)),
+        );
+    }
+
+    // Apply middleware
+    app.layer(TraceLayer::new_for_http()).layer(cors)
 }
 
 /// Health check response

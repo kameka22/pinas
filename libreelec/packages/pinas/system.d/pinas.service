@@ -9,6 +9,7 @@ Environment=PINAS_FILES_ROOT=/storage/.pinas/files
 Environment=PINAS_DATABASE_URL=sqlite:/storage/.pinas/data/pinas.db?mode=rwc
 Environment=PINAS_BIND_ADDRESS=0.0.0.0:3000
 Environment=PINAS_LOG_LEVEL=info
+Environment=PINAS_STATIC_DIR=/storage/.pinas/www
 ExecStartPre=/usr/bin/pinas-init.sh
 ExecStart=/usr/bin/pinas
 Restart=on-failure

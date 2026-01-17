@@ -20,6 +20,10 @@ makeinstall_target() {
   cp ${PKG_DIR}/bin/pinas-init.sh ${INSTALL}/usr/bin/
   chmod 755 ${INSTALL}/usr/bin/pinas-init.sh
 
+  # Installer les fichiers frontend (staging, sera copié vers /storage au premier boot)
+  mkdir -p ${INSTALL}/usr/share/pinas/www
+  cp -r ${PKG_DIR}/www/* ${INSTALL}/usr/share/pinas/www/
+
   # Installer le service systemd
   mkdir -p ${INSTALL}/usr/lib/systemd/system
   cp ${PKG_DIR}/system.d/pinas.service ${INSTALL}/usr/lib/systemd/system/

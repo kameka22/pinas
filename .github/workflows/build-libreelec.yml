@@ -85,6 +85,12 @@ jobs:
           name: pinas-binary
           path: libreelec/packages/pinas/bin/
 
+      - name: Download frontend artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-build
+          path: libreelec/packages/pinas/www/
+
       - name: Make binary executable
         run: chmod +x libreelec/packages/pinas/bin/pinas
 

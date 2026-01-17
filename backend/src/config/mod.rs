@@ -22,6 +22,10 @@ pub struct AppConfig {
     /// Root directory for file manager
     #[serde(default = "default_files_root")]
     pub files_root: String,
+
+    /// Directory for static frontend files (optional)
+    #[serde(default)]
+    pub static_dir: Option<String>,
 }
 
 fn default_bind_address() -> String {
@@ -60,6 +64,7 @@ impl AppConfig {
             jwt_secret: default_jwt_secret(),
             jwt_expiration_hours: default_jwt_expiration(),
             files_root: default_files_root(),
+            static_dir: None,
         });
 
         Ok(app_config)
