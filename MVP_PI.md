@@ -230,7 +230,7 @@ git clone https://github.com/LibreELEC/LibreELEC.tv.git
 cd LibreELEC.tv
 
 # Checkout la branche stable (12.0 ou 13.0)
-git checkout libreelec-12.0
+git checkout libreelec-12.2
 ```
 
 ### 4.2 Copier le package PiNAS

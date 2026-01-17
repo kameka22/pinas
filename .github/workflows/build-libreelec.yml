@@ -11,7 +11,7 @@ on:
       - '.github/workflows/build-libreelec.yml'
 
 env:
-  LIBREELEC_BRANCH: libreelec-12.0
+  LIBREELEC_BRANCH: libreelec-12.2
   PROJECT: RPi
   DEVICE: RPi5
   ARCH: aarch64

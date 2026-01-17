@@ -8,7 +8,7 @@ set -e
 # Configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-LIBREELEC_BRANCH="libreelec-12.0"
+LIBREELEC_BRANCH="libreelec-12.2"
 PROJECT="RPi"
 DEVICE="RPi5"
 ARCH="aarch64"
