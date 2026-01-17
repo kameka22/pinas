@@ -88,6 +88,25 @@ jobs:
       - name: Make binary executable
         run: chmod +x libreelec/packages/pinas/bin/pinas
 
+      - name: Install LibreELEC build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            xfonts-utils \
+            rdfind \
+            libparse-yapp-perl \
+            gperf \
+            xsltproc \
+            libxml-parser-perl \
+            patchutils \
+            lzop \
+            bc \
+            gcc-multilib \
+            g++-multilib \
+            libc6-dev-i386 \
+            lib32gcc-s1 \
+            lib32stdc++6
+
       - name: Clone LibreELEC
         run: |
           git clone --depth 1 --branch ${{ env.LIBREELEC_BRANCH }} \
