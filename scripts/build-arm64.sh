@@ -18,22 +18,63 @@ echo "=== Building PiNAS for LibreELEC (ARM64 Native) ==="
 echo "Project root: $PROJECT_ROOT"
 echo ""
 
-# Check prerequisites
-command -v cargo >/dev/null 2>&1 || { echo "Error: Rust not installed. Run: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh"; exit 1; }
-command -v npm >/dev/null 2>&1 || { echo "Error: Node.js not installed. Run: curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - && sudo apt-get install -y nodejs"; exit 1; }
-
-# Install musl-tools if needed (for static binary)
-if ! command -v musl-gcc >/dev/null 2>&1; then
-    echo ">>> Installing musl-tools..."
+# Function to install system dependencies
+install_system_deps() {
+    echo ">>> Installing system dependencies..."
     sudo apt-get update
-    sudo apt-get install -y musl-tools
+    sudo apt-get install -y \
+        git build-essential gcc g++ make \
+        xfonts-utils rdfind gperf xsltproc lzop patchutils bc \
+        libparse-yapp-perl libxml-parser-perl \
+        wget curl unzip zip \
+        python3 python3-pip \
+        default-jre-headless \
+        texinfo flex bison \
+        libncurses5-dev libssl-dev \
+        musl-tools
+    echo "    System dependencies installed"
+}
+
+# Function to install Rust
+install_rust() {
+    echo ">>> Installing Rust..."
+    curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+    source "$HOME/.cargo/env"
+    rustup target add aarch64-unknown-linux-musl
+    echo "    Rust installed"
+}
+
+# Function to install Node.js
+install_nodejs() {
+    echo ">>> Installing Node.js 20..."
+    curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+    sudo apt-get install -y nodejs
+    echo "    Node.js installed"
+}
+
+# Check and install system dependencies if missing
+if ! command -v gperf >/dev/null 2>&1 || ! command -v musl-gcc >/dev/null 2>&1; then
+    install_system_deps
 fi
 
-# Ensure Rust musl target is installed
-if ! rustup target list --installed | grep -q "aarch64-unknown-linux-musl"; then
-    echo ">>> Adding Rust musl target..."
-    rustup target add aarch64-unknown-linux-musl
+# Check and install Rust if missing
+if ! command -v cargo >/dev/null 2>&1; then
+    install_rust
+else
+    # Ensure musl target is installed
+    if ! rustup target list --installed | grep -q "aarch64-unknown-linux-musl"; then
+        echo ">>> Adding Rust musl target..."
+        rustup target add aarch64-unknown-linux-musl
+    fi
 fi
+
+# Check and install Node.js if missing
+if ! command -v npm >/dev/null 2>&1; then
+    install_nodejs
+fi
+
+echo ">>> All prerequisites installed"
+echo ""
 
 # 1. Build backend (static binary with musl)
 echo ">>> [1/6] Building backend for aarch64 (static with musl)..."
