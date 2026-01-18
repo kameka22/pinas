@@ -43,12 +43,12 @@ makeinstall_target() {
   mkdir -p ${INSTALL}/usr/lib/systemd/system
   cp ${PKG_DIR}/system.d/pinas.service ${INSTALL}/usr/lib/systemd/system/
 
+  # Activer le service au démarrage (créer le symlink directement)
+  mkdir -p ${INSTALL}/usr/lib/systemd/system/default.target.wants
+  ln -sf ../pinas.service ${INSTALL}/usr/lib/systemd/system/default.target.wants/pinas.service
+  echo "Service enabled: pinas.service -> default.target.wants"
+
   # Installer la config tmpfiles (création dossiers)
   mkdir -p ${INSTALL}/usr/lib/tmpfiles.d
   cp ${PKG_DIR}/tmpfiles.d/pinas.conf ${INSTALL}/usr/lib/tmpfiles.d/
-}
-
-post_install() {
-  # Activer le service au démarrage
-  enable_service pinas.service
 }

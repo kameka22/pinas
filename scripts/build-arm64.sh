@@ -260,6 +260,16 @@ if [ "$BUILD_FRONTEND" = true ]; then
     echo ""
     echo ">>> [${CURRENT_STEP}/${TOTAL_STEPS}] Building frontend (SSG)..."
     cd "${PROJECT_ROOT}/frontend"
+
+    # Clean node_modules and lock file to avoid cross-platform incompatibilities
+    if [ -d "node_modules" ]; then
+        echo "    Cleaning node_modules (cross-platform compatibility)..."
+        rm -rf node_modules
+    fi
+    if [ -f "package-lock.json" ]; then
+        rm -f package-lock.json
+    fi
+
     npm install --silent
     npm run build
 
