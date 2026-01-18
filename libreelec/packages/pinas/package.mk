@@ -13,6 +13,11 @@ PKG_TOOLCHAIN="manual"
 makeinstall_target() {
   # Installer le binaire
   mkdir -p ${INSTALL}/usr/bin
+  if [ ! -f "${PKG_DIR}/bin/pinas" ]; then
+    echo "ERROR: Backend binary not found at ${PKG_DIR}/bin/pinas"
+    echo "Run scripts/build-arm64.sh first to build the backend"
+    exit 1
+  fi
   cp ${PKG_DIR}/bin/pinas ${INSTALL}/usr/bin/
   chmod 755 ${INSTALL}/usr/bin/pinas
 
@@ -21,8 +26,18 @@ makeinstall_target() {
   chmod 755 ${INSTALL}/usr/bin/pinas-init.sh
 
   # Installer les fichiers frontend (staging, sera copié vers /storage au premier boot)
+  # IMPORTANT: Vérifier que le frontend existe avant de copier
+  if [ ! -d "${PKG_DIR}/www" ] || [ ! -f "${PKG_DIR}/www/index.html" ]; then
+    echo "ERROR: Frontend files not found at ${PKG_DIR}/www/"
+    echo "Run scripts/build-arm64.sh first to build the frontend"
+    echo "Expected: ${PKG_DIR}/www/index.html"
+    ls -la "${PKG_DIR}/" || true
+    exit 1
+  fi
   mkdir -p ${INSTALL}/usr/share/pinas/www
-  cp -r ${PKG_DIR}/www/* ${INSTALL}/usr/share/pinas/www/
+  # Utiliser cp -r dir/. au lieu de dir/* pour éviter les problèmes de glob
+  cp -r ${PKG_DIR}/www/. ${INSTALL}/usr/share/pinas/www/
+  echo "Frontend installed: $(find ${INSTALL}/usr/share/pinas/www -type f | wc -l) files"
 
   # Installer le service systemd
   mkdir -p ${INSTALL}/usr/lib/systemd/system

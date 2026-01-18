@@ -30,6 +30,10 @@ extra/*
 
 backend/data
 
+# Generated package files (built by scripts/build-arm64.sh)
+libreelec/packages/pinas/www/
+libreelec/packages/pinas/bin/pinas
+
 # Database
 *.db
 *.db-journal
