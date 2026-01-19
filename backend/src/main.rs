@@ -92,6 +92,7 @@ fn create_router(state: AppState) -> Router {
         .nest("/api/packages", api::packages::router())
         .nest("/api/docker", api::docker::router())
         .nest("/api/apps", api::apps::router())
+        .nest("/api/services", api::services::router())
         // WebSocket
         .route("/api/ws", get(api::ws::ws_handler))
         // State

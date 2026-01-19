@@ -31,7 +31,7 @@ impl PackageService {
         Self {
             db,
             catalog_url: std::env::var("PINAS_CATALOG_URL")
-                .unwrap_or_else(|_| "https://raw.githubusercontent.com/pinas/app-catalog/main/catalog.json".to_string()),
+                .unwrap_or_else(|_| "https://raw.githubusercontent.com/kameka22/pinas-app-catalog/master/catalog.json".to_string()),
             data_dir: data_dir.clone(),
             packages_dir: std::env::var("PINAS_PACKAGES_DIR")
                 .unwrap_or_else(|_| format!("{}/apps", data_dir)),

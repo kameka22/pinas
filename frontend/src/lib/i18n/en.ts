@@ -372,6 +372,7 @@ export default {
 			all: 'All',
 			containers: 'Containers',
 			media: 'Media',
+			network: 'Network',
 			utilities: 'Utilities'
 		},
 		status: {

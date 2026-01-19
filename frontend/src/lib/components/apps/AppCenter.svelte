@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import Icon from '@iconify/svelte';
-	import { t, loadAppTranslations } from '$lib/i18n';
+	import { t, locale, loadAppTranslations } from '$lib/i18n';
 	import { loadInstalledApps } from '$stores/desktop';
 	import { openWindow } from '$stores/windows';
 
@@ -23,6 +23,7 @@
 		version: string;
 		category: string;
 		icon?: string;
+		description?: { en?: string; fr?: string } | string;
 	}
 
 	interface InstalledPackage {
@@ -44,6 +45,7 @@
 		{ id: 'all', labelKey: 'all', icon: 'mdi:view-grid' },
 		{ id: 'containers', labelKey: 'containers', icon: 'mdi:docker' },
 		{ id: 'media', labelKey: 'media', icon: 'mdi:play-circle' },
+		{ id: 'network', labelKey: 'network', icon: 'mdi:lan' },
 		{ id: 'utilities', labelKey: 'utilities', icon: 'mdi:tools' }
 	];
 
@@ -51,6 +53,7 @@
 		docker: 'bg-blue-500',
 		containers: 'bg-blue-500',
 		media: 'bg-purple-500',
+		network: 'bg-indigo-500',
 		utilities: 'bg-slate-500'
 	};
 
@@ -76,7 +79,7 @@
 					return {
 						id: app.id,
 						name: app.name,
-						description: getAppDescription(app.id),
+						description: getAppDescription(app.id, app.description),
 						icon: app.icon || getDefaultIcon(app.category),
 						iconBg: iconBgMap[app.id] || iconBgMap[app.category] || 'bg-slate-500',
 						version: app.version,
@@ -117,11 +120,20 @@
 		loading = false;
 	}
 
-	function getAppDescription(appId: string): string {
-		// Try to get localized description
+	function getAppDescription(appId: string, catalogDescription?: { en?: string; fr?: string } | string): string {
+		// Try to get localized description from app translations
 		const appTranslations = ($t as any)[appId];
 		if (appTranslations?.description) {
 			return appTranslations.description;
+		}
+		// Try catalog description (localized)
+		if (catalogDescription) {
+			if (typeof catalogDescription === 'string') {
+				return catalogDescription;
+			}
+			// Get current locale
+			const currentLocale = $locale;
+			return catalogDescription[currentLocale] || catalogDescription.en || '';
 		}
 		// Fallback to known descriptions
 		if (appId === 'docker') {

@@ -1,6 +1,7 @@
 pub mod auth;
 pub mod docker;
 pub mod package;
+pub mod service;
 pub mod share;
 pub mod storage;
 pub mod system;

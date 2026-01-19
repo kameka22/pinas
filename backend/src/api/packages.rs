@@ -39,14 +39,32 @@ async fn list_packages(State(state): State<AppState>) -> impl IntoResponse {
 /// Get package catalog from remote, with built-in fallback
 async fn get_catalog(State(_state): State<AppState>) -> impl IntoResponse {
     let catalog_url = std::env::var("PINAS_CATALOG_URL")
-        .unwrap_or_else(|_| "https://raw.githubusercontent.com/pinas/app-catalog/main/catalog.json".to_string());
+        .unwrap_or_else(|_| "https://raw.githubusercontent.com/kameka22/pinas-app-catalog/master/catalog.json".to_string());
+
+    tracing::debug!("Fetching catalog from: {}", catalog_url);
 
     // Try to fetch remote catalog
-    if let Ok(response) = reqwest::get(&catalog_url).await {
-        if response.status().is_success() {
-            if let Ok(catalog) = response.json::<serde_json::Value>().await {
-                return Json(catalog).into_response();
+    match reqwest::get(&catalog_url).await {
+        Ok(response) => {
+            tracing::debug!("Catalog response status: {}", response.status());
+            if response.status().is_success() {
+                match response.json::<serde_json::Value>().await {
+                    Ok(catalog) => {
+                        let app_count = catalog.get("apps")
+                            .and_then(|a| a.as_array())
+                            .map(|a| a.len())
+                            .unwrap_or(0);
+                        tracing::info!("Loaded remote catalog with {} apps", app_count);
+                        return Json(catalog).into_response();
+                    }
+                    Err(e) => {
+                        tracing::warn!("Failed to parse catalog JSON: {}", e);
+                    }
+                }
             }
+        }
+        Err(e) => {
+            tracing::warn!("Failed to fetch remote catalog: {}", e);
         }
     }
 
@@ -177,7 +195,7 @@ async fn install_package(
 async fn resolve_package_manifest(package_id: &str) -> anyhow::Result<(PackageManifest, Option<String>)> {
     // Try to fetch from catalog first
     let catalog_url = std::env::var("PINAS_CATALOG_URL")
-        .unwrap_or_else(|_| "https://raw.githubusercontent.com/pinas/app-catalog/main/catalog.json".to_string());
+        .unwrap_or_else(|_| "https://raw.githubusercontent.com/kameka22/pinas-app-catalog/master/catalog.json".to_string());
 
     if let Ok(response) = reqwest::get(&catalog_url).await {
         if response.status().is_success() {
