@@ -45,7 +45,7 @@
 	}
 
 	$: windowStyle = window.maximized
-		? 'top: 40px; left: 100px; right: 0; bottom: 0; width: auto; height: auto;'
+		? 'top: 40px; left: 0; right: 0; bottom: 64px; width: auto; height: auto;'
 		: `top: ${window.y}px; left: ${window.x}px; width: ${window.width}px; height: ${window.height}px;`;
 </script>
 

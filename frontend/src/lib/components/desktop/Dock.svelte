@@ -72,6 +72,13 @@
 	function isOpen(id: string): boolean {
 		return $windows.some((w) => w.id === id);
 	}
+
+	function handleWindowClick(win: { id: string; minimized: boolean }) {
+		if (win.minimized) {
+			restoreWindow(win.id);
+		}
+		focusWindow(win.id);
+	}
 </script>
 
 <nav class="dock">
@@ -91,20 +98,26 @@
 			</button>
 		{/each}
 
-		<div class="dock-separator"></div>
+		<!-- Open windows (excluding pinned apps) -->
+		{#if $windows.filter(w => !dockItems.some(d => d.id === w.id)).length > 0}
+			<div class="dock-separator"></div>
 
-		<!-- Minimized windows -->
-		{#each $windows.filter(w => w.minimized) as win}
-			<button
-				class="dock-item minimized"
-				on:click={() => restoreWindow(win.id)}
-				title={win.title}
-			>
-				<div class="dock-icon bg-gradient-to-br from-slate-600 to-slate-700">
-					<Icon icon={win.icon} class="w-6 h-6 text-white" />
-				</div>
-			</button>
-		{/each}
+			{#each $windows.filter(w => !dockItems.some(d => d.id === w.id)) as win}
+				<button
+					class="dock-item"
+					class:minimized={win.minimized}
+					on:click={() => handleWindowClick(win)}
+					title={win.title}
+				>
+					<div class="dock-icon bg-gradient-to-br from-slate-600 to-slate-700">
+						<Icon icon={win.icon} class="w-6 h-6 text-white" />
+					</div>
+					{#if !win.minimized}
+						<span class="dock-indicator"></span>
+					{/if}
+				</button>
+			{/each}
+		{/if}
 	</div>
 </nav>
 

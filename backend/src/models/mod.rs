@@ -1,7 +1,11 @@
-pub mod user;
-pub mod share;
+pub mod manifest;
+pub mod package;
 pub mod session;
+pub mod share;
+pub mod user;
 
-pub use user::User;
-pub use share::Share;
+pub use manifest::*;
+pub use package::*;
 pub use session::Session;
+pub use share::Share;
+pub use user::User;

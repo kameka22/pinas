@@ -95,7 +95,7 @@ PiNAS est un système d'exploitation NAS moderne et performant, inspiré des int
 ├── libreelec/                # Package LibreELEC
 │   └── packages/pinas/       # Définition package PiNAS
 ├── scripts/                  # Scripts de build
-│   └── build-libreelec-image.sh
+│   └── build-arm64.sh        # Build PiNAS + image LibreELEC
 └── extra/                    # Sources externes (gitignored)
     ├── LibreELEC.tv/         # Clone LibreELEC pour build local
     └── openmediavault/       # Sources OMV (référence)
@@ -295,11 +295,12 @@ LibreELEC fournit certains services via addons existants :
 
 ### Contraintes techniques
 
-1. **Pas de gestionnaire de paquets** : Tout doit être embarqué dans l'addon
+1. **Pas de gestionnaire de paquets** : Tout doit être embarqué ou installé dans `/storage`
 2. **Binaire statique requis** : Compiler avec `musl` (pas de glibc dynamique)
 3. **Python 3 disponible** : Pour les scripts d'addon
-4. **Pas de systemd** : Utiliser les services Kodi ou scripts de démarrage
+4. **Systemd disponible** : Services dans `/storage/.config/system.d/` ou intégrés à l'image
 5. **Root par défaut** : LibreELEC n'a qu'un seul utilisateur (root)
+6. **Docker possible** : Binaires statiques disponibles sur download.docker.com
 
 ---
 
@@ -322,7 +323,7 @@ sysinfo = "0.30"              # Infos système
 tracing = "0.1"               # Logging
 uuid = { version = "1", features = ["v4"] }
 chrono = { version = "0.4", features = ["serde"] }
-rust-embed = "8"              # Embarquer frontend dans le binaire
+# Frontend servi via tower-http ServeDir (fichiers statiques)
 ```
 
 ### Frontend (package.json)
@@ -425,7 +426,7 @@ PUBLIC_API_URL=/api
 - Async/await partout (Tokio runtime)
 - Structs avec `#[derive(Debug, Serialize, Deserialize)]`
 - Tests dans le même fichier avec `#[cfg(test)]`
-- Binaire unique avec frontend embarqué (rust-embed)
+- Frontend servi depuis `/storage/.pinas/www/` via tower-http
 
 ### Svelte
 

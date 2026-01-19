@@ -1,41 +1,41 @@
 <script lang="ts">
-	import { windows } from '$stores/windows';
+	import { windows, type WindowState } from '$stores/windows';
 	import Window from './Window.svelte';
+	import { getAppComponent } from '$components/apps';
 
-	// App components
-	import Dashboard from '$components/apps/Dashboard.svelte';
-	import StorageManager from '$components/apps/StorageManager.svelte';
-	import ShareManager from '$components/apps/ShareManager.svelte';
-	import UserManager from '$components/apps/UserManager.svelte';
-	import Settings from '$components/apps/Settings.svelte';
-	import ControlPanel from '$components/apps/ControlPanel.svelte';
-	import FileManager from '$components/apps/FileManager.svelte';
+	// Get component and prepare props for a window
+	function getComponentForWindow(window: WindowState) {
+		return getAppComponent(window.component);
+	}
 
-	// Component mapping
-	const components: Record<string, any> = {
-		Dashboard,
-		StorageManager,
-		ShareManager,
-		UserManager,
-		Settings,
-		ControlPanel,
-		FileManager,
-		// Placeholder components for others
-		NetdiskTools: Dashboard,
-		Docker: Dashboard,
-		Support: Dashboard,
-		TaskManager: Dashboard
-	};
+	// Build props to pass to the component
+	function getComponentProps(window: WindowState): Record<string, unknown> {
+		const props: Record<string, unknown> = {};
 
-	function getComponent(name: string) {
-		return components[name] || Dashboard;
+		// Pass config if present
+		if (window.appConfig) {
+			props.config = window.appConfig;
+		}
+
+		// Pass metadata for generic components
+		if (window.title) {
+			props.name = window.title;
+		}
+		if (window.icon) {
+			props.icon = window.icon;
+		}
+		if (window.gradient) {
+			props.gradient = window.gradient;
+		}
+
+		return props;
 	}
 </script>
 
-{#each $windows as window (window.id)}
-	{#if !window.minimized}
-		<Window {window}>
-			<svelte:component this={getComponent(window.component)} />
+{#each $windows as win (win.id)}
+	{#if !win.minimized}
+		<Window window={win}>
+			<svelte:component this={getComponentForWindow(win)} {...getComponentProps(win)} />
 		</Window>
 	{/if}
 {/each}

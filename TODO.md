@@ -27,13 +27,13 @@
 ## Phase 1 : Backend Rust - Fondations
 
 ### 1.1 Setup Axum
-- [ ] Créer structure API (`main.rs`, `api/`, `services/`)
-- [ ] Configurer Axum avec Tokio
-- [ ] Router de base avec healthcheck (`GET /api/health`)
-- [ ] Middleware logging (tower-http + tracing)
-- [ ] Middleware CORS
+- [x] Créer structure API (`main.rs`, `api/`, `services/`)
+- [x] Configurer Axum avec Tokio
+- [x] Router de base avec healthcheck (`GET /api/health`)
+- [x] Middleware logging (tower-http + tracing)
+- [x] Middleware CORS
 - [ ] Gestion d'erreurs centralisée
-- [ ] Configuration via variables d'environnement
+- [x] Configuration via variables d'environnement
 
 ### 1.2 Base de données SQLite
 - [ ] Setup SQLx avec SQLite
@@ -369,11 +369,15 @@
 - [ ] Connexion SSH au backend
 - [ ] Historique commandes
 
-### 5.9 Docker Manager
-- [ ] Liste des containers
-- [ ] Start/Stop/Restart
+### 5.9 Package Manager / Docker
+- [ ] Installation Docker (binaires statiques depuis download.docker.com)
+- [ ] Service systemd pour Docker dans /storage/.config/system.d/
+- [ ] API backend via crate `bollard` (client Docker)
+- [ ] Liste des containers (docker ps)
+- [ ] Start/Stop/Restart containers
 - [ ] Logs containers
-- [ ] Images management
+- [ ] Catalogue d'apps pré-configurées (Plex, Nextcloud, Transmission, etc.)
+- [ ] Installation apps en un clic
 
 ### 5.10 Security
 - [ ] Firewall rules
@@ -414,27 +418,28 @@
 
 ## Phase 7 : Addon LibreELEC
 
-### 7.1 Structure Addon
-- [ ] Créer dossier `addon/service.pinas/`
-- [ ] Fichier `addon.xml` (métadonnées, dépendances, version)
-- [ ] Fichier `default.py` (point d'entrée Python)
-- [ ] Fichier `service.py` (daemon service)
-- [ ] Fichier `resources/settings.xml` (configuration Kodi UI)
-- [ ] Icône et fanart pour l'addon
+### 7.1 Structure Package LibreELEC
+- [x] Créer dossier `libreelec/packages/pinas/`
+- [x] Fichier `package.mk` (définition package)
+- [x] Service systemd `pinas.service`
+- [x] Script init `pinas-init.sh`
+- [x] Config tmpfiles `pinas.conf`
+- [ ] Icône et fanart pour l'addon (optionnel)
 
 ### 7.2 Cross-compilation Backend
-- [ ] Configurer `cross` pour aarch64-unknown-linux-musl
-- [ ] Script `build-backend.sh` pour compilation statique
-- [ ] Vérifier compatibilité binaire sur LibreELEC
-- [ ] Intégrer `rust-embed` pour embarquer le frontend
-- [ ] Tester sur Raspberry Pi 5 avec LibreELEC
+- [x] Target aarch64-unknown-linux-musl configuré
+- [x] Script `scripts/build-arm64.sh` pour build complet
+- [x] Binaire statique vérifié sur LibreELEC
+- [x] Frontend servi depuis filesystem (tower-http)
+- [x] Testé sur Raspberry Pi 5 avec LibreELEC 12
 
 ### 7.3 Intégration LibreELEC
-- [ ] Script démarrage/arrêt service PiNAS
-- [ ] Gestion des chemins `/storage/.pinas/`
-- [ ] Création automatique des dossiers au premier lancement
-- [ ] Configuration réseau (port 3000)
-- [ ] Logs vers `/storage/.pinas/logs/`
+- [x] Service systemd avec ExecStartPre pour init
+- [x] Gestion des chemins `/storage/.pinas/`
+- [x] Création automatique des dossiers au premier lancement
+- [x] Configuration réseau (port 3000)
+- [x] Logs vers `/storage/.pinas/logs/`
+- [x] Frontend copié de `/usr/share/pinas/www/` vers `/storage/.pinas/www/`
 
 ### 7.4 Intégration Samba (addon existant)
 - [ ] Analyser `service.samba` de LibreELEC
@@ -443,17 +448,15 @@
 - [ ] Restart service Samba après modifications
 
 ### 7.5 Build & Distribution
-- [ ] Script `build-addon.sh` (crée le ZIP)
-- [ ] Créer `repository.pinas` (repo d'addons)
-- [ ] Fichier `addon.xml` du repository
+- [x] Script `scripts/build-arm64.sh` (build image complète)
+- [ ] Créer `repository.pinas` (repo d'addons Kodi - optionnel)
 - [ ] Script de release automatisé
-- [ ] Documentation installation addon
+- [x] Documentation installation (README.md)
 
 ### 7.6 Tests sur LibreELEC
-- [ ] VM LibreELEC pour tests (QEMU/VirtualBox)
-- [ ] Docker simulant l'environnement LibreELEC
-- [ ] Tests d'intégration sur Raspberry Pi réel
-- [ ] Vérification cohabitation avec Kodi
+- [x] Tests d'intégration sur Raspberry Pi 5 réel
+- [x] Vérification cohabitation avec Kodi
+- [ ] VM LibreELEC pour tests CI (optionnel)
 
 ---
 
@@ -481,9 +484,9 @@
 ## Phase 9 : Documentation & Finalisation
 
 ### 9.1 Documentation
-- [ ] README.md complet
-- [ ] Guide installation
-- [ ] Guide utilisateur
+- [x] README.md complet
+- [x] Guide installation (dans README)
+- [ ] Guide utilisateur détaillé
 - [ ] API documentation (OpenAPI)
 - [ ] Guide développeur
 
@@ -587,9 +590,10 @@
 
 ## État actuel du projet
 
-### Frontend (Avancé)
-- **Interface desktop** : Shell complet avec TopBar, Dock, Window Manager
+### Frontend (Avancé - UI complète)
+- **Interface desktop** : Shell complet avec TopBar, Dock (en bas), Window Manager
 - **Design** : Style UGOS (light theme, glass morphism, gradients)
+- **Dock** : Affiche apps épinglées + toutes les fenêtres ouvertes
 - **Control Panel** : Menu de configuration principal style UGOS
   - Vue grille et vue détail avec sidebar
   - Catégories : Connection & Access, General, Service
@@ -604,29 +608,43 @@
 - **Applications mockup** : Storage, Files, Shares, Settings
 - **Prochaine étape** : Connexion des UI avec le backend API
 
-### Backend (À développer)
+### Backend (Structure en place)
 - Structure Axum de base en place
-- Modules créés : auth, system, storage, shares, users, ws
-- Endpoints API à implémenter
+- Modules créés : auth, system, storage, shares, users, files, ws
+- Endpoints API basiques implémentés
 - WebSocket pour temps réel
-- **Prochaine étape** : Implémenter les endpoints API fonctionnels
+- **Prochaine étape** : Implémenter les endpoints API fonctionnels complets
 
-### Addon LibreELEC (À créer)
-- Structure de l'addon à créer
-- Cross-compilation aarch64-musl à configurer
-- Intégration avec service.samba existant
-- **Prochaine étape** : Créer la structure de base de l'addon
+### Package LibreELEC (Fonctionnel ✅)
+- Package `libreelec/packages/pinas/` complet
+- Cross-compilation aarch64-musl fonctionnelle
+- Script `scripts/build-arm64.sh` avec options (--frontend-only, --skip-libreelec, etc.)
+- Service systemd auto-activé au boot
+- Frontend copié automatiquement vers /storage/.pinas/www/
+- **Testé et fonctionnel sur Raspberry Pi 5 avec LibreELEC 12**
 
 ### Infrastructure
 - Docker Compose configuré pour dev local
 - Structure projet organisée
+- Build ARM64 natif sur VM Ubuntu ARM64
 - **Cible** : LibreELEC 12.x sur Raspberry Pi 5
 
 ### Documentation
-- `CLAUDE.md` : Documentation technique complète (mise à jour pour LibreELEC)
+- `README.md` : Documentation utilisateur
+- `CLAUDE.md` : Documentation technique complète
 - `TODO.md` : Liste des tâches (ce fichier)
 
 ---
 
+## Fonctionnalités futures (planifiées)
+
+### Package Manager (style NAS commercial)
+- Installation d'apps via interface web PiNAS
+- Support Docker (binaires statiques depuis download.docker.com)
+- Catalogue d'apps pré-configurées (Plex, Nextcloud, etc.)
+- API backend pour gérer Docker via crate `bollard`
+
+---
+
 *Dernière mise à jour : Janvier 2025*
-*Cible OS : LibreELEC (addon)*
+*Cible OS : LibreELEC 12.x (package intégré à l'image)*

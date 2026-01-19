@@ -1,4 +1,4 @@
-import { writable, derived } from 'svelte/store';
+import { writable, derived, get } from 'svelte/store';
 
 export interface DesktopApp {
 	id: string;
@@ -6,11 +6,31 @@ export interface DesktopApp {
 	icon: string;
 	component: string;
 	gradient: string;
+	window?: {
+		width: number;
+		height: number;
+		minWidth: number;
+		minHeight: number;
+	};
+	isInstalled?: boolean; // true for dynamically installed apps
 }
 
-// Liste de toutes les applications disponibles
-// TODO: Réactiver les autres applications quand elles seront implémentées
-export const allApps: DesktopApp[] = [
+export interface AppRegistryEntry {
+	id: string;
+	name: string;
+	icon: string;
+	gradient: string;
+	component: string;
+	window: {
+		width: number;
+		height: number;
+		min_width: number;
+		min_height: number;
+	};
+}
+
+// Built-in system apps (always available)
+export const builtInApps: DesktopApp[] = [
 	{
 		id: 'control-panel',
 		label: 'Control Panel',
@@ -24,50 +44,66 @@ export const allApps: DesktopApp[] = [
 		icon: 'mdi:folder',
 		component: 'FileManager',
 		gradient: 'from-amber-400 to-amber-500'
+	},
+	{
+		id: 'app-center',
+		label: 'App Center',
+		icon: 'mdi:store',
+		component: 'AppCenter',
+		gradient: 'from-purple-500 to-pink-500'
 	}
-	// {
-	// 	id: 'users',
-	// 	label: 'User Management',
-	// 	icon: 'mdi:account-group',
-	// 	component: 'UserManager',
-	// 	gradient: 'from-purple-400 to-purple-500'
-	// },
-	// {
-	// 	id: 'storage',
-	// 	label: 'Storage Manager',
-	// 	icon: 'mdi:harddisk',
-	// 	component: 'StorageManager',
-	// 	gradient: 'from-slate-500 to-slate-600'
-	// },
-	// {
-	// 	id: 'shares',
-	// 	label: 'Shared Folders',
-	// 	icon: 'mdi:folder-network',
-	// 	component: 'ShareManager',
-	// 	gradient: 'from-blue-400 to-blue-500'
-	// },
-	// {
-	// 	id: 'docker',
-	// 	label: 'Docker',
-	// 	icon: 'mdi:docker',
-	// 	component: 'Docker',
-	// 	gradient: 'from-blue-500 to-blue-600'
-	// },
-	// {
-	// 	id: 'terminal',
-	// 	label: 'Terminal',
-	// 	icon: 'mdi:console',
-	// 	component: 'Terminal',
-	// 	gradient: 'from-slate-600 to-slate-700'
-	// },
-	// {
-	// 	id: 'settings',
-	// 	label: 'Settings',
-	// 	icon: 'mdi:cog',
-	// 	component: 'Settings',
-	// 	gradient: 'from-slate-400 to-slate-500'
-	// }
 ];
+
+// Store for dynamically installed apps (loaded from API)
+export const installedApps = writable<DesktopApp[]>([]);
+
+// Combined list of all apps (built-in + installed)
+export const allApps = derived(installedApps, ($installedApps) => {
+	return [...builtInApps, ...$installedApps];
+});
+
+// Fetch installed apps from the backend registry
+export async function loadInstalledApps(): Promise<void> {
+	try {
+		const response = await fetch('/api/apps/registry');
+		if (!response.ok) {
+			console.warn('Failed to load app registry:', response.statusText);
+			return;
+		}
+		const registry: AppRegistryEntry[] = await response.json();
+
+		const apps: DesktopApp[] = registry.map((entry) => ({
+			id: entry.id,
+			label: entry.name,
+			icon: entry.icon,
+			gradient: entry.gradient,
+			component: entry.component,
+			window: {
+				width: entry.window.width,
+				height: entry.window.height,
+				minWidth: entry.window.min_width,
+				minHeight: entry.window.min_height
+			},
+			isInstalled: true
+		}));
+
+		installedApps.set(apps);
+	} catch (error) {
+		console.warn('Failed to load installed apps:', error);
+	}
+}
+
+// Check if an app is installed (either built-in or from registry)
+export function isAppAvailable(appId: string): boolean {
+	const $allApps = get(allApps);
+	return $allApps.some((app) => app.id === appId);
+}
+
+// Get app by ID
+export function getAppById(appId: string): DesktopApp | undefined {
+	const $allApps = get(allApps);
+	return $allApps.find((app) => app.id === appId);
+}
 
 interface DesktopStore {
 	pinnedAppIds: string[];
@@ -131,8 +167,10 @@ function createDesktopStore() {
 export const desktopStore = createDesktopStore();
 
 // Derived store pour les applications épinglées sur le bureau
-export const desktopApps = derived(desktopStore, ($store) =>
-	allApps.filter((app) => $store.pinnedAppIds.includes(app.id))
+// Must derive from both desktopStore and allApps since allApps is now a derived store
+export const desktopApps = derived(
+	[desktopStore, allApps],
+	([$store, $allApps]) => $allApps.filter((app) => $store.pinnedAppIds.includes(app.id))
 );
 
 // Derived store pour les IDs épinglés

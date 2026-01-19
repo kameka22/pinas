@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { openWindow } from '$stores/windows';
-	import { desktopApps, removeFromDesktop, initDesktop, type DesktopApp } from '$stores/desktop';
+	import { desktopApps, removeFromDesktop, initDesktop, loadInstalledApps, installedApps, type DesktopApp } from '$stores/desktop';
+	import { loadAllAppTranslations, t } from '$lib/i18n';
 	import Icon from '@iconify/svelte';
 	import ContextMenu from '$lib/components/ui/ContextMenu.svelte';
 
@@ -12,9 +13,16 @@
 		targetApp: null as DesktopApp | null
 	};
 
-	onMount(() => {
+	onMount(async () => {
 		initDesktop();
+		// Load installed apps from the backend registry
+		await loadInstalledApps();
 	});
+
+	// Load translations when installed apps change
+	$: if ($installedApps.length > 0) {
+		loadAllAppTranslations($installedApps.map((app) => app.id));
+	}
 
 	function handleIconDblClick(app: DesktopApp) {
 		openWindow({
@@ -24,8 +32,8 @@
 			component: app.component,
 			x: 180 + Math.random() * 150,
 			y: 80 + Math.random() * 80,
-			width: 900,
-			height: 600
+			width: app.window?.width ?? 900,
+			height: app.window?.height ?? 600
 		});
 	}
 
@@ -46,7 +54,7 @@
 	$: contextMenuItems = contextMenu.targetApp
 		? [
 				{
-					label: 'Open',
+					label: $t.common.open,
 					icon: 'mdi:open-in-app',
 					action: () => {
 						if (contextMenu.targetApp) {
@@ -55,7 +63,7 @@
 					}
 				},
 				{
-					label: 'Remove from Desktop',
+					label: $t.common.removeFromDesktop,
 					icon: 'mdi:close-circle-outline',
 					action: () => {
 						if (contextMenu.targetApp) {

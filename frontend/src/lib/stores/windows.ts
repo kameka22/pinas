@@ -12,6 +12,10 @@ export interface WindowState {
 	minimized: boolean;
 	maximized: boolean;
 	zIndex: number;
+	// Dynamic app config passed to component
+	appConfig?: Record<string, unknown>;
+	// Additional metadata
+	gradient?: string;
 }
 
 interface WindowsStore {
@@ -32,7 +36,7 @@ function createWindowsStore() {
 	return {
 		subscribe,
 
-		openWindow: (config: Omit<WindowState, 'minimized' | 'maximized' | 'zIndex'>) => {
+		openWindow: (config: Omit<WindowState, 'minimized' | 'maximized' | 'zIndex'> & { appConfig?: Record<string, unknown>; gradient?: string }) => {
 			update((state) => {
 				// Check if window already exists
 				const existing = state.windows.find((w) => w.id === config.id);

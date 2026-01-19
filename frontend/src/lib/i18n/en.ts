@@ -28,7 +28,10 @@ export default {
 		removeFromDesktop: 'Remove from Desktop',
 		addToDesktop: 'Add to Desktop',
 		noApplicationsFound: 'No applications found',
-		searchApplications: 'Search applications...'
+		searchApplications: 'Search applications...',
+		refresh: 'Refresh',
+		retry: 'Retry',
+		copy: 'Copy'
 	},
 
 	// Control Panel
@@ -254,6 +257,59 @@ export default {
 		empty: 'No notifications'
 	},
 
+	// Onboarding
+	onboarding: {
+		welcome: 'Welcome!',
+		subtitle: "Let's set up your NAS.",
+		steps: {
+			language: 'Language',
+			device: 'Device',
+			account: 'Account',
+			password: 'Password'
+		},
+		language: {
+			title: 'Choose your language',
+			description: 'Select the language for the interface.',
+			selectLanguage: 'Select Language'
+		},
+		device: {
+			title: 'Name your device',
+			description: 'This name will identify your NAS on the network.',
+			fieldLabel: 'Device Name',
+			placeholder: 'e.g., pinas-home'
+		},
+		account: {
+			title: 'Create admin account',
+			description: 'This will be the administrator account for your NAS.',
+			fieldLabel: 'Username',
+			placeholder: 'e.g., admin'
+		},
+		password: {
+			title: 'Set your password',
+			description: 'Choose a secure password for your admin account.',
+			fieldLabel: 'Password',
+			confirmLabel: 'Confirm Password',
+			placeholder: 'Enter password',
+			confirmPlaceholder: 'Confirm password'
+		},
+		buttons: {
+			back: 'Back',
+			next: 'Next',
+			complete: 'Complete Setup'
+		},
+		validation: {
+			machineNameRequired: 'Machine name is required',
+			machineNameMinLength: 'Machine name must be at least 2 characters',
+			machineNameInvalid: 'Only letters, numbers and hyphens allowed',
+			usernameRequired: 'Username is required',
+			usernameMinLength: 'Username must be at least 3 characters',
+			usernameInvalid: 'Only letters, numbers and underscores allowed',
+			passwordRequired: 'Password is required',
+			passwordMinLength: 'Password must be at least 6 characters',
+			passwordMismatch: 'Passwords do not match'
+		}
+	},
+
 	// File Manager
 	fileManager: {
 		title: 'Files',
@@ -301,5 +357,122 @@ export default {
 			items: 'items in total',
 			selected: 'selected'
 		}
+	},
+
+	// App Center
+	appCenter: {
+		title: 'App Center',
+		searchPlaceholder: 'Search applications...',
+		installedCount: 'installed',
+		noPackages: 'No applications found',
+		version: 'Version',
+		description: 'Description',
+		features: 'Features',
+		categories: {
+			all: 'All',
+			containers: 'Containers',
+			media: 'Media',
+			utilities: 'Utilities'
+		},
+		status: {
+			installed: 'Installed',
+			installing: 'Installing...',
+			updateAvailable: 'Update available',
+			notInstalled: 'Not installed'
+		},
+		actions: {
+			install: 'Install',
+			installing: 'Installing...',
+			uninstall: 'Uninstall',
+			open: 'Open',
+			update: 'Update'
+		},
+		packages: {
+			docker: {
+				description: 'Container platform for deploying and managing applications',
+				feature1: 'Run isolated containers',
+				feature2: 'Easy application deployment',
+				feature3: 'Docker Compose support'
+			}
+		}
+	},
+
+	// Generic App Components
+	iframeApp: {
+		connectionError: 'Unable to connect to the application',
+		timeout: 'Connection timeout - application may not be running',
+		openExternal: 'Open in new tab',
+		errorTitle: 'Connection Error'
+	},
+
+	webviewApp: {
+		description: 'This application opens in a new browser tab',
+		openApp: 'Open Application',
+		checking: 'Checking status...',
+		online: 'Online',
+		offline: 'Offline',
+		tip: 'You can also access this application directly at the URL above'
+	},
+
+	serviceApp: {
+		running: 'Running',
+		stopped: 'Stopped',
+		status: 'Status',
+		logs: 'Logs',
+		config: 'Configuration',
+		actions: 'Actions',
+		start: 'Start',
+		stop: 'Stop',
+		restart: 'Restart',
+		uptime: 'Uptime',
+		memory: 'Memory',
+		cpu: 'CPU',
+		autostart: 'Auto-start',
+		recentLogs: 'Recent Logs',
+		noLogs: 'No logs available',
+		configPlaceholder: 'Configuration options coming soon'
+	},
+
+	// Docker App
+	docker: {
+		serviceStatus: 'Service running',
+		status: {
+			normal: 'Normal',
+			stopped: 'Stopped',
+			error: 'Error'
+		},
+		stats: {
+			projects: 'Projects',
+			containers: 'Containers',
+			local: 'Local',
+			data: 'Data'
+		},
+		cpuUsage: 'CPU usage',
+		memoryCapacity: 'Memory capacity',
+		available: 'Available',
+		views: {
+			overview: 'Overview',
+			project: 'Project',
+			container: 'Container',
+			image: 'Image',
+			network: 'Network',
+			log: 'Log',
+			management: 'Management'
+		},
+		table: {
+			name: 'Name',
+			image: 'Image',
+			status: 'Status',
+			ports: 'Ports',
+			actions: 'Actions',
+			repository: 'Repository',
+			tag: 'Tag',
+			imageId: 'Image ID',
+			size: 'Size',
+			created: 'Created'
+		},
+		noContainers: 'No containers found',
+		noImages: 'No images found',
+		underDevelopment: 'This section is under development'
 	}
 };

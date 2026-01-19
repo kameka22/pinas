@@ -29,6 +29,8 @@ build.log
 extra/*
 
 backend/data
+app-catalog/
+exemple/
 
 # Generated package files (built by scripts/build-arm64.sh)
 libreelec/packages/pinas/www/

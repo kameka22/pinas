@@ -28,7 +28,10 @@ export default {
 		removeFromDesktop: 'Retirer du bureau',
 		addToDesktop: 'Ajouter au bureau',
 		noApplicationsFound: 'Aucune application trouvée',
-		searchApplications: 'Rechercher des applications...'
+		searchApplications: 'Rechercher des applications...',
+		refresh: 'Actualiser',
+		retry: 'Réessayer',
+		copy: 'Copier'
 	},
 
 	// Control Panel
@@ -254,6 +257,59 @@ export default {
 		empty: 'Aucune notification'
 	},
 
+	// Onboarding
+	onboarding: {
+		welcome: 'Bienvenue !',
+		subtitle: 'Configurons votre NAS.',
+		steps: {
+			language: 'Langue',
+			device: 'Appareil',
+			account: 'Compte',
+			password: 'Mot de passe'
+		},
+		language: {
+			title: 'Choisissez votre langue',
+			description: "Sélectionnez la langue de l'interface.",
+			selectLanguage: 'Sélectionner la langue'
+		},
+		device: {
+			title: 'Nommez votre appareil',
+			description: 'Ce nom identifiera votre NAS sur le réseau.',
+			fieldLabel: "Nom de l'appareil",
+			placeholder: 'ex: pinas-maison'
+		},
+		account: {
+			title: 'Créer le compte administrateur',
+			description: 'Ce sera le compte administrateur de votre NAS.',
+			fieldLabel: "Nom d'utilisateur",
+			placeholder: 'ex: admin'
+		},
+		password: {
+			title: 'Définir votre mot de passe',
+			description: 'Choisissez un mot de passe sécurisé pour votre compte admin.',
+			fieldLabel: 'Mot de passe',
+			confirmLabel: 'Confirmer le mot de passe',
+			placeholder: 'Entrez le mot de passe',
+			confirmPlaceholder: 'Confirmez le mot de passe'
+		},
+		buttons: {
+			back: 'Retour',
+			next: 'Suivant',
+			complete: 'Terminer la configuration'
+		},
+		validation: {
+			machineNameRequired: "Le nom de l'appareil est requis",
+			machineNameMinLength: "Le nom doit contenir au moins 2 caractères",
+			machineNameInvalid: 'Seuls les lettres, chiffres et tirets sont autorisés',
+			usernameRequired: "Le nom d'utilisateur est requis",
+			usernameMinLength: "Le nom d'utilisateur doit contenir au moins 3 caractères",
+			usernameInvalid: 'Seuls les lettres, chiffres et underscores sont autorisés',
+			passwordRequired: 'Le mot de passe est requis',
+			passwordMinLength: 'Le mot de passe doit contenir au moins 6 caractères',
+			passwordMismatch: 'Les mots de passe ne correspondent pas'
+		}
+	},
+
 	// File Manager
 	fileManager: {
 		title: 'Fichiers',
@@ -301,5 +357,122 @@ export default {
 			items: 'éléments au total',
 			selected: 'sélectionné(s)'
 		}
+	},
+
+	// App Center
+	appCenter: {
+		title: 'Centre d\'applications',
+		searchPlaceholder: 'Rechercher des applications...',
+		installedCount: 'installée(s)',
+		noPackages: 'Aucune application trouvée',
+		version: 'Version',
+		description: 'Description',
+		features: 'Fonctionnalités',
+		categories: {
+			all: 'Toutes',
+			containers: 'Conteneurs',
+			media: 'Multimédia',
+			utilities: 'Utilitaires'
+		},
+		status: {
+			installed: 'Installé',
+			installing: 'Installation...',
+			updateAvailable: 'Mise à jour disponible',
+			notInstalled: 'Non installé'
+		},
+		actions: {
+			install: 'Installer',
+			installing: 'Installation...',
+			uninstall: 'Désinstaller',
+			open: 'Ouvrir',
+			update: 'Mettre à jour'
+		},
+		packages: {
+			docker: {
+				description: 'Plateforme de conteneurs pour déployer et gérer des applications',
+				feature1: 'Exécuter des conteneurs isolés',
+				feature2: 'Déploiement facile d\'applications',
+				feature3: 'Support Docker Compose'
+			}
+		}
+	},
+
+	// Generic App Components
+	iframeApp: {
+		connectionError: 'Impossible de se connecter à l\'application',
+		timeout: 'Délai de connexion dépassé - l\'application n\'est peut-être pas en cours d\'exécution',
+		openExternal: 'Ouvrir dans un nouvel onglet',
+		errorTitle: 'Erreur de connexion'
+	},
+
+	webviewApp: {
+		description: 'Cette application s\'ouvre dans un nouvel onglet du navigateur',
+		openApp: 'Ouvrir l\'application',
+		checking: 'Vérification du statut...',
+		online: 'En ligne',
+		offline: 'Hors ligne',
+		tip: 'Vous pouvez également accéder à cette application directement via l\'URL ci-dessus'
+	},
+
+	serviceApp: {
+		running: 'En cours',
+		stopped: 'Arrêté',
+		status: 'Statut',
+		logs: 'Journaux',
+		config: 'Configuration',
+		actions: 'Actions',
+		start: 'Démarrer',
+		stop: 'Arrêter',
+		restart: 'Redémarrer',
+		uptime: 'Temps de fonctionnement',
+		memory: 'Mémoire',
+		cpu: 'CPU',
+		autostart: 'Démarrage auto',
+		recentLogs: 'Journaux récents',
+		noLogs: 'Aucun journal disponible',
+		configPlaceholder: 'Options de configuration bientôt disponibles'
+	},
+
+	// Docker App
+	docker: {
+		serviceStatus: 'Service en cours',
+		status: {
+			normal: 'Normal',
+			stopped: 'Arrêté',
+			error: 'Erreur'
+		},
+		stats: {
+			projects: 'Projets',
+			containers: 'Conteneurs',
+			local: 'Local',
+			data: 'Données'
+		},
+		cpuUsage: 'Utilisation CPU',
+		memoryCapacity: 'Capacité mémoire',
+		available: 'Disponible',
+		views: {
+			overview: 'Aperçu',
+			project: 'Projet',
+			container: 'Conteneur',
+			image: 'Image',
+			network: 'Réseau',
+			log: 'Journal',
+			management: 'Gestion'
+		},
+		table: {
+			name: 'Nom',
+			image: 'Image',
+			status: 'Statut',
+			ports: 'Ports',
+			actions: 'Actions',
+			repository: 'Dépôt',
+			tag: 'Tag',
+			imageId: 'ID Image',
+			size: 'Taille',
+			created: 'Créé'
+		},
+		noContainers: 'Aucun conteneur trouvé',
+		noImages: 'Aucune image trouvée',
+		underDevelopment: 'Cette section est en cours de développement'
 	}
 };

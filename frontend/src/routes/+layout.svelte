@@ -6,7 +6,9 @@
 	import WindowManager from '$components/desktop/WindowManager.svelte';
 	import NotificationCenter from '$components/desktop/NotificationCenter.svelte';
 	import AppLauncher from '$components/desktop/AppLauncher.svelte';
+	import Onboarding from '$components/onboarding/Onboarding.svelte';
 	import { connectWebSocket } from '$stores/websocket';
+	import { isSetupComplete, isLoading, initOnboarding } from '$stores/onboarding';
 
 	let showNotifications = false;
 	let showAppLauncher = false;
@@ -20,11 +22,21 @@
 	}
 
 	onMount(() => {
+		initOnboarding();
 		const disconnect = connectWebSocket();
 		return () => disconnect();
 	});
 </script>
 
+<!-- Show loading screen while checking setup state -->
+{#if $isLoading}
+	<div class="loading-screen">
+		<div class="loading-spinner"></div>
+	</div>
+<!-- Show onboarding if setup is not complete -->
+{:else if !$isSetupComplete}
+	<Onboarding />
+{:else}
 <div class="desktop">
 	<!-- Wallpaper Background -->
 	<div class="wallpaper"></div>
@@ -49,6 +61,7 @@
 	<!-- Notification Center -->
 	<NotificationCenter bind:visible={showNotifications} />
 </div>
+{/if}
 
 <style>
 	.desktop {
@@ -81,5 +94,30 @@
 		right: 0;
 		bottom: 0;
 		z-index: 1;
+	}
+
+	.loading-screen {
+		position: fixed;
+		inset: 0;
+		background: linear-gradient(135deg, #1e3a5f 0%, #0f172a 100%);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		z-index: 1000;
+	}
+
+	.loading-spinner {
+		width: 48px;
+		height: 48px;
+		border: 3px solid rgba(255, 255, 255, 0.1);
+		border-top-color: #3b82f6;
+		border-radius: 50%;
+		animation: spin 1s linear infinite;
+	}
+
+	@keyframes spin {
+		to {
+			transform: rotate(360deg);
+		}
 	}
 </style>

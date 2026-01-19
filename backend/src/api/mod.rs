@@ -1,5 +1,8 @@
+pub mod apps;
 pub mod auth;
+pub mod docker;
 pub mod files;
+pub mod packages;
 pub mod shares;
 pub mod storage;
 pub mod system;

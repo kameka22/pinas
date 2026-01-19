@@ -12,24 +12,30 @@
 
 	interface AppCategory {
 		titleKey: string;
-		apps: DesktopApp[];
+		appIds: string[];
 	}
 
-	// TODO: Réactiver les autres applications quand elles seront implémentées
-	const categories: AppCategory[] = [
+	// Category definitions with app IDs
+	const categoryDefs: AppCategory[] = [
 		{
 			titleKey: 'system',
-			apps: allApps.filter((app) => app.id === 'control-panel')
+			appIds: ['control-panel']
 		},
 		{
 			titleKey: 'storageFiles',
-			apps: allApps.filter((app) => ['storage', 'file-manager', 'shares'].includes(app.id))
+			appIds: ['storage', 'file-manager', 'shares']
+		},
+		{
+			titleKey: 'services',
+			appIds: ['app-center', 'docker', 'terminal']
 		}
-		// {
-		// 	titleKey: 'services',
-		// 	apps: allApps.filter((app) => ['docker', 'terminal'].includes(app.id))
-		// }
 	];
+
+	// Reactive categories based on allApps store
+	$: categories = categoryDefs.map((cat) => ({
+		titleKey: cat.titleKey,
+		apps: $allApps.filter((app) => cat.appIds.includes(app.id) || (app.isInstalled && cat.titleKey === 'services'))
+	})).filter((cat) => cat.apps.length > 0);
 
 	let searchQuery = '';
 
@@ -57,8 +63,8 @@
 			component: app.component,
 			x: 150 + Math.random() * 100,
 			y: 80 + Math.random() * 50,
-			width: 900,
-			height: 600
+			width: app.window?.width ?? 900,
+			height: app.window?.height ?? 600
 		});
 		dispatch('close');
 	}
