@@ -251,8 +251,13 @@ impl PackageService {
         .execute(&self.db)
         .await?;
 
-        // Execute installation steps
-        let result = self.execute_install_steps(manifest, &task_id).await;
+        // Execute installation steps (skip in dev mode)
+        let result = if self.dev_mode {
+            tracing::info!("Dev mode: skipping installation steps for {}", manifest.id);
+            Ok(())
+        } else {
+            self.execute_install_steps(manifest, &task_id).await
+        };
 
         // Update status based on result
         match result {
