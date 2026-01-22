@@ -102,14 +102,38 @@
 - [ ] `PUT /api/shares/:id` - Modifier partage
 - [ ] `DELETE /api/shares/:id` - Supprimer partage
 
-### 2.4 User Service
-- [ ] `GET /api/users` - Liste utilisateurs
-- [ ] `POST /api/users` - Créer utilisateur
-- [ ] `GET /api/users/:id` - Détails utilisateur
-- [ ] `PUT /api/users/:id` - Modifier utilisateur
-- [ ] `DELETE /api/users/:id` - Supprimer utilisateur
+### 2.4 User Service ✅
+- [x] `GET /api/users` - Liste utilisateurs
+- [x] `POST /api/users` - Créer utilisateur
+- [x] `GET /api/users/:id` - Détails utilisateur
+- [x] `PUT /api/users/:id` - Modifier utilisateur
+- [x] `DELETE /api/users/:id` - Supprimer utilisateur
+- [x] Password hashing avec Argon2
+- [x] Validation et contraintes
 
-### 2.5 Docker Service ✅
+### 2.5 Groups Service ✅ NOUVEAU
+- [x] `GET /api/groups` - Liste groupes
+- [x] `POST /api/groups` - Créer groupe
+- [x] `GET /api/groups/:id` - Détails groupe
+- [x] `PUT /api/groups/:id` - Modifier groupe
+- [x] `DELETE /api/groups/:id` - Supprimer groupe
+- [x] `GET /api/groups/:id/members` - Membres du groupe
+- [x] `POST /api/groups/:id/members` - Ajouter membre
+- [x] `DELETE /api/groups/:id/members/:user_id` - Retirer membre
+- [x] Groupes système (administrators, users)
+
+### 2.6 Setup Service ✅ NOUVEAU
+- [x] `GET /api/setup/status` - Vérifie si setup effectué
+- [x] `POST /api/setup/complete` - Crée admin initial + retourne JWT
+- [x] Auto-login après onboarding
+
+### 2.7 Terminal Service ✅ NOUVEAU
+- [x] `POST /api/terminal/exec` - Exécute commande shell
+- [x] Blocage commandes dangereuses (rm -rf /, mkfs, etc.)
+- [x] Mode dev (simulation sans exécution)
+- [x] Timeout 30 secondes
+
+### 2.8 Docker Service ✅
 - [x] `GET /api/docker/status` - État Docker
 - [x] `GET /api/docker/containers` - Liste containers
 - [x] `POST /api/docker/containers/:id/start` - Démarrer
@@ -226,7 +250,24 @@
 - [x] Liste images avec taille et date
 - [x] Connexion API Docker via bollard
 
-### 5.11 Composants Apps Génériques ✅ NOUVEAU
+### 5.11 Terminal App ✅ NOUVEAU
+- [x] Interface terminal complète (style console)
+- [x] Prompt personnalisé `pinas@host:~$`
+- [x] Historique commandes (flèches haut/bas)
+- [x] Commandes built-in (help, clear, history)
+- [x] Raccourcis clavier (Ctrl+C, Ctrl+L)
+- [x] Connexion API backend `/api/terminal/exec`
+- [x] Auto-scroll et focus management
+
+### 5.12 Process Manager ✅ NOUVEAU
+- [x] Interface gestionnaire de processus (style Task Manager)
+- [x] Stats système (CPU, mémoire)
+- [x] Liste processus triable (PID, nom, CPU%, RAM)
+- [x] Barre de recherche/filtre
+- [x] Simulation données (fake process list)
+- [x] Mise à jour temps réel des stats
+
+### 5.13 Composants Apps Génériques ✅
 - [x] `IframeApp.svelte` - Affiche app web dans iframe avec toolbar
 - [x] `WebviewApp.svelte` - Placeholder + bouton ouvrir dans nouvel onglet
 - [x] `ServiceApp.svelte` - UI gestion service (start/stop/restart/logs)
@@ -245,6 +286,8 @@
 - [x] Step 4 : Mot de passe
 - [x] Store onboarding avec validation
 - [x] Redirection vers desktop après completion
+- [x] Connexion API backend `/api/setup/complete`
+- [x] Auto-login avec JWT après création admin
 
 ---
 
@@ -259,7 +302,33 @@
 
 ---
 
-## Phase 8 : App Catalog ✅ NOUVEAU
+## Phase 7.5 : Authentification & Gestion Utilisateurs ✅ NOUVEAU
+
+### 7.5.1 Backend Auth Services
+- [x] Service Auth (`services/auth.rs`) - Hash Argon2id + JWT
+- [x] Service User (`services/user.rs`) - CRUD utilisateurs
+- [x] Service Session (`services/session.rs`) - Gestion sessions
+- [x] Service Group (`services/group.rs`) - CRUD groupes
+- [x] Middleware Auth (`api/middleware.rs`) - Extraction JWT
+- [x] Migration groupes et permissions
+
+### 7.5.2 Frontend User Management
+- [x] TopBar dropdown utilisateur (avatar, menu)
+- [x] ProfileModal - Affichage/édition profil
+- [x] ChangePasswordModal - Changement mot de passe
+- [x] UserManager connecté aux vraies APIs
+- [x] Gestion groupes dans UserManager
+- [x] Traductions complètes (EN/FR)
+
+### 7.5.3 Auth Flow
+- [x] Login avec JWT storage
+- [x] Logout avec suppression session
+- [x] `POST /api/auth/change-password`
+- [x] Protection routes admin
+
+---
+
+## Phase 8 : App Catalog ✅
 
 ### 8.1 Structure Catalog
 - [x] Repository GitHub `kameka22/pinas-app-catalog`
@@ -293,8 +362,12 @@
 - **Design** : Style UGOS (light theme, glass morphism, gradients)
 - **App Center** : Installation d'apps depuis catalogue distant
 - **Composants génériques** : IframeApp, WebviewApp, ServiceApp
-- **i18n** : Traductions EN/FR + support dynamique par app
+- **i18n** : Traductions EN/FR + support dynamique par app + labelKey pour noms d'apps
 - **Window Manager** : Support appConfig pour composants dynamiques
+- **Terminal** : Application terminal web avec historique et commandes built-in
+- **Process Manager** : Gestionnaire de processus (simulation)
+- **User Dropdown** : Menu utilisateur dans TopBar (profil, mot de passe, logout)
+- **Modales** : ProfileModal, ChangePasswordModal
 
 ### Backend (Fonctionnel)
 - **Package Manager** : Installation complète avec Docker support
@@ -302,6 +375,10 @@
 - **Services Manager** : API `/api/services` pour gestion systemd (start/stop/restart/logs)
 - **Apps Registry** : Endpoint pour apps avec fenêtre
 - **Substitution variables** : Chemins dynamiques dans manifests
+- **Auth complet** : JWT + Argon2 + sessions + middleware
+- **Users/Groups** : CRUD complet avec API REST
+- **Setup API** : Endpoint onboarding avec création admin
+- **Terminal API** : Exécution commandes avec sécurité
 
 ### App Catalog (GitHub)
 - **Repository** : `kameka22/pinas-app-catalog`
@@ -320,16 +397,20 @@
 - [ ] Tester installation réelle d'apps sur Pi
 - [ ] Ajouter plus d'apps au catalogue (Nextcloud, Transmission, Home Assistant)
 - [x] Implémenter endpoint `/api/services` pour ServiceApp
+- [ ] Connecter Process Manager aux vraies données système
+- [ ] Améliorer Terminal avec auto-completion
 
 ### Moyen terme
 - [ ] Connexion complète UI ↔ Backend pour toutes les apps
-- [ ] Gestion utilisateurs fonctionnelle
+- [x] Gestion utilisateurs fonctionnelle
 - [ ] Partages SMB via interface
+- [ ] Storage Manager connecté au backend
 
 ### Long terme
 - [ ] Support NFS
 - [ ] S.M.A.R.T. monitoring
 - [ ] Synchronisation cloud (rclone)
+- [ ] Backup/Restore système
 
 ---
 
