@@ -224,6 +224,16 @@ REMOTE_SCRIPTS_DIR="$REMOTE_PROJECT_DIR/scripts"
 REMOTE_TARGET_DIR="$REMOTE_PROJECT_DIR/extra/LibreELEC.tv/target"
 
 echo ""
+echo -e "${CYAN}>>> Cleaning local target directory...${NC}"
+if [ -d "$TARGET_DIR" ]; then
+    rm -rf "$TARGET_DIR"/*.img.gz "$TARGET_DIR"/*.img "$TARGET_DIR"/*.tar 2>/dev/null || true
+    echo -e "    ${GREEN}✓${NC} Local target cleaned"
+else
+    mkdir -p "$TARGET_DIR"
+    echo -e "    ${GREEN}✓${NC} Local target directory created"
+fi
+
+echo ""
 echo -e "${CYAN}>>> Preparing remote environment...${NC}"
 
 # Step 1: Reset any local changes
