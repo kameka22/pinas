@@ -28,6 +28,10 @@ build.log
 # External sources (not part of this project)
 extra/*
 
+# Remote build outputs and config
+target/
+.vm-config
+
 backend/data
 app-catalog/
 exemple/
