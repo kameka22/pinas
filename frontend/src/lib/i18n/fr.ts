@@ -122,6 +122,7 @@ export default {
 		},
 		table: {
 			username: "Nom d'utilisateur",
+			email: 'Email',
 			description: 'Description',
 			role: 'Rôle',
 			status: 'Statut',
@@ -133,6 +134,9 @@ export default {
 			administrator: 'Administrateur',
 			user: 'Utilisateur',
 			guest: 'Invité'
+		},
+		badges: {
+			system: 'Système'
 		},
 		statuses: {
 			normal: 'Normal',
@@ -157,6 +161,7 @@ export default {
 		},
 		fields: {
 			username: "Nom d'utilisateur",
+			email: 'Email',
 			password: 'Mot de passe',
 			confirmPassword: 'Confirmer le mot de passe',
 			description: 'Description',
@@ -180,7 +185,11 @@ export default {
 			deleteGroupConfirm: 'Êtes-vous sûr de vouloir supprimer le groupe "{groupName}" ?',
 			cannotBeUndone: 'Cette action est irréversible.',
 			userDataShown: 'Données utilisateur affichées',
-			me: 'Moi'
+			me: 'Moi',
+			noUsersFound: 'Aucun utilisateur trouvé',
+			noGroupsFound: 'Aucun groupe trouvé',
+			cannotChangeOwnRole: 'Vous ne pouvez pas modifier votre propre rôle',
+			systemGroupNameReadonly: 'Les noms des groupes système ne peuvent pas être modifiés'
 		},
 		advancedSettings: {
 			passwordStrength: {
@@ -215,6 +224,19 @@ export default {
 				services: 'Services'
 			}
 		}
+	},
+
+	// Application names
+	apps: {
+		controlPanel: 'Panneau de configuration',
+		files: 'Fichiers',
+		appCenter: "Centre d'applications",
+		storage: 'Stockage',
+		shares: 'Partages',
+		docker: 'Docker',
+		terminal: 'Terminal',
+		users: 'Utilisateurs',
+		processManager: 'Gestionnaire de processus'
 	},
 
 	// Top Bar

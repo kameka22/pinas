@@ -6,7 +6,9 @@
 		nextStep,
 		prevStep,
 		updateConfig,
-		completeSetup
+		completeSetup,
+		setupError,
+		clearError
 	} from '$stores/onboarding';
 	import { t, locale, languages, type Locale } from '$lib/i18n';
 
@@ -21,6 +23,9 @@
 	let passwordError = '';
 	let machineNameError = '';
 	let usernameError = '';
+
+	// Submission state
+	let isSubmitting = false;
 
 	const TOTAL_STEPS = 4;
 
@@ -87,7 +92,10 @@
 		return true;
 	}
 
-	function handleNext() {
+	async function handleNext() {
+		// Clear any previous errors
+		clearError();
+
 		if ($currentStep === 1) {
 			// Language step - just proceed
 		} else if ($currentStep === 2) {
@@ -99,14 +107,25 @@
 		} else if ($currentStep === 4) {
 			if (!validatePassword()) return;
 			updateConfig({ adminPassword });
-			completeSetup();
+
+			// Start submission
+			isSubmitting = true;
+			try {
+				const success = await completeSetup();
+				if (!success) {
+					// Error will be displayed from the store
+					isSubmitting = false;
+				}
+			} catch (e) {
+				isSubmitting = false;
+			}
 			return;
 		}
 		nextStep();
 	}
 
 	function handleKeydown(e: KeyboardEvent) {
-		if (e.key === 'Enter') {
+		if (e.key === 'Enter' && !isSubmitting) {
 			handleNext();
 		}
 	}
@@ -214,6 +233,14 @@
 				<div class="step-panel">
 					<h2>{$t.onboarding.password.title}</h2>
 					<p class="step-description">{$t.onboarding.password.description}</p>
+
+					{#if $setupError}
+						<div class="setup-error">
+							<Icon icon="mdi:alert-circle" class="w-5 h-5" />
+							<span>{$setupError}</span>
+						</div>
+					{/if}
+
 					<div class="input-group">
 						<label for="password">{$t.onboarding.password.fieldLabel}</label>
 						<input
@@ -223,6 +250,7 @@
 							bind:value={adminPassword}
 							on:keydown={handleKeydown}
 							class:error={passwordError}
+							disabled={isSubmitting}
 						/>
 					</div>
 					<div class="input-group">
@@ -234,6 +262,7 @@
 							bind:value={confirmPassword}
 							on:keydown={handleKeydown}
 							class:error={passwordError}
+							disabled={isSubmitting}
 						/>
 						{#if passwordError}
 							<span class="error-message">{passwordError}</span>
@@ -254,8 +283,11 @@
 				<div></div>
 			{/if}
 
-			<button class="btn-primary" on:click={handleNext}>
-				{#if $currentStep === TOTAL_STEPS}
+			<button class="btn-primary" on:click={handleNext} disabled={isSubmitting}>
+				{#if isSubmitting}
+					<Icon icon="mdi:loading" class="w-4 h-4 spinning" />
+					Setting up...
+				{:else if $currentStep === TOTAL_STEPS}
 					{$t.onboarding.buttons.complete}
 					<Icon icon="mdi:check" class="w-4 h-4" />
 				{:else}
@@ -538,5 +570,42 @@
 	.btn-secondary:hover {
 		background: #f1f5f9;
 		color: #475569;
+	}
+
+	.btn-primary:disabled {
+		opacity: 0.7;
+		cursor: not-allowed;
+		transform: none;
+	}
+
+	.btn-primary:disabled:hover {
+		transform: none;
+		box-shadow: none;
+	}
+
+	.setup-error {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 12px 16px;
+		background: #fef2f2;
+		border: 1px solid #fecaca;
+		border-radius: 8px;
+		color: #dc2626;
+		font-size: 14px;
+		margin-bottom: 16px;
+	}
+
+	.spinning {
+		animation: spin 1s linear infinite;
+	}
+
+	@keyframes spin {
+		from {
+			transform: rotate(0deg);
+		}
+		to {
+			transform: rotate(360deg);
+		}
 	}
 </style>

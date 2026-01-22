@@ -24,10 +24,18 @@
 		loadAllAppTranslations($installedApps.map((app) => app.id));
 	}
 
+	// Helper function to get translated app label
+	function getAppLabel(app: DesktopApp): string {
+		if (app.labelKey && $t.apps[app.labelKey as keyof typeof $t.apps]) {
+			return $t.apps[app.labelKey as keyof typeof $t.apps];
+		}
+		return app.label;
+	}
+
 	function handleIconDblClick(app: DesktopApp) {
 		openWindow({
 			id: app.id,
-			title: app.label,
+			title: getAppLabel(app),
 			icon: app.icon,
 			component: app.component,
 			x: 180 + Math.random() * 150,
@@ -87,7 +95,7 @@
 			<div class="icon-wrapper bg-gradient-to-br {app.gradient}">
 				<Icon icon={app.icon} class="w-8 h-8 text-white" />
 			</div>
-			<span class="icon-label">{app.label}</span>
+			<span class="icon-label">{getAppLabel(app)}</span>
 		</button>
 	{/each}
 </div>

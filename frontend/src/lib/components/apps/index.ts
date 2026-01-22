@@ -10,11 +10,13 @@ import ControlPanel from './ControlPanel.svelte';
 import FileManager from './FileManager.svelte';
 import AppCenter from './AppCenter.svelte';
 import DockerApp from './DockerApp.svelte';
+import TerminalApp from './TerminalApp.svelte';
+import ProcessManager from './ProcessManager.svelte';
 import IframeApp from './IframeApp.svelte';
 import WebviewApp from './WebviewApp.svelte';
 import ServiceApp from './ServiceApp.svelte';
 
-import type { ComponentType, SvelteComponent } from 'svelte';
+import type { Component } from 'svelte';
 
 // Type for app component props
 export interface AppComponentProps {
@@ -24,8 +26,11 @@ export interface AppComponentProps {
 	gradient?: string;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyComponent = Component<any, any, any>;
+
 // Registry of all available components
-export const appComponents: Record<string, ComponentType<SvelteComponent>> = {
+export const appComponents: Record<string, AnyComponent> = {
 	// Built-in apps
 	Dashboard,
 	StorageManager,
@@ -36,6 +41,8 @@ export const appComponents: Record<string, ComponentType<SvelteComponent>> = {
 	FileManager,
 	AppCenter,
 	DockerApp,
+	TerminalApp,
+	ProcessManager,
 
 	// Generic app containers
 	IframeApp,
@@ -50,11 +57,11 @@ export const appComponents: Record<string, ComponentType<SvelteComponent>> = {
 	// Placeholders (map to Dashboard for now)
 	NetdiskTools: Dashboard,
 	Support: Dashboard,
-	TaskManager: Dashboard
+	TaskManager: ProcessManager
 };
 
 // Get a component by name, with fallback to Dashboard
-export function getAppComponent(name: string): ComponentType<SvelteComponent> {
+export function getAppComponent(name: string): AnyComponent {
 	return appComponents[name] || Dashboard;
 }
 
@@ -79,6 +86,8 @@ export {
 	FileManager,
 	AppCenter,
 	DockerApp,
+	TerminalApp,
+	ProcessManager,
 	IframeApp,
 	WebviewApp,
 	ServiceApp

@@ -111,20 +111,34 @@ class ApiClient {
 	async login(username: string, password: string): Promise<void> {
 		const response = await this.post<{
 			token: string;
-			user: { id: string; username: string; role: string };
+			user: { id: string; username: string; email: string | null; is_admin: boolean };
 		}>('/auth/login', { username, password });
 
+		const user = {
+			id: response.user.id,
+			username: response.user.username,
+			role: response.user.is_admin ? 'admin' : 'user'
+		};
+
 		localStorage.setItem('token', response.token);
-		localStorage.setItem('user', JSON.stringify(response.user));
+		localStorage.setItem('user', JSON.stringify(user));
 
 		auth.set({
 			isAuthenticated: true,
 			token: response.token,
-			user: response.user
+			user
 		});
 	}
 
-	logout(): void {
+	async logout(): Promise<void> {
+		// Call backend logout endpoint to invalidate session
+		try {
+			await this.post('/auth/logout');
+		} catch (e) {
+			// Ignore errors - we'll clear local state anyway
+			console.warn('Logout API call failed:', e);
+		}
+
 		localStorage.removeItem('token');
 		localStorage.removeItem('user');
 
@@ -198,17 +212,108 @@ class ApiClient {
 			id: string;
 			username: string;
 			email: string | null;
-			role: string;
-			enabled: boolean;
+			is_admin: boolean;
+			created_at: string;
+			updated_at: string;
 		}>>('/users');
 	}
 
-	async createUser(user: { username: string; password: string; email?: string; role?: string }) {
+	async createUser(user: { username: string; password: string; email?: string; is_admin?: boolean }) {
 		return this.post('/users', user);
 	}
 
 	async deleteUser(id: string) {
 		return this.delete(`/users/${id}`);
+	}
+
+	async updateUser(id: string, data: { email?: string; is_admin?: boolean }) {
+		return this.put(`/users/${id}`, data);
+	}
+
+	// Setup endpoints
+	async getSetupStatus(): Promise<{ is_complete: boolean; needs_setup: boolean }> {
+		return this.get('/setup/status');
+	}
+
+	async completeSetup(data: {
+		machine_name: string;
+		admin_username: string;
+		admin_password: string;
+	}): Promise<{
+		token: string;
+		user: { id: string; username: string; is_admin: boolean };
+	}> {
+		return this.post('/setup/complete', data);
+	}
+
+	// Auth - change password
+	async changePassword(currentPassword: string, newPassword: string): Promise<void> {
+		return this.post('/auth/change-password', {
+			current_password: currentPassword,
+			new_password: newPassword
+		});
+	}
+
+	// Get current user profile
+	async getProfile(): Promise<{
+		id: string;
+		username: string;
+		email: string | null;
+		is_admin: boolean;
+	}> {
+		return this.get('/auth/me');
+	}
+
+	// Groups endpoints
+	async getGroups(): Promise<Array<{
+		id: string;
+		name: string;
+		description: string | null;
+		is_system: boolean;
+		member_count: number;
+		created_at: string;
+		updated_at: string;
+	}>> {
+		return this.get('/groups');
+	}
+
+	async createGroup(data: { name: string; description?: string }): Promise<{
+		id: string;
+		name: string;
+		description: string | null;
+		is_system: boolean;
+		member_count: number;
+	}> {
+		return this.post('/groups', data);
+	}
+
+	async updateGroup(id: string, data: { name?: string; description?: string }): Promise<{
+		id: string;
+		name: string;
+		description: string | null;
+	}> {
+		return this.put(`/groups/${id}`, data);
+	}
+
+	async deleteGroup(id: string): Promise<void> {
+		return this.delete(`/groups/${id}`);
+	}
+
+	async getGroupMembers(groupId: string): Promise<Array<{
+		id: string;
+		username: string;
+		email: string | null;
+		is_admin: boolean;
+	}>> {
+		return this.get(`/groups/${groupId}/members`);
+	}
+
+	async addGroupMember(groupId: string, userId: string): Promise<void> {
+		return this.post(`/groups/${groupId}/members`, { user_id: userId });
+	}
+
+	async removeGroupMember(groupId: string, userId: string): Promise<void> {
+		return this.delete(`/groups/${groupId}/members/${userId}`);
 	}
 
 	// Files endpoints

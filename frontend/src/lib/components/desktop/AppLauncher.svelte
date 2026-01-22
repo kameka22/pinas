@@ -46,11 +46,19 @@
 		targetApp: null as DesktopApp | null
 	};
 
+	// Helper function to get translated app label
+	function getAppLabel(app: DesktopApp): string {
+		if (app.labelKey && $t.apps[app.labelKey as keyof typeof $t.apps]) {
+			return $t.apps[app.labelKey as keyof typeof $t.apps];
+		}
+		return app.label;
+	}
+
 	$: filteredCategories = searchQuery
 		? categories
 				.map((cat) => ({
 					...cat,
-					apps: cat.apps.filter((app) => app.label.toLowerCase().includes(searchQuery.toLowerCase()))
+					apps: cat.apps.filter((app) => getAppLabel(app).toLowerCase().includes(searchQuery.toLowerCase()))
 				}))
 				.filter((cat) => cat.apps.length > 0)
 		: categories;
@@ -58,7 +66,7 @@
 	function launchApp(app: DesktopApp) {
 		openWindow({
 			id: app.id,
-			title: app.label,
+			title: getAppLabel(app),
 			icon: app.icon,
 			component: app.component,
 			x: 150 + Math.random() * 100,
@@ -154,7 +162,7 @@
 								<div class="app-icon bg-gradient-to-br {app.gradient}">
 									<Icon icon={app.icon} class="w-7 h-7 text-white" />
 								</div>
-								<span class="app-label">{app.label}</span>
+								<span class="app-label">{getAppLabel(app)}</span>
 								{#if $pinnedAppIds.includes(app.id)}
 									<div class="desktop-indicator" title="On desktop">
 										<Icon icon="mdi:monitor" class="w-3 h-3" />

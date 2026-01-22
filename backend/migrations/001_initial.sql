@@ -56,15 +56,4 @@ CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token);
 CREATE INDEX IF NOT EXISTS idx_notifications_read ON notifications(read);
 CREATE INDEX IF NOT EXISTS idx_notifications_created_at ON notifications(created_at);
 
--- Insert default admin user (password: admin)
--- Password hash for "admin" using argon2
-INSERT OR IGNORE INTO users (id, username, password_hash, email, is_admin, created_at, updated_at)
-VALUES (
-    '00000000-0000-0000-0000-000000000001',
-    'admin',
-    '$argon2id$v=19$m=19456,t=2,p=1$YWRtaW5zYWx0MTIzNDU2$K8EYVrLOIhXf8E3TPP3YvQ',
-    'admin@pinas.local',
-    TRUE,
-    datetime('now'),
-    datetime('now')
-);
+-- No default user - onboarding will create the first admin user

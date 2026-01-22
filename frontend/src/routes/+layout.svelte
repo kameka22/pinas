@@ -7,11 +7,20 @@
 	import NotificationCenter from '$components/desktop/NotificationCenter.svelte';
 	import AppLauncher from '$components/desktop/AppLauncher.svelte';
 	import Onboarding from '$components/onboarding/Onboarding.svelte';
+	import Login from '$components/auth/Login.svelte';
+	import ProfileModal from '$components/modals/ProfileModal.svelte';
+	import ChangePasswordModal from '$components/modals/ChangePasswordModal.svelte';
 	import { connectWebSocket } from '$stores/websocket';
 	import { isSetupComplete, isLoading, initOnboarding } from '$stores/onboarding';
+	import { auth } from '$stores/api';
 
 	let showNotifications = false;
 	let showAppLauncher = false;
+	let showProfileModal = false;
+	let showChangePasswordModal = false;
+
+	// Check if user is authenticated
+	$: isAuthenticated = $auth.isAuthenticated;
 
 	function toggleAppLauncher() {
 		showAppLauncher = !showAppLauncher;
@@ -21,7 +30,16 @@
 		showAppLauncher = false;
 	}
 
+	function openProfile() {
+		showProfileModal = true;
+	}
+
+	function openChangePassword() {
+		showChangePasswordModal = true;
+	}
+
 	onMount(() => {
+		console.log('[Layout] Calling initOnboarding...');
 		initOnboarding();
 		const disconnect = connectWebSocket();
 		return () => disconnect();
@@ -32,17 +50,25 @@
 {#if $isLoading}
 	<div class="loading-screen">
 		<div class="loading-spinner"></div>
+		<p style="color: white; margin-top: 16px;">Loading...</p>
 	</div>
 <!-- Show onboarding if setup is not complete -->
 {:else if !$isSetupComplete}
 	<Onboarding />
+<!-- Show login if setup is complete but user is not authenticated -->
+{:else if !isAuthenticated}
+	<Login />
 {:else}
 <div class="desktop">
 	<!-- Wallpaper Background -->
 	<div class="wallpaper"></div>
 
 	<!-- Top Bar -->
-	<TopBar on:toggleLauncher={toggleAppLauncher} />
+	<TopBar
+		on:toggleLauncher={toggleAppLauncher}
+		on:openProfile={openProfile}
+		on:openChangePassword={openChangePassword}
+	/>
 
 	<!-- App Launcher -->
 	<AppLauncher visible={showAppLauncher} on:close={closeAppLauncher} />
@@ -60,6 +86,10 @@
 
 	<!-- Notification Center -->
 	<NotificationCenter bind:visible={showNotifications} />
+
+	<!-- User Modals -->
+	<ProfileModal bind:show={showProfileModal} />
+	<ChangePasswordModal bind:show={showChangePasswordModal} />
 </div>
 {/if}
 

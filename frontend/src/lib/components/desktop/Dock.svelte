@@ -1,52 +1,38 @@
 <script lang="ts">
 	import Icon from '@iconify/svelte';
 	import { windows, openWindow, focusWindow, restoreWindow } from '$stores/windows';
+	import { t } from '$lib/i18n';
 
-	// TODO: Réactiver les autres applications quand elles seront implémentées
-	const dockItems = [
+	// Dock items configuration with translation keys
+	const dockItemsConfig = [
 		{
-			id: 'users',
-			icon: 'mdi:account-group',
-			label: 'Users',
-			component: 'UserManager',
-			gradient: 'from-purple-400 to-purple-500'
+			id: 'file-manager',
+			icon: 'mdi:folder',
+			labelKey: 'files',
+			component: 'FileManager',
+			gradient: 'from-amber-400 to-amber-500'
+		},
+		{
+			id: 'app-center',
+			icon: 'mdi:store',
+			labelKey: 'appCenter',
+			component: 'AppCenter',
+			gradient: 'from-purple-500 to-pink-500'
+		},
+		{
+			id: 'control-panel',
+			icon: 'mdi:tune-variant',
+			labelKey: 'controlPanel',
+			component: 'ControlPanel',
+			gradient: 'from-slate-500 to-slate-600'
 		}
-		// {
-		// 	id: 'file-manager',
-		// 	icon: 'mdi:folder',
-		// 	label: 'File Manager',
-		// 	component: 'FileManager',
-		// 	gradient: 'from-orange-400 to-orange-500'
-		// },
-		// {
-		// 	id: 'control-panel',
-		// 	icon: 'mdi:tune-variant',
-		// 	label: 'Control Panel',
-		// 	component: 'ControlPanel',
-		// 	gradient: 'from-slate-500 to-slate-600'
-		// },
-		// {
-		// 	id: 'storage',
-		// 	icon: 'mdi:harddisk',
-		// 	label: 'Storage',
-		// 	component: 'StorageManager',
-		// 	gradient: 'from-slate-500 to-slate-600'
-		// },
-		// {
-		// 	id: 'shares',
-		// 	icon: 'mdi:folder-network',
-		// 	label: 'Shares',
-		// 	component: 'ShareManager',
-		// 	gradient: 'from-blue-400 to-blue-500'
-		// },
-		// {
-		// 	id: 'settings',
-		// 	icon: 'mdi:cog',
-		// 	label: 'Settings',
-		// 	component: 'Settings',
-		// 	gradient: 'from-slate-400 to-slate-500'
-		// }
 	];
+
+	// Reactive dock items with translated labels
+	$: dockItems = dockItemsConfig.map(item => ({
+		...item,
+		label: $t.apps[item.labelKey as keyof typeof $t.apps] || item.labelKey
+	}));
 
 	function handleClick(item: (typeof dockItems)[0]) {
 		const existingWindow = $windows.find((w) => w.id === item.id);

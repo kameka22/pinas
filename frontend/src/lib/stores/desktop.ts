@@ -3,6 +3,7 @@ import { writable, derived, get } from 'svelte/store';
 export interface DesktopApp {
 	id: string;
 	label: string;
+	labelKey?: string; // i18n key for translation (apps.xxx)
 	icon: string;
 	component: string;
 	gradient: string;
@@ -30,10 +31,12 @@ export interface AppRegistryEntry {
 }
 
 // Built-in system apps (always available)
+// labelKey corresponds to keys in $t.apps (e.g., 'controlPanel' -> $t.apps.controlPanel)
 export const builtInApps: DesktopApp[] = [
 	{
 		id: 'control-panel',
 		label: 'Control Panel',
+		labelKey: 'controlPanel',
 		icon: 'mdi:tune-variant',
 		component: 'ControlPanel',
 		gradient: 'from-slate-500 to-slate-600'
@@ -41,6 +44,7 @@ export const builtInApps: DesktopApp[] = [
 	{
 		id: 'file-manager',
 		label: 'Files',
+		labelKey: 'files',
 		icon: 'mdi:folder',
 		component: 'FileManager',
 		gradient: 'from-amber-400 to-amber-500'
@@ -48,9 +52,50 @@ export const builtInApps: DesktopApp[] = [
 	{
 		id: 'app-center',
 		label: 'App Center',
+		labelKey: 'appCenter',
 		icon: 'mdi:store',
 		component: 'AppCenter',
 		gradient: 'from-purple-500 to-pink-500'
+	},
+	{
+		id: 'storage',
+		label: 'Storage',
+		labelKey: 'storage',
+		icon: 'mdi:harddisk',
+		component: 'StorageManager',
+		gradient: 'from-slate-500 to-slate-600'
+	},
+	{
+		id: 'shares',
+		label: 'Shares',
+		labelKey: 'shares',
+		icon: 'mdi:folder-network',
+		component: 'ShareManager',
+		gradient: 'from-blue-400 to-blue-500'
+	},
+	{
+		id: 'docker',
+		label: 'Docker',
+		labelKey: 'docker',
+		icon: 'mdi:docker',
+		component: 'DockerApp',
+		gradient: 'from-blue-500 to-blue-600'
+	},
+	{
+		id: 'terminal',
+		label: 'Terminal',
+		labelKey: 'terminal',
+		icon: 'mdi:console',
+		component: 'TerminalApp',
+		gradient: 'from-gray-700 to-gray-800'
+	},
+	{
+		id: 'process-manager',
+		label: 'Process Manager',
+		labelKey: 'processManager',
+		icon: 'mdi:chart-timeline-variant',
+		component: 'ProcessManager',
+		gradient: 'from-emerald-500 to-teal-600'
 	}
 ];
 

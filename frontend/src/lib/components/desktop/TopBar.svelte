@@ -1,7 +1,8 @@
 <script lang="ts">
 	import Icon from '@iconify/svelte';
 	import { systemStats } from '$stores/system';
-	import { createEventDispatcher } from 'svelte';
+	import { auth, api } from '$stores/api';
+	import { createEventDispatcher, onMount, onDestroy } from 'svelte';
 	import { t, locale } from '$lib/i18n';
 
 	const dispatch = createEventDispatcher();
@@ -31,10 +32,50 @@
 	}, 60000);
 
 	let showNotifications = false;
+	let showUserMenu = false;
+	let userMenuRef: HTMLDivElement;
 
 	function toggleAppLauncher() {
 		dispatch('toggleLauncher');
 	}
+
+	function toggleUserMenu() {
+		showUserMenu = !showUserMenu;
+	}
+
+	async function handleLogout() {
+		showUserMenu = false;
+		await api.logout();
+		// No need to reload - the layout will detect auth change and show login
+	}
+
+	function openProfileModal() {
+		dispatch('openProfile');
+		showUserMenu = false;
+	}
+
+	function openChangePasswordModal() {
+		dispatch('openChangePassword');
+		showUserMenu = false;
+	}
+
+	function handleClickOutside(event: MouseEvent) {
+		if (userMenuRef && !userMenuRef.contains(event.target as Node)) {
+			showUserMenu = false;
+		}
+	}
+
+	onMount(() => {
+		document.addEventListener('click', handleClickOutside);
+	});
+
+	onDestroy(() => {
+		document.removeEventListener('click', handleClickOutside);
+	});
+
+	$: userInitial = $auth.user?.username?.[0]?.toUpperCase() || 'U';
+	$: userName = $auth.user?.username || 'User';
+	$: userRole = $auth.user?.role === 'admin' ? 'Administrator' : 'User';
 </script>
 
 <header class="topbar">
@@ -91,12 +132,47 @@
 
 		<div class="divider"></div>
 
-		<!-- User -->
-		<button class="user-btn">
-			<div class="avatar">
-				<span>A</span>
-			</div>
-		</button>
+		<!-- User dropdown -->
+		<div class="user-dropdown" bind:this={userMenuRef}>
+			<button class="user-btn" on:click={toggleUserMenu}>
+				<div class="avatar">
+					<span>{userInitial}</span>
+				</div>
+			</button>
+
+			{#if showUserMenu}
+				<div class="dropdown-menu">
+					<div class="dropdown-header">
+						<div class="dropdown-avatar">
+							<span>{userInitial}</span>
+						</div>
+						<div class="dropdown-user-info">
+							<span class="dropdown-username">{userName}</span>
+							<span class="dropdown-role">{userRole}</span>
+						</div>
+					</div>
+
+					<div class="dropdown-divider"></div>
+
+					<button class="dropdown-item" on:click={openProfileModal}>
+						<Icon icon="mdi:account" class="w-4 h-4" />
+						<span>{$t.topBar?.profile || 'Profile'}</span>
+					</button>
+
+					<button class="dropdown-item" on:click={openChangePasswordModal}>
+						<Icon icon="mdi:key-variant" class="w-4 h-4" />
+						<span>{$t.topBar?.changePassword || 'Change Password'}</span>
+					</button>
+
+					<div class="dropdown-divider"></div>
+
+					<button class="dropdown-item danger" on:click={handleLogout}>
+						<Icon icon="mdi:logout" class="w-4 h-4" />
+						<span>{$t.topBar?.logout || 'Logout'}</span>
+					</button>
+				</div>
+			{/if}
+		</div>
 	</div>
 </header>
 
@@ -167,6 +243,10 @@
 		justify-content: center;
 	}
 
+	.user-dropdown {
+		position: relative;
+	}
+
 	.user-btn {
 		padding: 4px;
 		border-radius: 8px;
@@ -188,5 +268,95 @@
 		font-size: 12px;
 		font-weight: 600;
 		color: white;
+	}
+
+	.dropdown-menu {
+		position: absolute;
+		top: calc(100% + 8px);
+		right: 0;
+		width: 220px;
+		background: white;
+		border-radius: 12px;
+		box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+		overflow: hidden;
+		z-index: 1000;
+		animation: dropdown-fade-in 0.15s ease-out;
+	}
+
+	@keyframes dropdown-fade-in {
+		from {
+			opacity: 0;
+			transform: translateY(-8px);
+		}
+		to {
+			opacity: 1;
+			transform: translateY(0);
+		}
+	}
+
+	.dropdown-header {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		padding: 16px;
+		background: linear-gradient(135deg, #f8fafc, #f1f5f9);
+	}
+
+	.dropdown-avatar {
+		width: 40px;
+		height: 40px;
+		border-radius: 50%;
+		background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		font-size: 16px;
+		font-weight: 600;
+		color: white;
+	}
+
+	.dropdown-user-info {
+		display: flex;
+		flex-direction: column;
+	}
+
+	.dropdown-username {
+		font-size: 14px;
+		font-weight: 600;
+		color: #1e293b;
+	}
+
+	.dropdown-role {
+		font-size: 12px;
+		color: #64748b;
+	}
+
+	.dropdown-divider {
+		height: 1px;
+		background: #e2e8f0;
+	}
+
+	.dropdown-item {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		width: 100%;
+		padding: 12px 16px;
+		text-align: left;
+		font-size: 14px;
+		color: #475569;
+		transition: background 0.15s;
+	}
+
+	.dropdown-item:hover {
+		background: #f1f5f9;
+	}
+
+	.dropdown-item.danger {
+		color: #dc2626;
+	}
+
+	.dropdown-item.danger:hover {
+		background: #fef2f2;
 	}
 </style>

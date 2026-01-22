@@ -170,6 +170,33 @@
 	}
 }
 
+/* Form elements in light-background contexts should have dark text */
+.login-card input,
+.login-card select,
+.login-card textarea,
+.modal input,
+.modal select,
+.modal textarea,
+.user-manager input,
+.user-manager select,
+.user-manager textarea,
+.onboarding-modal input,
+.onboarding-modal select,
+.onboarding-modal textarea,
+.settings-content input,
+.settings-content select,
+.settings-content textarea {
+	color: #1f2937 !important;
+}
+
+.login-card input::placeholder,
+.modal input::placeholder,
+.user-manager input::placeholder,
+.onboarding-modal input::placeholder,
+.settings-content input::placeholder {
+	color: #9ca3af !important;
+}
+
 /* Scrollbar styles */
 ::-webkit-scrollbar {
 	width: 8px;

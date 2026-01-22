@@ -1,18 +1,39 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import Icon from '@iconify/svelte';
 	import { t } from '$lib/i18n';
+	import { api, auth } from '$lib/stores/api';
 
-	// Types
+	// Types - matches API response from /users
 	interface User {
 		id: string;
 		username: string;
-		description: string;
-		role: 'Administrator' | 'User' | 'Guest';
-		status: 'Normal' | 'Disabled';
-		isCurrentUser: boolean;
+		email: string | null;
+		is_admin: boolean;
+		created_at: string;
+		updated_at: string;
 	}
 
 	interface UserGroup {
+		id: string;
+		name: string;
+		description: string | null;
+		member_count: number;
+		is_system: boolean;
+		created_at: string;
+		updated_at: string;
+	}
+
+	// Display types (for UI)
+	interface DisplayUser {
+		id: string;
+		username: string;
+		email: string;
+		role: 'Administrator' | 'User';
+		isCurrentUser: boolean;
+	}
+
+	interface DisplayGroup {
 		id: string;
 		name: string;
 		description: string;
@@ -29,27 +50,83 @@
 	let showAddUserModal = false;
 	let showEditUserModal = false;
 	let showDeleteConfirm = false;
-	let selectedUser: User | null = null;
+	let showAddGroupModal = false;
+	let showEditGroupModal = false;
+	let showDeleteGroupConfirm = false;
+	let selectedUser: DisplayUser | null = null;
+	let selectedGroup: DisplayGroup | null = null;
+
+	// Loading and error states
+	let loading = true;
+	let error: string | null = null;
+	let actionLoading = false;
+	let actionError: string | null = null;
+
+	// Data from API
+	let users: User[] = [];
+	let groups: UserGroup[] = [];
+
+	// Form state for add user
+	let newUser = {
+		username: '',
+		email: '',
+		password: '',
+		confirmPassword: '',
+		is_admin: false
+	};
+
+	// Form state for edit user
+	let editUserData = {
+		email: '',
+		is_admin: false
+	};
+
+	// Form state for groups
+	let newGroup = {
+		name: '',
+		description: ''
+	};
+
+	let editGroupData = {
+		name: '',
+		description: ''
+	};
 
 	// Sort state
 	let sortColumn: string = 'username';
 	let sortDirection: 'asc' | 'desc' = 'asc';
 
-	// Mock data
-	const users: User[] = [
-		{ id: '1', username: 'admin', description: '-', role: 'Administrator', status: 'Normal', isCurrentUser: true },
-		{ id: '2', username: 'john_doe', description: 'John Doe', role: 'Administrator', status: 'Normal', isCurrentUser: false },
-		{ id: '3', username: 'jane', description: '-', role: 'User', status: 'Normal', isCurrentUser: false },
-		{ id: '4', username: 'bob', description: 'Bob Smith', role: 'User', status: 'Normal', isCurrentUser: false },
-		{ id: '5', username: 'guest', description: 'Guest account', role: 'Guest', status: 'Disabled', isCurrentUser: false }
-	];
+	// Current user from auth
+	let currentUserId: string | null = null;
+	auth.subscribe(state => {
+		currentUserId = state.user?.id || null;
+	});
 
-	const groups: UserGroup[] = [
-		{ id: '1', name: 'administrators', description: 'System administrators', memberCount: 2, isSystem: true },
-		{ id: '2', name: 'users', description: 'Regular users', memberCount: 3, isSystem: true },
-		{ id: '3', name: 'guests', description: 'Guest users', memberCount: 1, isSystem: true },
-		{ id: '4', name: 'media', description: 'Media access group', memberCount: 2, isSystem: false }
-	];
+	// Transform API users to display format
+	function transformUser(user: User): DisplayUser {
+		return {
+			id: user.id,
+			username: user.username,
+			email: user.email || '-',
+			role: user.is_admin ? 'Administrator' : 'User',
+			isCurrentUser: user.id === currentUserId
+		};
+	}
+
+	// Transform API groups to display format
+	function transformGroup(group: UserGroup): DisplayGroup {
+		return {
+			id: group.id,
+			name: group.name,
+			description: group.description || '',
+			memberCount: group.member_count,
+			isSystem: group.is_system
+		};
+	}
+
+	// Computed display data
+	$: displayUsers = users.map(transformUser);
+	$: displayGroups = groups.map(transformGroup);
 
 	// Password settings state
 	let passwordSettings = {
@@ -65,16 +142,39 @@
 		forceChangeAfterExpiry: false
 	};
 
-	// Computed
-	$: filteredUsers = users.filter(u =>
+	// Computed - filtered display data
+	$: filteredUsers = displayUsers.filter(u =>
 		u.username.toLowerCase().includes(filterQuery.toLowerCase()) ||
-		u.description.toLowerCase().includes(filterQuery.toLowerCase())
+		u.email.toLowerCase().includes(filterQuery.toLowerCase())
 	);
 
-	$: filteredGroups = groups.filter(g =>
+	$: filteredGroups = displayGroups.filter(g =>
 		g.name.toLowerCase().includes(filterQuery.toLowerCase()) ||
 		g.description.toLowerCase().includes(filterQuery.toLowerCase())
 	);
+
+	// Load data on mount
+	onMount(async () => {
+		await loadData();
+	});
+
+	async function loadData() {
+		loading = true;
+		error = null;
+		try {
+			const [usersData, groupsData] = await Promise.all([
+				api.getUsers(),
+				api.getGroups()
+			]);
+			users = usersData;
+			groups = groupsData;
+		} catch (e) {
+			error = e instanceof Error ? e.message : 'Failed to load data';
+			console.error('Failed to load user manager data:', e);
+		} finally {
+			loading = false;
+		}
+	}
 
 	// Functions
 	function toggleSort(column: string) {
@@ -88,19 +188,182 @@
 
 	function handleAddUser() {
 		showAddDropdown = false;
+		newUser = { username: '', email: '', password: '', confirmPassword: '', is_admin: false };
+		actionError = null;
 		showAddUserModal = true;
 	}
 
-	function handleEditUser(user: User) {
+	function handleEditUser(user: DisplayUser) {
 		selectedUser = user;
+		const apiUser = users.find(u => u.id === user.id);
+		if (apiUser) {
+			editUserData = {
+				email: apiUser.email || '',
+				is_admin: apiUser.is_admin
+			};
+		}
 		showActionMenu = null;
+		actionError = null;
 		showEditUserModal = true;
 	}
 
-	function handleDeleteUser(user: User) {
+	function handleDeleteUser(user: DisplayUser) {
 		selectedUser = user;
 		showActionMenu = null;
+		actionError = null;
 		showDeleteConfirm = true;
+	}
+
+	function handleAddGroup() {
+		showAddDropdown = false;
+		newGroup = { name: '', description: '' };
+		actionError = null;
+		showAddGroupModal = true;
+	}
+
+	function handleEditGroup(group: DisplayGroup) {
+		selectedGroup = group;
+		editGroupData = {
+			name: group.name,
+			description: group.description
+		};
+		showActionMenu = null;
+		actionError = null;
+		showEditGroupModal = true;
+	}
+
+	function handleDeleteGroup(group: DisplayGroup) {
+		selectedGroup = group;
+		showActionMenu = null;
+		actionError = null;
+		showDeleteGroupConfirm = true;
+	}
+
+	async function submitCreateUser() {
+		if (!newUser.username || !newUser.password) {
+			actionError = 'Username and password are required';
+			return;
+		}
+		if (newUser.password !== newUser.confirmPassword) {
+			actionError = 'Passwords do not match';
+			return;
+		}
+		if (newUser.password.length < 6) {
+			actionError = 'Password must be at least 6 characters';
+			return;
+		}
+
+		actionLoading = true;
+		actionError = null;
+		try {
+			await api.createUser({
+				username: newUser.username,
+				password: newUser.password,
+				email: newUser.email || undefined,
+				is_admin: newUser.is_admin
+			});
+			showAddUserModal = false;
+			await loadData();
+		} catch (e) {
+			actionError = e instanceof Error ? e.message : 'Failed to create user';
+		} finally {
+			actionLoading = false;
+		}
+	}
+
+	async function submitEditUser() {
+		if (!selectedUser) return;
+
+		actionLoading = true;
+		actionError = null;
+		try {
+			await api.updateUser(selectedUser.id, {
+				email: editUserData.email || undefined,
+				is_admin: editUserData.is_admin
+			});
+
+			showEditUserModal = false;
+			await loadData();
+		} catch (e) {
+			actionError = e instanceof Error ? e.message : 'Failed to update user';
+		} finally {
+			actionLoading = false;
+		}
+	}
+
+	async function submitDeleteUser() {
+		if (!selectedUser) return;
+
+		actionLoading = true;
+		actionError = null;
+		try {
+			await api.deleteUser(selectedUser.id);
+			showDeleteConfirm = false;
+			selectedUser = null;
+			await loadData();
+		} catch (e) {
+			actionError = e instanceof Error ? e.message : 'Failed to delete user';
+		} finally {
+			actionLoading = false;
+		}
+	}
+
+	async function submitCreateGroup() {
+		if (!newGroup.name) {
+			actionError = 'Group name is required';
+			return;
+		}
+
+		actionLoading = true;
+		actionError = null;
+		try {
+			await api.createGroup({
+				name: newGroup.name,
+				description: newGroup.description || undefined
+			});
+			showAddGroupModal = false;
+			await loadData();
+		} catch (e) {
+			actionError = e instanceof Error ? e.message : 'Failed to create group';
+		} finally {
+			actionLoading = false;
+		}
+	}
+
+	async function submitEditGroup() {
+		if (!selectedGroup) return;
+
+		actionLoading = true;
+		actionError = null;
+		try {
+			await api.updateGroup(selectedGroup.id, {
+				name: editGroupData.name !== selectedGroup.name ? editGroupData.name : undefined,
+				description: editGroupData.description
+			});
+			showEditGroupModal = false;
+			await loadData();
+		} catch (e) {
+			actionError = e instanceof Error ? e.message : 'Failed to update group';
+		} finally {
+			actionLoading = false;
+		}
+	}
+
+	async function submitDeleteGroup() {
+		if (!selectedGroup) return;
+
+		actionLoading = true;
+		actionError = null;
+		try {
+			await api.deleteGroup(selectedGroup.id);
+			showDeleteGroupConfirm = false;
+			selectedGroup = null;
+			await loadData();
+		} catch (e) {
+			actionError = e instanceof Error ? e.message : 'Failed to delete group';
+		} finally {
+			actionLoading = false;
+		}
 	}
 
 	function closeAllMenus() {
@@ -139,7 +402,18 @@
 
 	<!-- Content -->
 	<div class="content">
-		{#if activeTab === 'user'}
+		{#if loading}
+			<div class="loading-state">
+				<Icon icon="mdi:loading" class="w-8 h-8 animate-spin" />
+				<p>Loading...</p>
+			</div>
+		{:else if error}
+			<div class="error-state">
+				<Icon icon="mdi:alert-circle" class="w-8 h-8" />
+				<p>{error}</p>
+				<button class="btn-secondary" on:click={loadData}>Retry</button>
+			</div>
+		{:else if activeTab === 'user'}
 			<!-- User Tab -->
 			<div class="toolbar">
 				<div class="toolbar-left">
@@ -189,13 +463,9 @@
 								{$t.userManager.table.username}
 								<Icon icon="mdi:unfold-more-horizontal" class="w-4 h-4" />
 							</th>
-							<th>{$t.userManager.table.description}</th>
+							<th>{$t.userManager.table.email}</th>
 							<th class="sortable" on:click={() => toggleSort('role')}>
 								{$t.userManager.table.role}
-								<Icon icon="mdi:unfold-more-horizontal" class="w-4 h-4" />
-							</th>
-							<th class="sortable" on:click={() => toggleSort('status')}>
-								{$t.userManager.table.status}
 								<Icon icon="mdi:unfold-more-horizontal" class="w-4 h-4" />
 							</th>
 							<th>{$t.userManager.table.edit}</th>
@@ -203,7 +473,7 @@
 					</thead>
 					<tbody>
 						{#each filteredUsers as user}
-							<tr class:disabled={user.status === 'Disabled'}>
+							<tr>
 								<td>
 									<div class="user-cell">
 										<div class="avatar">
@@ -215,9 +485,8 @@
 										{/if}
 									</div>
 								</td>
-								<td class="text-secondary">{user.description}</td>
+								<td class="text-secondary">{user.email}</td>
 								<td>{user.role}</td>
-								<td class:text-disabled={user.status === 'Disabled'}>{user.status}</td>
 								<td>
 									<div class="action-cell">
 										<button
@@ -242,6 +511,11 @@
 								</td>
 							</tr>
 						{/each}
+						{#if filteredUsers.length === 0}
+							<tr>
+								<td colspan="4" class="text-center text-secondary">{$t.userManager.messages.noUsersFound}</td>
+							</tr>
+						{/if}
 					</tbody>
 				</table>
 			</div>
@@ -260,7 +534,7 @@
 						</button>
 						{#if showAddDropdown}
 							<div class="dropdown-menu">
-								<button class="dropdown-item">
+								<button class="dropdown-item" on:click={handleAddGroup}>
 									<Icon icon="mdi:account-group-outline" class="w-4 h-4" />
 									{$t.userManager.actions.addGroup}
 								</button>
@@ -301,7 +575,12 @@
 						{#each filteredGroups as group}
 							<tr>
 								<td>
-									<span class="group-name">{group.name}</span>
+									<div class="group-cell">
+										<span class="group-name">{group.name}</span>
+										{#if group.isSystem}
+											<span class="badge-system">{$t.userManager.badges.system}</span>
+										{/if}
+									</div>
 								</td>
 								<td class="text-secondary">{group.description || '-'}</td>
 								<td>{group.memberCount}</td>
@@ -315,9 +594,9 @@
 										</button>
 										{#if showActionMenu === group.id}
 											<div class="action-menu">
-												<button class="action-item">{$t.common.edit}</button>
+												<button class="action-item" on:click={() => handleEditGroup(group)}>{$t.common.edit}</button>
 												{#if !group.isSystem}
-													<button class="action-item danger">{$t.common.delete}</button>
+													<button class="action-item danger" on:click={() => handleDeleteGroup(group)}>{$t.common.delete}</button>
 												{/if}
 											</div>
 										{/if}
@@ -325,6 +604,11 @@
 								</td>
 							</tr>
 						{/each}
+						{#if filteredGroups.length === 0}
+							<tr>
+								<td colspan="4" class="text-center text-secondary">{$t.userManager.messages.noGroupsFound}</td>
+							</tr>
+						{/if}
 					</tbody>
 				</table>
 			</div>
@@ -494,34 +778,38 @@
 				</button>
 			</div>
 			<div class="modal-body">
+				{#if actionError}
+					<div class="form-error">{actionError}</div>
+				{/if}
 				<div class="form-group">
 					<label>{$t.userManager.fields.username} <span class="required">*</span></label>
-					<input type="text" placeholder="" />
+					<input type="text" bind:value={newUser.username} placeholder="" disabled={actionLoading} />
 				</div>
 				<div class="form-group">
-					<label>{$t.userManager.fields.description}</label>
-					<input type="text" placeholder="" />
+					<label>{$t.userManager.fields.email}</label>
+					<input type="email" bind:value={newUser.email} placeholder="" disabled={actionLoading} />
 				</div>
 				<div class="form-group">
 					<label>{$t.userManager.fields.password} <span class="required">*</span></label>
-					<input type="password" placeholder="" />
+					<input type="password" bind:value={newUser.password} placeholder="" disabled={actionLoading} />
 				</div>
 				<div class="form-group">
 					<label>{$t.userManager.fields.confirmPassword} <span class="required">*</span></label>
-					<input type="password" placeholder="" />
+					<input type="password" bind:value={newUser.confirmPassword} placeholder="" disabled={actionLoading} />
 				</div>
-				<div class="form-group">
-					<label>{$t.userManager.fields.role} <span class="required">*</span></label>
-					<select>
-						<option value="User">{$t.userManager.roles.user}</option>
-						<option value="Administrator">{$t.userManager.roles.administrator}</option>
-						<option value="Guest">{$t.userManager.roles.guest}</option>
-					</select>
-				</div>
+				<label class="checkbox-row">
+					<input type="checkbox" bind:checked={newUser.is_admin} disabled={actionLoading} />
+					<span>{$t.userManager.roles.administrator}</span>
+				</label>
 			</div>
 			<div class="modal-footer">
-				<button class="btn-secondary" on:click={() => showAddUserModal = false}>{$t.common.cancel}</button>
-				<button class="btn-primary">{$t.common.create}</button>
+				<button class="btn-secondary" on:click={() => showAddUserModal = false} disabled={actionLoading}>{$t.common.cancel}</button>
+				<button class="btn-primary" on:click={submitCreateUser} disabled={actionLoading}>
+					{#if actionLoading}
+						<Icon icon="mdi:loading" class="w-4 h-4 animate-spin" />
+					{/if}
+					{$t.common.create}
+				</button>
 			</div>
 		</div>
 	</div>
@@ -538,37 +826,33 @@
 				</button>
 			</div>
 			<div class="modal-body">
+				{#if actionError}
+					<div class="form-error">{actionError}</div>
+				{/if}
 				<div class="form-group">
 					<label>{$t.userManager.fields.username}</label>
 					<input type="text" value={selectedUser.username} disabled />
 				</div>
 				<div class="form-group">
-					<label>{$t.userManager.fields.description}</label>
-					<input type="text" value={selectedUser.description === '-' ? '' : selectedUser.description} placeholder="" />
-				</div>
-				<div class="form-group">
-					<label>{$t.userManager.fields.role}</label>
-					<select value={selectedUser.role}>
-						<option value="User">{$t.userManager.roles.user}</option>
-						<option value="Administrator">{$t.userManager.roles.administrator}</option>
-						<option value="Guest">{$t.userManager.roles.guest}</option>
-					</select>
-				</div>
-				<div class="form-group">
-					<label>{$t.userManager.fields.status}</label>
-					<select value={selectedUser.status}>
-						<option value="Normal">{$t.userManager.statuses.normal}</option>
-						<option value="Disabled">{$t.userManager.statuses.disabled}</option>
-					</select>
+					<label>{$t.userManager.fields.email}</label>
+					<input type="email" bind:value={editUserData.email} placeholder="" disabled={actionLoading} />
 				</div>
 				<label class="checkbox-row">
-					<input type="checkbox" />
-					<span>{$t.userManager.fields.changePassword}</span>
+					<input type="checkbox" bind:checked={editUserData.is_admin} disabled={actionLoading || selectedUser.isCurrentUser} />
+					<span>{$t.userManager.roles.administrator}</span>
 				</label>
+				{#if selectedUser.isCurrentUser}
+					<span class="form-hint">{$t.userManager.messages.cannotChangeOwnRole}</span>
+				{/if}
 			</div>
 			<div class="modal-footer">
-				<button class="btn-secondary" on:click={() => showEditUserModal = false}>{$t.common.cancel}</button>
-				<button class="btn-primary">{$t.common.save}</button>
+				<button class="btn-secondary" on:click={() => showEditUserModal = false} disabled={actionLoading}>{$t.common.cancel}</button>
+				<button class="btn-primary" on:click={submitEditUser} disabled={actionLoading}>
+					{#if actionLoading}
+						<Icon icon="mdi:loading" class="w-4 h-4 animate-spin" />
+					{/if}
+					{$t.common.save}
+				</button>
 			</div>
 		</div>
 	</div>
@@ -585,12 +869,125 @@
 				</button>
 			</div>
 			<div class="modal-body">
+				{#if actionError}
+					<div class="form-error">{actionError}</div>
+				{/if}
 				<p>{$t.userManager.messages.deleteConfirm.replace('{username}', selectedUser.username)}</p>
 				<p class="text-secondary">{$t.userManager.messages.cannotBeUndone}</p>
 			</div>
 			<div class="modal-footer">
-				<button class="btn-secondary" on:click={() => showDeleteConfirm = false}>{$t.common.cancel}</button>
-				<button class="btn-danger">{$t.common.delete}</button>
+				<button class="btn-secondary" on:click={() => showDeleteConfirm = false} disabled={actionLoading}>{$t.common.cancel}</button>
+				<button class="btn-danger" on:click={submitDeleteUser} disabled={actionLoading}>
+					{#if actionLoading}
+						<Icon icon="mdi:loading" class="w-4 h-4 animate-spin" />
+					{/if}
+					{$t.common.delete}
+				</button>
+			</div>
+		</div>
+	</div>
+{/if}
+
+<!-- Add Group Modal -->
+{#if showAddGroupModal}
+	<div class="modal-overlay" on:click={() => showAddGroupModal = false}>
+		<div class="modal modal-sm" on:click|stopPropagation>
+			<div class="modal-header">
+				<h2>{$t.userManager.modals.addGroupTitle}</h2>
+				<button class="modal-close" on:click={() => showAddGroupModal = false}>
+					<Icon icon="mdi:close" class="w-5 h-5" />
+				</button>
+			</div>
+			<div class="modal-body">
+				{#if actionError}
+					<div class="form-error">{actionError}</div>
+				{/if}
+				<div class="form-group">
+					<label>{$t.userManager.fields.groupName} <span class="required">*</span></label>
+					<input type="text" bind:value={newGroup.name} placeholder="" disabled={actionLoading} />
+				</div>
+				<div class="form-group">
+					<label>{$t.userManager.fields.description}</label>
+					<input type="text" bind:value={newGroup.description} placeholder="" disabled={actionLoading} />
+				</div>
+			</div>
+			<div class="modal-footer">
+				<button class="btn-secondary" on:click={() => showAddGroupModal = false} disabled={actionLoading}>{$t.common.cancel}</button>
+				<button class="btn-primary" on:click={submitCreateGroup} disabled={actionLoading}>
+					{#if actionLoading}
+						<Icon icon="mdi:loading" class="w-4 h-4 animate-spin" />
+					{/if}
+					{$t.common.create}
+				</button>
+			</div>
+		</div>
+	</div>
+{/if}
+
+<!-- Edit Group Modal -->
+{#if showEditGroupModal && selectedGroup}
+	<div class="modal-overlay" on:click={() => showEditGroupModal = false}>
+		<div class="modal modal-sm" on:click|stopPropagation>
+			<div class="modal-header">
+				<h2>{$t.userManager.modals.editGroupTitle}</h2>
+				<button class="modal-close" on:click={() => showEditGroupModal = false}>
+					<Icon icon="mdi:close" class="w-5 h-5" />
+				</button>
+			</div>
+			<div class="modal-body">
+				{#if actionError}
+					<div class="form-error">{actionError}</div>
+				{/if}
+				<div class="form-group">
+					<label>{$t.userManager.fields.groupName}</label>
+					<input type="text" bind:value={editGroupData.name} placeholder="" disabled={actionLoading || selectedGroup.isSystem} />
+					{#if selectedGroup.isSystem}
+						<span class="form-hint">{$t.userManager.messages.systemGroupNameReadonly}</span>
+					{/if}
+				</div>
+				<div class="form-group">
+					<label>{$t.userManager.fields.description}</label>
+					<input type="text" bind:value={editGroupData.description} placeholder="" disabled={actionLoading} />
+				</div>
+			</div>
+			<div class="modal-footer">
+				<button class="btn-secondary" on:click={() => showEditGroupModal = false} disabled={actionLoading}>{$t.common.cancel}</button>
+				<button class="btn-primary" on:click={submitEditGroup} disabled={actionLoading}>
+					{#if actionLoading}
+						<Icon icon="mdi:loading" class="w-4 h-4 animate-spin" />
+					{/if}
+					{$t.common.save}
+				</button>
+			</div>
+		</div>
+	</div>
+{/if}
+
+<!-- Delete Group Confirmation Modal -->
+{#if showDeleteGroupConfirm && selectedGroup}
+	<div class="modal-overlay" on:click={() => showDeleteGroupConfirm = false}>
+		<div class="modal modal-sm" on:click|stopPropagation>
+			<div class="modal-header">
+				<h2>{$t.userManager.modals.deleteGroupTitle}</h2>
+				<button class="modal-close" on:click={() => showDeleteGroupConfirm = false}>
+					<Icon icon="mdi:close" class="w-5 h-5" />
+				</button>
+			</div>
+			<div class="modal-body">
+				{#if actionError}
+					<div class="form-error">{actionError}</div>
+				{/if}
+				<p>{$t.userManager.messages.deleteGroupConfirm.replace('{groupName}', selectedGroup.name)}</p>
+				<p class="text-secondary">{$t.userManager.messages.cannotBeUndone}</p>
+			</div>
+			<div class="modal-footer">
+				<button class="btn-secondary" on:click={() => showDeleteGroupConfirm = false} disabled={actionLoading}>{$t.common.cancel}</button>
+				<button class="btn-danger" on:click={submitDeleteGroup} disabled={actionLoading}>
+					{#if actionLoading}
+						<Icon icon="mdi:loading" class="w-4 h-4 animate-spin" />
+					{/if}
+					{$t.common.delete}
+				</button>
 			</div>
 		</div>
 	</div>
@@ -636,6 +1033,69 @@
 		display: flex;
 		flex-direction: column;
 		overflow: hidden;
+	}
+
+	/* Loading and Error States */
+	.loading-state,
+	.error-state {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 12px;
+		color: #6b7280;
+	}
+
+	.error-state {
+		color: #ef4444;
+	}
+
+	.animate-spin {
+		animation: spin 1s linear infinite;
+	}
+
+	@keyframes spin {
+		from { transform: rotate(0deg); }
+		to { transform: rotate(360deg); }
+	}
+
+	/* Form Error */
+	.form-error {
+		padding: 10px 12px;
+		background: #fef2f2;
+		border: 1px solid #fecaca;
+		border-radius: 6px;
+		color: #dc2626;
+		font-size: 14px;
+		margin-bottom: 16px;
+	}
+
+	.form-hint {
+		display: block;
+		margin-top: 4px;
+		font-size: 12px;
+		color: #9ca3af;
+	}
+
+	/* Group Cell */
+	.group-cell {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+	}
+
+	.badge-system {
+		padding: 2px 6px;
+		background: #f3f4f6;
+		color: #6b7280;
+		font-size: 11px;
+		font-weight: 500;
+		border-radius: 4px;
+	}
+
+	.text-center {
+		text-align: center;
 	}
 
 	/* Toolbar */

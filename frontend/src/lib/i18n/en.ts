@@ -122,6 +122,7 @@ export default {
 		},
 		table: {
 			username: 'Username',
+			email: 'Email',
 			description: 'Description',
 			role: 'Role',
 			status: 'Status',
@@ -133,6 +134,9 @@ export default {
 			administrator: 'Administrator',
 			user: 'User',
 			guest: 'Guest'
+		},
+		badges: {
+			system: 'System'
 		},
 		statuses: {
 			normal: 'Normal',
@@ -157,6 +161,7 @@ export default {
 		},
 		fields: {
 			username: 'Username',
+			email: 'Email',
 			password: 'Password',
 			confirmPassword: 'Confirm Password',
 			description: 'Description',
@@ -180,7 +185,11 @@ export default {
 			deleteGroupConfirm: 'Are you sure you want to delete group "{groupName}"?',
 			cannotBeUndone: 'This action cannot be undone.',
 			userDataShown: 'User data currently shown',
-			me: 'Me'
+			me: 'Me',
+			noUsersFound: 'No users found',
+			noGroupsFound: 'No groups found',
+			cannotChangeOwnRole: 'You cannot change your own role',
+			systemGroupNameReadonly: 'System group names cannot be changed'
 		},
 		advancedSettings: {
 			passwordStrength: {
@@ -215,6 +224,19 @@ export default {
 				services: 'Services'
 			}
 		}
+	},
+
+	// Application names
+	apps: {
+		controlPanel: 'Control Panel',
+		files: 'Files',
+		appCenter: 'App Center',
+		storage: 'Storage',
+		shares: 'Shares',
+		docker: 'Docker',
+		terminal: 'Terminal',
+		users: 'Users',
+		processManager: 'Process Manager'
 	},
 
 	// Top Bar

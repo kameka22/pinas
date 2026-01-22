@@ -84,15 +84,18 @@ fn create_router(state: AppState) -> Router {
         .route("/api/health", get(health_check))
         // API routes
         .nest("/api/auth", api::auth::router())
+        .nest("/api/setup", api::setup::router())
         .nest("/api/files", api::files::router())
         .nest("/api/system", api::system::router())
         .nest("/api/storage", api::storage::router())
         .nest("/api/shares", api::shares::router())
         .nest("/api/users", api::users::router())
+        .nest("/api/groups", api::groups::router())
         .nest("/api/packages", api::packages::router())
         .nest("/api/docker", api::docker::router())
         .nest("/api/apps", api::apps::router())
         .nest("/api/services", api::services::router())
+        .nest("/api/terminal", api::terminal::router())
         // WebSocket
         .route("/api/ws", get(api::ws::ws_handler))
         // State
