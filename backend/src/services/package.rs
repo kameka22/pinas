@@ -21,12 +21,21 @@ pub struct PackageService {
     downloads_dir: String,
     bin_dir: String,
     docker_service: DockerService,
+    dev_mode: bool,
 }
 
 impl PackageService {
     pub async fn new(db: SqlitePool) -> Self {
         let data_dir = std::env::var("PINAS_DATA_DIR")
             .unwrap_or_else(|_| "/storage/.pinas".to_string());
+
+        let dev_mode = std::env::var("PINAS_DEV_MODE")
+            .map(|v| v.to_lowercase() == "true" || v == "1")
+            .unwrap_or(false);
+
+        if dev_mode {
+            tracing::info!("PackageService running in dev mode - installation steps will be skipped");
+        }
 
         Self {
             db,
@@ -40,6 +49,7 @@ impl PackageService {
             bin_dir: std::env::var("PINAS_BIN_DIR")
                 .unwrap_or_else(|_| format!("{}/bin", data_dir)),
             docker_service: DockerService::new().await,
+            dev_mode,
         }
     }
 
