@@ -26,6 +26,10 @@ pub struct AppConfig {
     /// Directory for static frontend files (optional)
     #[serde(default)]
     pub static_dir: Option<String>,
+
+    /// Development mode - skip actual installations (Docker, downloads, etc.)
+    #[serde(default = "default_dev_mode")]
+    pub dev_mode: bool,
 }
 
 fn default_bind_address() -> String {
@@ -48,6 +52,10 @@ fn default_files_root() -> String {
     "./data/files".to_string()
 }
 
+fn default_dev_mode() -> bool {
+    false
+}
+
 impl AppConfig {
     /// Load configuration from environment variables
     pub fn load() -> anyhow::Result<Self> {
@@ -65,6 +73,7 @@ impl AppConfig {
             jwt_expiration_hours: default_jwt_expiration(),
             files_root: default_files_root(),
             static_dir: None,
+            dev_mode: default_dev_mode(),
         });
 
         Ok(app_config)
