@@ -3,6 +3,7 @@
 # Connects to a Linux VM via SSH to build the LibreELEC image
 # and copies the result back to the host
 #
+# Supports both ARM64 (Raspberry Pi) and x86_64 (VM/Synology) builds
 # Uses SSH ControlMaster to maintain connection (password asked once)
 
 set -e
@@ -27,32 +28,60 @@ NC='\033[0m' # No Color
 # Parse command line arguments
 RESET_CONFIG=false
 BUILD_ARGS=""
+BUILD_ARCH="arm64"  # Default architecture
 
 usage() {
     echo "Usage: $0 [OPTIONS]"
     echo ""
     echo "Options:"
+    echo "  --arch <arch>        Target architecture: arm64 (default) or x86"
     echo "  --new                Reset VM configuration (re-enter IP, user)"
     echo "  --backend-only       Only build the Rust backend"
     echo "  --frontend-only      Only build the SvelteKit frontend"
     echo "  --skip-libreelec     Skip LibreELEC image build"
     echo "  --clean              Clean build directories before building"
+    echo "  --vmdk               Convert to VMDK format (x86 only, for VMware/Synology)"
     echo "  -h, --help           Show this help message"
     echo ""
+    echo "Architectures:"
+    echo "  arm64    Raspberry Pi 5 (aarch64) - default"
+    echo "  x86      Generic x86_64 (VM, Synology NAS, PC)"
+    echo ""
     echo "Examples:"
-    echo "  $0                   # Full build"
-    echo "  $0 --new             # Reconfigure VM and build"
-    echo "  $0 --skip-libreelec  # Build PiNAS but skip LibreELEC image"
+    echo "  $0                       # Full ARM64 build (default)"
+    echo "  $0 --arch x86            # Full x86_64 build"
+    echo "  $0 --arch x86 --vmdk     # x86 build with VMDK conversion"
+    echo "  $0 --arch x86 --new      # x86 build with VM reconfiguration"
+    echo "  $0 --skip-libreelec      # Build PiNAS only (no LibreELEC image)"
     exit 0
 }
 
 while [[ $# -gt 0 ]]; do
     case $1 in
+        --arch)
+            if [ -z "$2" ] || [[ "$2" == --* ]]; then
+                echo -e "${RED}Error: --arch requires an argument (arm64 or x86)${NC}"
+                exit 1
+            fi
+            case "$2" in
+                arm64|aarch64)
+                    BUILD_ARCH="arm64"
+                    ;;
+                x86|x86_64|x64)
+                    BUILD_ARCH="x86"
+                    ;;
+                *)
+                    echo -e "${RED}Error: Unknown architecture '$2'. Use 'arm64' or 'x86'${NC}"
+                    exit 1
+                    ;;
+            esac
+            shift 2
+            ;;
         --new)
             RESET_CONFIG=true
             shift
             ;;
-        --backend-only|--frontend-only|--skip-libreelec|--clean)
+        --backend-only|--frontend-only|--skip-libreelec|--clean|--vmdk)
             BUILD_ARGS="$BUILD_ARGS $1"
             shift
             ;;
@@ -65,6 +94,17 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+# Set architecture-specific variables
+if [ "$BUILD_ARCH" = "arm64" ]; then
+    BUILD_SCRIPT="build-arm64.sh"
+    IMAGE_PATTERN="LibreELEC-RPi*.aarch64-*.img.gz"
+    ARCH_DISPLAY="ARM64 (Raspberry Pi 5)"
+else
+    BUILD_SCRIPT="build-x86.sh"
+    IMAGE_PATTERN="LibreELEC-Generic.x86_64-*.img.gz"
+    ARCH_DISPLAY="x86_64 (VM/Synology/PC)"
+fi
 
 # Cleanup function
 cleanup() {
@@ -179,8 +219,11 @@ copy_from_remote() {
 
 echo ""
 echo -e "${CYAN}╔═══════════════════════════════════════════════════════════╗${NC}"
-echo -e "${CYAN}║       PiNAS Remote Build - LibreELEC ARM64 Builder        ║${NC}"
+echo -e "${CYAN}║              PiNAS Remote Build for LibreELEC             ║${NC}"
 echo -e "${CYAN}╚═══════════════════════════════════════════════════════════╝${NC}"
+echo ""
+echo -e "Target architecture: ${GREEN}$ARCH_DISPLAY${NC}"
+echo -e "Build script: ${GREEN}$BUILD_SCRIPT${NC}"
 echo ""
 
 # Track if we need to save config after successful connection
@@ -266,7 +309,7 @@ echo "    Build arguments: ${BUILD_ARGS:-'(full build)'}"
 echo ""
 
 # Run build with live output (TTY for colors and progress)
-run_remote_tty "cd $REMOTE_SCRIPTS_DIR && bash build-arm64.sh $BUILD_ARGS"
+run_remote_tty "cd $REMOTE_SCRIPTS_DIR && bash $BUILD_SCRIPT $BUILD_ARGS"
 
 BUILD_EXIT_CODE=$?
 
@@ -278,49 +321,110 @@ fi
 echo ""
 echo -e "${CYAN}>>> Checking for built images...${NC}"
 
-# Step 5: Find and copy the image
-IMAGE_NAME=$(run_remote "ls -1 $REMOTE_TARGET_DIR/*.img.gz 2>/dev/null | head -1 | xargs -r basename" 2>/dev/null || echo "")
+# Step 5: Find and copy the image (using architecture-specific pattern)
+IMAGE_NAME=$(run_remote "ls -1 $REMOTE_TARGET_DIR/$IMAGE_PATTERN 2>/dev/null | head -1 | xargs -r basename" 2>/dev/null || echo "")
 
-if [ -z "$IMAGE_NAME" ]; then
-    echo -e "${YELLOW}No .img.gz file found in target directory.${NC}"
+# Also check for VMDK file if --vmdk was used
+VMDK_NAME=$(run_remote "ls -1 $REMOTE_TARGET_DIR/*.vmdk 2>/dev/null | head -1 | xargs -r basename" 2>/dev/null || echo "")
+
+if [ -z "$IMAGE_NAME" ] && [ -z "$VMDK_NAME" ]; then
+    echo -e "${YELLOW}No image file found in target directory.${NC}"
     echo "This is normal if you used --skip-libreelec"
     exit 0
 fi
 
-echo -e "${GREEN}Found image: $IMAGE_NAME${NC}"
-
 # Create local target directory
 mkdir -p "$TARGET_DIR"
 
-echo ""
-echo -e "${CYAN}>>> Copying image to local machine...${NC}"
-echo "    Source: $VM_USER@$VM_IP:$REMOTE_TARGET_DIR/$IMAGE_NAME"
-echo "    Destination: $TARGET_DIR/$IMAGE_NAME"
-echo ""
+# Copy VMDK if exists (preferred for x86)
+if [ -n "$VMDK_NAME" ]; then
+    echo -e "${GREEN}Found VMDK: $VMDK_NAME${NC}"
+    echo ""
+    echo -e "${CYAN}>>> Copying VMDK to local machine...${NC}"
+    echo "    Source: $VM_USER@$VM_IP:$REMOTE_TARGET_DIR/$VMDK_NAME"
+    echo "    Destination: $TARGET_DIR/$VMDK_NAME"
+    echo ""
 
-copy_from_remote "$REMOTE_TARGET_DIR/$IMAGE_NAME" "$TARGET_DIR/$IMAGE_NAME"
+    copy_from_remote "$REMOTE_TARGET_DIR/$VMDK_NAME" "$TARGET_DIR/$VMDK_NAME"
 
-# Verify copy
-if [ -f "$TARGET_DIR/$IMAGE_NAME" ]; then
+    if [ -f "$TARGET_DIR/$VMDK_NAME" ]; then
+        VMDK_SIZE=$(ls -lh "$TARGET_DIR/$VMDK_NAME" | awk '{print $5}')
+        echo -n "    Cleaning up remote VMDK... "
+        run_remote "rm -f $REMOTE_TARGET_DIR/$VMDK_NAME"
+        echo -e "${GREEN}done${NC}"
+    fi
+fi
+
+# Copy raw image if exists
+if [ -n "$IMAGE_NAME" ]; then
+    echo -e "${GREEN}Found image: $IMAGE_NAME${NC}"
+    echo ""
+    echo -e "${CYAN}>>> Copying image to local machine...${NC}"
+    echo "    Source: $VM_USER@$VM_IP:$REMOTE_TARGET_DIR/$IMAGE_NAME"
+    echo "    Destination: $TARGET_DIR/$IMAGE_NAME"
+    echo ""
+
+    copy_from_remote "$REMOTE_TARGET_DIR/$IMAGE_NAME" "$TARGET_DIR/$IMAGE_NAME"
+fi
+
+# Verify copy and show results
+if [ -n "$VMDK_NAME" ] && [ -f "$TARGET_DIR/$VMDK_NAME" ]; then
+    IMAGE_SIZE=$(ls -lh "$TARGET_DIR/$VMDK_NAME" | awk '{print $5}')
+    FINAL_IMAGE="$TARGET_DIR/$VMDK_NAME"
+    IS_VMDK=true
+
+    # Delete raw image on VM if VMDK was created
+    if [ -n "$IMAGE_NAME" ]; then
+        echo -n "    Cleaning up remote image... "
+        run_remote "rm -f $REMOTE_TARGET_DIR/$IMAGE_NAME"
+        echo -e "${GREEN}done${NC}"
+    fi
+elif [ -n "$IMAGE_NAME" ] && [ -f "$TARGET_DIR/$IMAGE_NAME" ]; then
     IMAGE_SIZE=$(ls -lh "$TARGET_DIR/$IMAGE_NAME" | awk '{print $5}')
+    FINAL_IMAGE="$TARGET_DIR/$IMAGE_NAME"
+    IS_VMDK=false
 
     # Delete image on VM after successful copy
     echo -n "    Cleaning up remote image... "
     run_remote "rm -f $REMOTE_TARGET_DIR/$IMAGE_NAME"
     echo -e "${GREEN}done${NC}"
-
-    echo ""
-    echo -e "${GREEN}╔═══════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${GREEN}║                    Build Complete!                        ║${NC}"
-    echo -e "${GREEN}╚═══════════════════════════════════════════════════════════╝${NC}"
-    echo ""
-    echo -e "Image: ${CYAN}$TARGET_DIR/$IMAGE_NAME${NC}"
-    echo -e "Size:  ${CYAN}$IMAGE_SIZE${NC}"
-    echo ""
-    echo "To flash to SD card:"
-    echo -e "  ${YELLOW}gunzip -c $TARGET_DIR/$IMAGE_NAME | sudo dd of=/dev/sdX bs=4M status=progress conv=fsync${NC}"
-    echo ""
 else
     echo -e "${RED}Error: Failed to copy image${NC}"
     exit 1
 fi
+
+echo ""
+echo -e "${GREEN}╔═══════════════════════════════════════════════════════════╗${NC}"
+echo -e "${GREEN}║                    Build Complete!                        ║${NC}"
+echo -e "${GREEN}╚═══════════════════════════════════════════════════════════╝${NC}"
+echo ""
+echo -e "Architecture: ${CYAN}$ARCH_DISPLAY${NC}"
+echo -e "Image: ${CYAN}$FINAL_IMAGE${NC}"
+echo -e "Size:  ${CYAN}$IMAGE_SIZE${NC}"
+echo ""
+
+if [ "$BUILD_ARCH" = "arm64" ]; then
+    echo "To flash to SD card (Raspberry Pi):"
+    echo -e "  ${YELLOW}gunzip -c $FINAL_IMAGE | sudo dd of=/dev/sdX bs=4M status=progress conv=fsync${NC}"
+elif [ "$IS_VMDK" = true ]; then
+    echo -e "${GREEN}VMDK file ready to use with VMware or Synology VMM${NC}"
+    echo ""
+    echo "To import in Synology VMM:"
+    echo "  1. Copy $FINAL_IMAGE to your NAS"
+    echo "  2. VMM > Image > Create > Import from hard disk"
+else
+    echo "To use with VMs, first extract and convert:"
+    echo ""
+    echo "  # Extract image"
+    echo -e "  ${YELLOW}gunzip -k $FINAL_IMAGE${NC}"
+    echo ""
+    echo "  # Convert to VMDK (VMware, Synology VMM):"
+    echo -e "  ${YELLOW}qemu-img convert -f raw -O vmdk ${FINAL_IMAGE%.gz} pinas-x86.vmdk${NC}"
+    echo ""
+    echo "  # Convert to VDI (VirtualBox):"
+    echo -e "  ${YELLOW}qemu-img convert -f raw -O vdi ${FINAL_IMAGE%.gz} pinas-x86.vdi${NC}"
+    echo ""
+    echo "  # Convert to QCOW2 (Proxmox, KVM):"
+    echo -e "  ${YELLOW}qemu-img convert -f raw -O qcow2 ${FINAL_IMAGE%.gz} pinas-x86.qcow2${NC}"
+fi
+echo ""

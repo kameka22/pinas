@@ -16,14 +16,18 @@
 	let outputElement: HTMLDivElement;
 	let inputElement: HTMLInputElement;
 
-	// Prompt configuration
-	const prompt = 'pinas@host:~$';
+	// Current working directory
+	let cwd = '/storage';
+
+	// Prompt configuration (reactive based on cwd)
+	$: displayPath = cwd === '/storage' ? '~' : cwd.replace('/storage', '~');
+	$: prompt = `pinas@host:${displayPath}$`;
 
 	// Add welcome message on mount
 	onMount(() => {
 		lines = [
 			{ type: 'output', content: 'PiNAS Terminal v1.0' },
-			{ type: 'output', content: 'Type "help" for available commands.\n' }
+			{ type: 'output', content: 'Type "help" for available commands.' }
 		];
 		inputElement?.focus();
 	});
@@ -129,22 +133,25 @@
 				headers: {
 					'Content-Type': 'application/json'
 				},
-				body: JSON.stringify({ command })
+				body: JSON.stringify({ command, cwd })
 			});
 
 			const data = await response.json();
 
+			// Update cwd from response
+			if (data.cwd) {
+				cwd = data.cwd;
+			}
+
 			if (data.output) {
-				// Split output by newlines and add each line
-				const outputLines = data.output.split('\n');
-				outputLines.forEach((line: string) => {
-					if (line || outputLines.length === 1) {
-						lines = [...lines, {
-							type: data.exit_code === 0 ? 'output' : 'error',
-							content: line
-						}];
-					}
-				});
+				// Add output as a single block (trim trailing newlines)
+				const output = data.output.replace(/\n+$/, '');
+				if (output) {
+					lines = [...lines, {
+						type: data.exit_code === 0 ? 'output' : 'error',
+						content: output
+					}];
+				}
 			}
 		} catch (error) {
 			lines = [...lines, {
@@ -168,17 +175,19 @@
 
 		if (cmd === 'help') {
 			lines = [...lines,
-				{ type: 'output', content: '' },
-				{ type: 'output', content: 'Available commands:' },
+				{ type: 'output', content: 'Built-in commands:' },
 				{ type: 'output', content: '  help     - Show this help message' },
 				{ type: 'output', content: '  clear    - Clear the terminal screen' },
 				{ type: 'output', content: '  history  - Show command history' },
 				{ type: 'output', content: '' },
+				{ type: 'output', content: 'Navigation:' },
+				{ type: 'output', content: '  cd <dir> - Change directory' },
+				{ type: 'output', content: '  pwd      - Print working directory' },
+				{ type: 'output', content: '' },
 				{ type: 'output', content: 'Keyboard shortcuts:' },
 				{ type: 'output', content: '  Ctrl+C   - Cancel current command' },
 				{ type: 'output', content: '  Ctrl+L   - Clear screen' },
-				{ type: 'output', content: '  Up/Down  - Navigate command history' },
-				{ type: 'output', content: '' }
+				{ type: 'output', content: '  Up/Down  - Navigate command history' }
 			];
 			return true;
 		}

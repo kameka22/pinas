@@ -25,6 +25,14 @@ makeinstall_target() {
   cp ${PKG_DIR}/bin/pinas-init.sh ${INSTALL}/usr/bin/
   chmod 755 ${INSTALL}/usr/bin/pinas-init.sh
 
+  # Installer le script de resize storage
+  cp ${PKG_DIR}/bin/pinas-resize-storage.sh ${INSTALL}/usr/bin/
+  chmod 755 ${INSTALL}/usr/bin/pinas-resize-storage.sh
+
+  # Installer le script de debug
+  cp ${PKG_DIR}/bin/pinas-debug.sh ${INSTALL}/usr/bin/pinas-debug
+  chmod 755 ${INSTALL}/usr/bin/pinas-debug
+
   # Installer les fichiers frontend (staging, sera copié vers /storage au premier boot)
   # IMPORTANT: Vérifier que le frontend existe avant de copier
   if [ ! -d "${PKG_DIR}/www" ] || [ ! -f "${PKG_DIR}/www/index.html" ]; then
@@ -39,14 +47,20 @@ makeinstall_target() {
   cp -r ${PKG_DIR}/www/. ${INSTALL}/usr/share/pinas/www/
   echo "Frontend installed: $(find ${INSTALL}/usr/share/pinas/www -type f | wc -l) files"
 
-  # Installer le service systemd
+  # Installer les services systemd
   mkdir -p ${INSTALL}/usr/lib/systemd/system
   cp ${PKG_DIR}/system.d/pinas.service ${INSTALL}/usr/lib/systemd/system/
+  cp ${PKG_DIR}/system.d/pinas-resize-storage.service ${INSTALL}/usr/lib/systemd/system/
 
-  # Activer le service au démarrage (créer le symlink directement)
+  # Activer le service pinas au démarrage
   mkdir -p ${INSTALL}/usr/lib/systemd/system/default.target.wants
   ln -sf ../pinas.service ${INSTALL}/usr/lib/systemd/system/default.target.wants/pinas.service
   echo "Service enabled: pinas.service -> default.target.wants"
+
+  # Activer le service resize-storage au démarrage (très tôt dans le boot)
+  mkdir -p ${INSTALL}/usr/lib/systemd/system/sysinit.target.wants
+  ln -sf ../pinas-resize-storage.service ${INSTALL}/usr/lib/systemd/system/sysinit.target.wants/pinas-resize-storage.service
+  echo "Service enabled: pinas-resize-storage.service -> sysinit.target.wants"
 
   # Installer la config tmpfiles (création dossiers)
   mkdir -p ${INSTALL}/usr/lib/tmpfiles.d

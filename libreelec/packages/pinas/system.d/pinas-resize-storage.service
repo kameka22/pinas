@@ -1,0 +1,15 @@
+[Unit]
+Description=PiNAS - Auto-resize storage partition
+DefaultDependencies=no
+Before=pinas.service local-fs.target
+After=systemd-fsck-root.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/pinas-resize-storage.sh
+RemainAfterExit=yes
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=sysinit.target
