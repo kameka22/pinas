@@ -410,6 +410,9 @@ export default {
 			open: 'Open',
 			update: 'Update'
 		},
+		missingDependencies: 'Missing dependencies',
+		requiresInstall: 'Requires',
+		dependencies: 'Dependencies',
 		packages: {
 			docker: {
 				description: 'Container platform for deploying and managing applications',

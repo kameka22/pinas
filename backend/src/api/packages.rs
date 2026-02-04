@@ -8,7 +8,8 @@ use axum::{
 use serde::{Deserialize, Serialize};
 
 use crate::models::manifest::{
-    PackageManifest, Requirements, InstallConfig, UninstallConfig, FrontendConfig, WindowConfig
+    PackageManifest, Requirements, InstallConfig, UninstallConfig, FrontendConfig, WindowConfig,
+    InstallStep,
 };
 use crate::services::package::PackageService;
 use crate::AppState;
@@ -313,6 +314,77 @@ fn get_docker_manifest() -> PackageManifest {
         "underDevelopment": "Cette section est en cours de développement"
     }));
 
+    // Build installation steps matching the catalog manifest
+    let install_steps = vec![
+        InstallStep::Mkdir { path: "${PACKAGES_DIR}/docker".to_string() },
+        InstallStep::Download {
+            url: "https://download.docker.com/linux/static/stable/${ARCH}/docker-24.0.7.tgz".to_string(),
+            sha256: None,
+            sha256_aarch64: Some("04e7e7f58a1df9ff295413b0c6e0a948b9e6f4ea4ba1a2b51d88eae8f7ee5b6f".to_string()),
+            sha256_x86_64: Some("61a12b13ec67fe8e0a5a30a3c2c23e1a0e3c9f5d0e0f9a8b7c6d5e4f3a2b1c0d".to_string()),
+            dest: "${DOWNLOADS_DIR}/docker-24.0.7.tgz".to_string(),
+        },
+        InstallStep::Extract {
+            src: "${DOWNLOADS_DIR}/docker-24.0.7.tgz".to_string(),
+            dest: "${PACKAGES_DIR}/docker".to_string(),
+        },
+        InstallStep::Symlink {
+            src: "${PACKAGES_DIR}/docker/docker/docker".to_string(),
+            dest: "${BIN_DIR}/docker".to_string(),
+        },
+        InstallStep::Symlink {
+            src: "${PACKAGES_DIR}/docker/docker/dockerd".to_string(),
+            dest: "${BIN_DIR}/dockerd".to_string(),
+        },
+        InstallStep::Symlink {
+            src: "${PACKAGES_DIR}/docker/docker/containerd".to_string(),
+            dest: "${BIN_DIR}/containerd".to_string(),
+        },
+        InstallStep::Symlink {
+            src: "${PACKAGES_DIR}/docker/docker/containerd-shim-runc-v2".to_string(),
+            dest: "${BIN_DIR}/containerd-shim-runc-v2".to_string(),
+        },
+        InstallStep::Symlink {
+            src: "${PACKAGES_DIR}/docker/docker/ctr".to_string(),
+            dest: "${BIN_DIR}/ctr".to_string(),
+        },
+        InstallStep::Symlink {
+            src: "${PACKAGES_DIR}/docker/docker/runc".to_string(),
+            dest: "${BIN_DIR}/runc".to_string(),
+        },
+        InstallStep::Chmod { path: "${BIN_DIR}/docker".to_string(), mode: "755".to_string() },
+        InstallStep::Chmod { path: "${BIN_DIR}/dockerd".to_string(), mode: "755".to_string() },
+        InstallStep::Mkdir { path: "${DATA_DIR}/docker".to_string() },
+        InstallStep::Template { src: "docker.service".to_string(), dest: "/storage/.config/system.d/docker.service".to_string() },
+        InstallStep::Template { src: "daemon.json".to_string(), dest: "${DATA_DIR}/docker/daemon.json".to_string() },
+        InstallStep::Exec { command: "systemctl daemon-reload".to_string(), ignore_error: false },
+        InstallStep::Exec { command: "systemctl enable docker.service".to_string(), ignore_error: false },
+        InstallStep::Exec { command: "systemctl start docker.service".to_string(), ignore_error: false },
+    ];
+
+    let uninstall_steps = vec![
+        InstallStep::Exec { command: "systemctl stop docker.service".to_string(), ignore_error: true },
+        InstallStep::Exec { command: "systemctl disable docker.service".to_string(), ignore_error: true },
+        InstallStep::Delete { path: "/storage/.config/system.d/docker.service".to_string() },
+        InstallStep::Delete { path: "${BIN_DIR}/docker".to_string() },
+        InstallStep::Delete { path: "${BIN_DIR}/dockerd".to_string() },
+        InstallStep::Delete { path: "${BIN_DIR}/containerd".to_string() },
+        InstallStep::Delete { path: "${BIN_DIR}/containerd-shim-runc-v2".to_string() },
+        InstallStep::Delete { path: "${BIN_DIR}/ctr".to_string() },
+        InstallStep::Delete { path: "${BIN_DIR}/runc".to_string() },
+        InstallStep::Delete { path: "${PACKAGES_DIR}/docker".to_string() },
+        InstallStep::Exec { command: "systemctl daemon-reload".to_string(), ignore_error: true },
+    ];
+
+    // Template files (base64 encoded)
+    let mut files = HashMap::new();
+    // docker.service content
+    files.insert("docker.service".to_string(),
+        "W1VuaXRdCkRlc2NyaXB0aW9uPURvY2tlciBBcHBsaWNhdGlvbiBDb250YWluZXIgRW5naW5lCkRvY3VtZW50YXRpb249aHR0cHM6Ly9kb2NzLmRvY2tlci5jb20KQWZ0ZXI9bmV0d29yay10YXJnZXQudGFyZ2V0IGxvY2FsLWZzLnRhcmdldApXYW50cz1uZXR3b3JrLXRhcmdldC50YXJnZXQKCltTZXJ2aWNlXQpUeXBlPW5vdGlmeQpFbnZpcm9ubWVudD0iUEFUSD0vc3RvcmFnZS8ucGluYXMvYmluOi91c3IvbG9jYWwvYmluOi91c3IvYmluOi9iaW4iCkV4ZWNTdGFydD0vc3RvcmFnZS8ucGluYXMvYmluL2RvY2tlcmQgLS1jb25maWctZmlsZT0vc3RvcmFnZS8ucGluYXMvZG9ja2VyL2RhZW1vbi5qc29uCkV4ZWNSZWxvYWQ9L2Jpbi9raWxsIC1zIEhVUCAkTUFJTlBJRApUaW1lb3V0U3RhcnRTZWM9MAoKUmVzdGFydD1hbHdheXMKUmVzdGFydFNlYz01cwoKTGltaXROT0ZJTEU9MTA0ODU3NgpMaW1pdE5QUk9DPWluZmluaXR5CkxpbWl0Q09SRT1pbmZpbml0eQoKRGVsZWdhdGU9eWVzCktpbGxNb2RlPXByb2Nlc3MKT09NU2NvcmVBZGp1c3Q9LTUwMAoKW0luc3RhbGxdCldhbnRlZEJ5PW11bHRpLXVzZXIudGFyZ2V0Cg==".to_string());
+    // daemon.json content
+    files.insert("daemon.json".to_string(),
+        "ewogICJkYXRhLXJvb3QiOiAiL3N0b3JhZ2UvLnBpbmFzL2RvY2tlci9kYXRhIiwKICAic3RvcmFnZS1kcml2ZXIiOiAib3ZlcmxheTIiLAogICJsb2ctZHJpdmVyIjogImpzb24tZmlsZSIsCiAgImxvZy1vcHRzIjogewogICAgIm1heC1zaXplIjogIjEwbSIsCiAgICAibWF4LWZpbGUiOiAiMyIKICB9LAogICJkZWZhdWx0LWFkZHJlc3MtcG9vbHMiOiBbCiAgICB7CiAgICAgICJiYXNlIjogIjE3Mi4xNy4wLjAvMTYiLAogICAgICAic2l6ZSI6IDI0CiAgICB9CiAgXQp9Cg==".to_string());
+
     PackageManifest {
         id: "docker".to_string(),
         name: "Docker".to_string(),
@@ -322,21 +394,33 @@ fn get_docker_manifest() -> PackageManifest {
         license: Some("Apache-2.0".to_string()),
         website: Some("https://www.docker.com".to_string()),
         icon: Some("mdi:docker".to_string()),
-        requirements: Requirements::default(),
+        requirements: Requirements {
+            min_ram: Some(512),
+            min_disk: Some(500),
+            arch: vec!["aarch64".to_string(), "x86_64".to_string()],
+            dependencies: vec![],
+        },
         install: InstallConfig {
             install_type: "binary".to_string(),
-            steps: vec![],  // Empty steps for now - Docker needs special handling
+            steps: install_steps,
             image: None,
             container: None,
         },
-        uninstall: UninstallConfig::default(),
-        files: HashMap::new(),
+        uninstall: UninstallConfig {
+            steps: uninstall_steps,
+        },
+        files,
         config: HashMap::new(),
         frontend: Some(FrontendConfig {
             icon: "mdi:docker".to_string(),
             gradient: "from-blue-500 to-blue-600".to_string(),
             component: "DockerApp".to_string(),
-            window: WindowConfig::default(),
+            window: WindowConfig {
+                width: 1000,
+                height: 650,
+                min_width: 800,
+                min_height: 500,
+            },
             i18n,
         }),
     }

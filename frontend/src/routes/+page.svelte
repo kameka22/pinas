@@ -41,7 +41,9 @@
 			x: 180 + Math.random() * 150,
 			y: 80 + Math.random() * 80,
 			width: app.window?.width ?? 900,
-			height: app.window?.height ?? 600
+			height: app.window?.height ?? 600,
+			appConfig: app.appConfig,
+			gradient: app.gradient
 		});
 	}
 

@@ -83,11 +83,22 @@ impl PackageService {
     /// Substitute variables in an InstallStep
     fn substitute_step(&self, step: &InstallStep) -> InstallStep {
         match step {
-            InstallStep::Download { url, sha256, dest } => InstallStep::Download {
-                url: self.substitute_vars(url),
-                sha256: sha256.clone(),
-                dest: self.substitute_vars(dest),
-            },
+            InstallStep::Download { url, sha256, sha256_aarch64, sha256_x86_64, dest } => {
+                // Select the appropriate SHA256 based on current architecture
+                let arch = std::env::consts::ARCH;
+                let selected_sha256 = match arch {
+                    "aarch64" => sha256_aarch64.clone().or_else(|| sha256.clone()),
+                    "x86_64" => sha256_x86_64.clone().or_else(|| sha256.clone()),
+                    _ => sha256.clone(),
+                };
+                InstallStep::Download {
+                    url: self.substitute_vars(url),
+                    sha256: selected_sha256,
+                    sha256_aarch64: None, // Clear arch-specific after selection
+                    sha256_x86_64: None,
+                    dest: self.substitute_vars(dest),
+                }
+            }
             InstallStep::Extract { src, dest } => InstallStep::Extract {
                 src: self.substitute_vars(src),
                 dest: self.substitute_vars(dest),
@@ -151,6 +162,23 @@ impl PackageService {
         fs::create_dir_all(&self.downloads_dir).await?;
         fs::create_dir_all(&self.bin_dir).await?;
         Ok(())
+    }
+
+    /// Get Docker service, trying to reconnect if not available
+    async fn get_docker_service(&self) -> Result<DockerService> {
+        if self.docker_service.is_available() {
+            return Ok(DockerService::new().await);
+        }
+        // Try to create a new connection (useful after Docker was just installed)
+        let mut docker = DockerService::new().await;
+        if docker.is_available() {
+            return Ok(docker);
+        }
+        // Wait up to 30 seconds for Docker to become available
+        if docker.wait_for_docker(30).await {
+            return Ok(docker);
+        }
+        Err(anyhow!("Docker is not available"))
     }
 
     /// List all installed packages
@@ -332,7 +360,7 @@ impl PackageService {
                 .execute(&self.db)
                 .await?;
 
-            self.execute_step(&substituted_step, manifest).await
+            self.execute_step(&substituted_step, manifest, &manifest.id).await
                 .with_context(|| format!("Failed at step {}: {:?}", i + 1, substituted_step))?;
         }
 
@@ -340,16 +368,22 @@ impl PackageService {
     }
 
     /// Execute a single installation step
-    async fn execute_step(&self, step: &InstallStep, manifest: &PackageManifest) -> Result<()> {
+    async fn execute_step(&self, step: &InstallStep, manifest: &PackageManifest, package_id: &str) -> Result<()> {
         match step {
-            InstallStep::Download { url, sha256, dest } => {
+            InstallStep::Download { url, sha256, dest, .. } => {
                 self.download_file(url, dest, sha256.as_deref()).await?;
+                // Track downloaded file
+                self.track_file(package_id, dest, "data").await?;
             }
             InstallStep::Extract { src, dest } => {
                 self.extract_archive(src, dest).await?;
+                // Track extracted directory
+                self.track_file(package_id, dest, "data").await?;
             }
             InstallStep::Copy { src, dest } => {
                 fs::copy(src, dest).await?;
+                // Track copied file
+                self.track_file(package_id, dest, "data").await?;
             }
             InstallStep::Symlink { src, dest } => {
                 // Remove existing symlink if present
@@ -357,6 +391,8 @@ impl PackageService {
                     fs::remove_file(dest).await?;
                 }
                 tokio::fs::symlink(src, dest).await?;
+                // Track symlink
+                self.track_file(package_id, dest, "symlink").await?;
             }
             InstallStep::Chmod { path, mode } => {
                 let mode_val = u32::from_str_radix(mode, 8)?;
@@ -366,6 +402,8 @@ impl PackageService {
             }
             InstallStep::Mkdir { path } => {
                 fs::create_dir_all(path).await?;
+                // Track created directory
+                self.track_file(package_id, path, "data").await?;
             }
             InstallStep::Template { src, dest } => {
                 if let Some(content) = manifest.files.get(src) {
@@ -375,6 +413,9 @@ impl PackageService {
                         fs::create_dir_all(p).await?;
                     }
                     fs::write(dest, decoded).await?;
+                    // Determine file type based on destination
+                    let file_type = if dest.ends_with(".service") { "service" } else { "config" };
+                    self.track_file(package_id, dest, file_type).await?;
                 } else {
                     return Err(anyhow!("Template file not found in manifest: {}", src));
                 }
@@ -386,6 +427,8 @@ impl PackageService {
                     fs::create_dir_all(p).await?;
                 }
                 fs::write(dest, decoded).await?;
+                // Track written file
+                self.track_file(package_id, dest, "config").await?;
             }
             InstallStep::Exec { command, ignore_error } => {
                 let status = Command::new("sh")
@@ -407,33 +450,100 @@ impl PackageService {
                     }
                 }
             }
-            // Docker steps
+            // Docker steps - get a fresh connection each time (allows reconnect after Docker install)
             InstallStep::DockerPull { image } => {
                 tracing::info!("Pulling Docker image: {}", image);
-                self.docker_service.pull_image(image).await?;
+                let docker = self.get_docker_service().await?;
+                docker.pull_image(image).await?;
             }
             InstallStep::DockerCreate { config } => {
                 tracing::info!("Creating Docker container: {}", config.name);
-                self.docker_service.create_container(config).await?;
+                let docker = self.get_docker_service().await?;
+                let container_id = docker.create_container(config).await?;
+                // Track the container in database
+                let image = config.image.as_deref().unwrap_or("unknown");
+                let config_json = serde_json::to_string(config).unwrap_or_default();
+                self.track_container(package_id, &container_id, &config.name, image, &config_json).await?;
             }
             InstallStep::DockerStart { container } => {
                 tracing::info!("Starting Docker container: {}", container);
-                self.docker_service.start_container(container).await?;
+                let docker = self.get_docker_service().await?;
+                docker.start_container(container).await?;
+                // Update container status
+                self.update_container_status(container, "running").await?;
             }
             InstallStep::DockerStop { container } => {
                 tracing::info!("Stopping Docker container: {}", container);
-                if let Err(e) = self.docker_service.stop_container(container).await {
-                    tracing::warn!("Failed to stop container {}: {}", container, e);
+                let docker = self.get_docker_service().await;
+                if let Ok(docker) = docker {
+                    if let Err(e) = docker.stop_container(container).await {
+                        tracing::warn!("Failed to stop container {}: {}", container, e);
+                    }
+                }
+                // Update container status
+                let _ = self.update_container_status(container, "stopped").await;
+            }
+            InstallStep::DockerRm { container } => {
+                tracing::info!("Removing Docker container: {}", container);
+                let docker = self.get_docker_service().await;
+                if let Ok(docker) = docker {
+                    if let Err(e) = docker.remove_container(container, true).await {
+                        tracing::warn!("Failed to remove container {}: {}", container, e);
+                    }
+                }
+                // Remove container from tracking
+                let _ = self.untrack_container(container).await;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Execute a single uninstall step (no tracking needed)
+    async fn execute_uninstall_step(&self, step: &InstallStep) -> Result<()> {
+        match step {
+            InstallStep::Exec { command, ignore_error } => {
+                let status = Command::new("sh")
+                    .arg("-c")
+                    .arg(command)
+                    .status()
+                    .await?;
+
+                if !status.success() && !ignore_error {
+                    return Err(anyhow!("Command failed: {}", command));
+                }
+            }
+            InstallStep::Delete { path } => {
+                if fs::metadata(path).await.is_ok() {
+                    if fs::metadata(path).await?.is_dir() {
+                        fs::remove_dir_all(path).await?;
+                    } else {
+                        fs::remove_file(path).await?;
+                    }
+                }
+            }
+            InstallStep::DockerStop { container } => {
+                tracing::info!("Stopping Docker container: {}", container);
+                if let Ok(docker) = self.get_docker_service().await {
+                    if let Err(e) = docker.stop_container(container).await {
+                        tracing::warn!("Failed to stop container {}: {}", container, e);
+                    }
                 }
             }
             InstallStep::DockerRm { container } => {
                 tracing::info!("Removing Docker container: {}", container);
-                if let Err(e) = self.docker_service.remove_container(container, true).await {
-                    tracing::warn!("Failed to remove container {}: {}", container, e);
+                if let Ok(docker) = self.get_docker_service().await {
+                    if let Err(e) = docker.remove_container(container, true).await {
+                        tracing::warn!("Failed to remove container {}: {}", container, e);
+                    }
                 }
+                // Also remove from tracking
+                let _ = self.untrack_container(container).await;
+            }
+            _ => {
+                tracing::warn!("Unhandled uninstall step type: {:?}", step);
             }
         }
-
         Ok(())
     }
 
@@ -515,11 +625,25 @@ impl PackageService {
         if let Some(manifest_data) = &package.manifest_data {
             let manifest: PackageManifest = serde_json::from_str(manifest_data)?;
 
-            // Execute uninstall steps
+            // Execute uninstall steps (pass empty package_id since we're uninstalling)
             for step in &manifest.uninstall.steps {
-                if let Err(e) = self.execute_step(step, &manifest).await {
+                // Apply variable substitution
+                let substituted_step = self.substitute_step(step);
+                if let Err(e) = self.execute_uninstall_step(&substituted_step).await {
                     tracing::warn!("Uninstall step failed (continuing): {}", e);
                 }
+            }
+        }
+
+        // Also stop and remove any tracked containers for this package
+        let containers = self.get_package_containers(package_id).await?;
+        for container_name in containers {
+            tracing::info!("Cleaning up container: {}", container_name);
+            if let Err(e) = self.docker_service.stop_container(&container_name).await {
+                tracing::warn!("Failed to stop container {}: {}", container_name, e);
+            }
+            if let Err(e) = self.docker_service.remove_container(&container_name, true).await {
+                tracing::warn!("Failed to remove container {}: {}", container_name, e);
             }
         }
 
@@ -584,6 +708,58 @@ impl PackageService {
         .await?;
 
         Ok(())
+    }
+
+    /// Track a Docker container created during installation
+    pub async fn track_container(&self, package_id: &str, container_id: &str, name: &str, image: &str, config: &str) -> Result<()> {
+        let now = chrono::Utc::now().to_rfc3339();
+        sqlx::query(
+            r#"INSERT INTO docker_containers (id, package_id, name, image, status, config, created_at, updated_at)
+               VALUES (?, ?, ?, ?, 'created', ?, ?, ?)"#
+        )
+        .bind(container_id)
+        .bind(package_id)
+        .bind(name)
+        .bind(image)
+        .bind(config)
+        .bind(&now)
+        .bind(&now)
+        .execute(&self.db)
+        .await?;
+
+        Ok(())
+    }
+
+    /// Update container status in database
+    pub async fn update_container_status(&self, container_name: &str, status: &str) -> Result<()> {
+        let now = chrono::Utc::now().to_rfc3339();
+        sqlx::query("UPDATE docker_containers SET status = ?, updated_at = ? WHERE name = ?")
+            .bind(status)
+            .bind(&now)
+            .bind(container_name)
+            .execute(&self.db)
+            .await?;
+        Ok(())
+    }
+
+    /// Remove container tracking from database
+    pub async fn untrack_container(&self, container_name: &str) -> Result<()> {
+        sqlx::query("DELETE FROM docker_containers WHERE name = ?")
+            .bind(container_name)
+            .execute(&self.db)
+            .await?;
+        Ok(())
+    }
+
+    /// Get containers for a package
+    pub async fn get_package_containers(&self, package_id: &str) -> Result<Vec<String>> {
+        let containers: Vec<String> = sqlx::query_scalar(
+            "SELECT name FROM docker_containers WHERE package_id = ?"
+        )
+        .bind(package_id)
+        .fetch_all(&self.db)
+        .await?;
+        Ok(containers)
     }
 }
 

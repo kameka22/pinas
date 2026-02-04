@@ -14,6 +14,7 @@ export interface DesktopApp {
 		minHeight: number;
 	};
 	isInstalled?: boolean; // true for dynamically installed apps
+	appConfig?: Record<string, unknown>; // Component-specific config (e.g., port, path for IframeApp)
 }
 
 export interface AppRegistryEntry {
@@ -28,6 +29,7 @@ export interface AppRegistryEntry {
 		min_width: number;
 		min_height: number;
 	};
+	config?: Record<string, unknown>; // Component-specific config
 }
 
 // Built-in system apps (always available)
@@ -129,7 +131,8 @@ export async function loadInstalledApps(): Promise<void> {
 				minWidth: entry.window.min_width,
 				minHeight: entry.window.min_height
 			},
-			isInstalled: true
+			isInstalled: true,
+			appConfig: entry.config
 		}));
 
 		installedApps.set(apps);

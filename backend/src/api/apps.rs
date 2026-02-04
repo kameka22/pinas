@@ -56,6 +56,7 @@ async fn get_registry(
                         min_width: config.window.min_width,
                         min_height: config.window.min_height,
                     },
+                    config: config.config,
                 });
             }
         }

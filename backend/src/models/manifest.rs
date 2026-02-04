@@ -63,6 +63,9 @@ pub struct FrontendConfig {
     /// Window configuration
     #[serde(default)]
     pub window: WindowConfig,
+    /// Component-specific configuration (e.g., port, path for IframeApp)
+    #[serde(default)]
+    pub config: HashMap<String, serde_json::Value>,
     /// Translations per locale
     #[serde(default)]
     pub i18n: HashMap<String, serde_json::Value>,
@@ -132,8 +135,15 @@ pub struct InstallConfig {
 pub enum InstallStep {
     Download {
         url: String,
+        /// Generic SHA256 (used if architecture-specific not provided)
         #[serde(default)]
         sha256: Option<String>,
+        /// SHA256 for aarch64 architecture
+        #[serde(default)]
+        sha256_aarch64: Option<String>,
+        /// SHA256 for x86_64 architecture
+        #[serde(default)]
+        sha256_x86_64: Option<String>,
         dest: String,
     },
     Extract {

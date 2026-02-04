@@ -118,6 +118,9 @@ pub struct AppRegistryEntry {
     pub gradient: String,
     pub component: String,
     pub window: WindowConfigResponse,
+    /// Component-specific configuration (e.g., port, path for IframeApp)
+    #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
+    pub config: std::collections::HashMap<String, serde_json::Value>,
 }
 
 /// Window configuration response

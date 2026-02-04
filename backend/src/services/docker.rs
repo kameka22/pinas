@@ -109,6 +109,30 @@ impl DockerService {
         self.client.is_some()
     }
 
+    /// Try to reconnect to Docker daemon (useful after Docker is installed)
+    pub async fn reconnect(&mut self) -> bool {
+        if let Ok(client) = Self::connect().await {
+            self.client = Some(client);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Wait for Docker to become available (with timeout)
+    pub async fn wait_for_docker(&mut self, timeout_secs: u64) -> bool {
+        let start = std::time::Instant::now();
+        let timeout = std::time::Duration::from_secs(timeout_secs);
+
+        while start.elapsed() < timeout {
+            if self.reconnect().await {
+                return true;
+            }
+            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        }
+        false
+    }
+
     /// Get Docker client or error
     fn client(&self) -> Result<&Docker> {
         self.client.as_ref().ok_or_else(|| anyhow!("Docker is not available"))

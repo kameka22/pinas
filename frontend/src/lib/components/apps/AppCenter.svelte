@@ -15,6 +15,7 @@
 		size: string;
 		status: 'not_installed' | 'installed' | 'installing' | 'update_available';
 		category: string;
+		dependencies: string[];
 	}
 
 	interface CatalogApp {
@@ -24,6 +25,7 @@
 		category: string;
 		icon?: string;
 		description?: { en?: string; fr?: string } | string;
+		dependencies?: string[];
 	}
 
 	interface InstalledPackage {
@@ -31,6 +33,20 @@
 		name: string;
 		version: string;
 		status: string;
+		frontend_config?: string;
+	}
+
+	interface FrontendConfig {
+		component: string;
+		icon: string;
+		gradient: string;
+		window?: {
+			width?: number;
+			height?: number;
+			min_width?: number;
+			min_height?: number;
+		};
+		config?: Record<string, unknown>;
 	}
 
 	let packages: AppPackage[] = [];
@@ -85,7 +101,8 @@
 						version: app.version,
 						size: '~150 MB',
 						status: installed ? (installed.status === 'installed' ? 'installed' : 'installing') : 'not_installed',
-						category: app.category
+						category: app.category,
+						dependencies: app.dependencies || []
 					};
 				});
 			} else {
@@ -99,7 +116,8 @@
 					version: '24.0.7',
 					size: '~150 MB',
 					status: installedPackages.some((p) => p.id === 'docker' && p.status === 'installed') ? 'installed' : 'not_installed',
-					category: 'containers'
+					category: 'containers',
+					dependencies: []
 				}];
 			}
 		} catch (error) {
@@ -114,10 +132,37 @@
 				version: '24.0.7',
 				size: '~150 MB',
 				status: 'not_installed',
-				category: 'containers'
+				category: 'containers',
+				dependencies: []
 			}];
 		}
 		loading = false;
+	}
+
+	// Check if a package is installed
+	function isPackageInstalled(packageId: string): boolean {
+		return installedPackages.some((p) => p.id === packageId && p.status === 'installed');
+	}
+
+	// Get missing dependencies for a package
+	function getMissingDependencies(pkg: AppPackage): string[] {
+		if (!pkg.dependencies || pkg.dependencies.length === 0) {
+			return [];
+		}
+		return pkg.dependencies.filter((dep) => !isPackageInstalled(dep));
+	}
+
+	// Get human-readable names for dependencies
+	function getDependencyNames(depIds: string[]): string[] {
+		return depIds.map((depId) => {
+			const depPkg = packages.find((p) => p.id === depId);
+			return depPkg ? depPkg.name : depId;
+		});
+	}
+
+	// Check if package can be installed (all dependencies satisfied)
+	function canInstall(pkg: AppPackage): boolean {
+		return getMissingDependencies(pkg).length === 0;
 	}
 
 	function getAppDescription(appId: string, catalogDescription?: { en?: string; fr?: string } | string): string {
@@ -149,6 +194,25 @@
 			case 'utilities': return 'mdi:tools';
 			default: return 'mdi:package-variant';
 		}
+	}
+
+	function getPackageFeatures(appId: string): string[] {
+		// Try to get features from app-specific translations
+		const appTrans = ($t as any).appCenter?.packages?.[appId];
+		if (appTrans) {
+			const features: string[] = [];
+			// Look for feature1, feature2, feature3, etc.
+			for (let i = 1; i <= 10; i++) {
+				const featureKey = `feature${i}`;
+				if (appTrans[featureKey]) {
+					features.push(appTrans[featureKey]);
+				}
+			}
+			if (features.length > 0) return features;
+		}
+
+		// Return empty array if no features found
+		return [];
 	}
 
 	$: filteredPackages = packages.filter((pkg) => {
@@ -305,16 +369,49 @@
 	function handleOpenApp(pkg: AppPackage | null) {
 		if (!pkg) return;
 
+		// Find the installed package to get frontend config
+		const installed = installedPackages.find((p) => p.id === pkg.id);
+		let component = pkg.id.charAt(0).toUpperCase() + pkg.id.slice(1) + 'App';
+		let width = 1000;
+		let height = 650;
+		let appConfig: Record<string, unknown> | undefined;
+		let gradient: string | undefined;
+
+		// Use frontend config from installed package if available
+		if (installed?.frontend_config) {
+			try {
+				const frontendConfig: FrontendConfig = JSON.parse(installed.frontend_config);
+				if (frontendConfig.component) {
+					component = frontendConfig.component;
+				}
+				if (frontendConfig.window) {
+					width = frontendConfig.window.width || width;
+					height = frontendConfig.window.height || height;
+				}
+				if (frontendConfig.gradient) {
+					gradient = frontendConfig.gradient;
+				}
+				// Pass config to the component (e.g., port, path for IframeApp)
+				if (frontendConfig.config) {
+					appConfig = frontendConfig.config;
+				}
+			} catch (e) {
+				console.warn('Failed to parse frontend config:', e);
+			}
+		}
+
 		// Open the app window
 		openWindow({
 			id: pkg.id,
 			title: pkg.name,
 			icon: pkg.icon,
-			component: pkg.id.charAt(0).toUpperCase() + pkg.id.slice(1) + 'App',
+			component,
 			x: 150 + Math.random() * 100,
 			y: 80 + Math.random() * 50,
-			width: 1000,
-			height: 650
+			width,
+			height,
+			appConfig,
+			gradient
 		});
 	}
 </script>
@@ -391,10 +488,22 @@
 					</div>
 					<div class="detail-actions">
 						{#if selectedPackage.status === 'not_installed'}
-							<button class="btn-primary" on:click={() => handleInstall(selectedPackage)}>
-								<Icon icon="mdi:download" class="w-5 h-5" />
-								{$t.appCenter.actions.install}
-							</button>
+							{@const missingDeps = getMissingDependencies(selectedPackage)}
+							{#if missingDeps.length > 0}
+								<button class="btn-primary btn-disabled" disabled title={$t.appCenter.missingDependencies || 'Missing dependencies'}>
+									<Icon icon="mdi:download" class="w-5 h-5" />
+									{$t.appCenter.actions.install}
+								</button>
+								<p class="dependency-warning">
+									<Icon icon="mdi:alert" class="w-4 h-4" />
+									{$t.appCenter.requiresInstall || 'Requires'}: {getDependencyNames(missingDeps).join(', ')}
+								</p>
+							{:else}
+								<button class="btn-primary" on:click={() => handleInstall(selectedPackage)}>
+									<Icon icon="mdi:download" class="w-5 h-5" />
+									{$t.appCenter.actions.install}
+								</button>
+							{/if}
 						{:else if selectedPackage.status === 'installed'}
 							<button class="btn-secondary" on:click={() => handleOpenApp(selectedPackage)}>
 								<Icon icon="mdi:open-in-new" class="w-5 h-5" />
@@ -421,14 +530,33 @@
 					<p>{selectedPackage.description}</p>
 				</div>
 
+				{#if selectedPackage.dependencies && selectedPackage.dependencies.length > 0}
+				<div class="detail-dependencies">
+					<h2>{$t.appCenter.dependencies}</h2>
+					<ul>
+						{#each selectedPackage.dependencies as depId}
+							{@const depPkg = packages.find(p => p.id === depId)}
+							{@const isInstalled = isPackageInstalled(depId)}
+							<li class:installed={isInstalled} class:missing={!isInstalled}>
+								<Icon icon={isInstalled ? 'mdi:check-circle' : 'mdi:alert-circle'} class="w-4 h-4" />
+								<span>{depPkg?.name || depId}</span>
+								<span class="dep-status">{isInstalled ? $t.appCenter.status.installed : $t.appCenter.status.notInstalled}</span>
+							</li>
+						{/each}
+					</ul>
+				</div>
+				{/if}
+
+				{#if getPackageFeatures(selectedPackage.id).length > 0}
 				<div class="detail-features">
 					<h2>{$t.appCenter.features}</h2>
 					<ul>
-						<li><Icon icon="mdi:check" class="w-4 h-4 text-green-500" /> {$t.appCenter.packages.docker.feature1}</li>
-						<li><Icon icon="mdi:check" class="w-4 h-4 text-green-500" /> {$t.appCenter.packages.docker.feature2}</li>
-						<li><Icon icon="mdi:check" class="w-4 h-4 text-green-500" /> {$t.appCenter.packages.docker.feature3}</li>
+						{#each getPackageFeatures(selectedPackage.id) as feature}
+						<li><Icon icon="mdi:check" class="w-4 h-4 text-green-500" /> {feature}</li>
+						{/each}
 					</ul>
 				</div>
+				{/if}
 			</div>
 		{:else}
 			<!-- Grid View -->
@@ -440,7 +568,8 @@
 					</div>
 				{:else}
 					{#each filteredPackages as pkg}
-						<button class="package-card" on:click={() => selectPackage(pkg)}>
+						{@const hasMissingDeps = pkg.status === 'not_installed' && getMissingDependencies(pkg).length > 0}
+						<button class="package-card" class:has-missing-deps={hasMissingDeps} on:click={() => selectPackage(pkg)}>
 							<div class="package-icon {pkg.iconBg}">
 								<Icon icon={pkg.icon} class="w-10 h-10 text-white" />
 							</div>
@@ -449,6 +578,11 @@
 								<p>{pkg.description}</p>
 								<div class="package-meta">
 									<span class="version">{pkg.version}</span>
+									{#if hasMissingDeps}
+										<span class="deps-indicator" title={$t.appCenter.missingDependencies}>
+											<Icon icon="mdi:link-variant-off" class="w-4 h-4 text-amber-500" />
+										</span>
+									{/if}
 									<span class="status-dot {pkg.status === 'installed' ? 'installed' : ''}"></span>
 								</div>
 							</div>
@@ -815,7 +949,8 @@
 	}
 
 	.detail-description,
-	.detail-features {
+	.detail-features,
+	.detail-dependencies {
 		background: white;
 		border-radius: 12px;
 		padding: 20px;
@@ -856,6 +991,59 @@
 		border-bottom: none;
 	}
 
+	.detail-dependencies ul {
+		list-style: none;
+		padding: 0;
+		margin: 0;
+	}
+
+	.detail-dependencies li {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		padding: 10px 0;
+		font-size: 14px;
+		border-bottom: 1px solid #f1f5f9;
+	}
+
+	.detail-dependencies li:last-child {
+		border-bottom: none;
+	}
+
+	.detail-dependencies li.installed {
+		color: #16a34a;
+	}
+
+	.detail-dependencies li.missing {
+		color: #d97706;
+	}
+
+	.detail-dependencies .dep-status {
+		margin-left: auto;
+		font-size: 12px;
+		padding: 2px 8px;
+		border-radius: 4px;
+	}
+
+	.detail-dependencies li.installed .dep-status {
+		background: #dcfce7;
+		color: #16a34a;
+	}
+
+	.detail-dependencies li.missing .dep-status {
+		background: #fef3c7;
+		color: #d97706;
+	}
+
+	.package-card.has-missing-deps {
+		opacity: 0.8;
+	}
+
+	.deps-indicator {
+		display: flex;
+		align-items: center;
+	}
+
 	@keyframes spin {
 		to {
 			transform: rotate(360deg);
@@ -871,6 +1059,28 @@
 		font-size: 13px;
 		margin-top: 8px;
 		text-align: center;
+	}
+
+	.dependency-warning {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		color: #d97706;
+		font-size: 13px;
+		padding: 8px 12px;
+		background: #fef3c7;
+		border-radius: 6px;
+		margin-top: 8px;
+	}
+
+	.btn-disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+		background: #94a3b8 !important;
+	}
+
+	.btn-disabled:hover {
+		background: #94a3b8 !important;
 	}
 
 	.loading-state {
