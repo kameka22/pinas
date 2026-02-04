@@ -1,16 +1,16 @@
 [Unit]
 Description=PiNAS - Auto-resize storage partition
 DefaultDependencies=no
-Before=pinas.service
-After=local-fs.target
+Before=pinas.service local-fs-pre.target
+After=systemd-remount-fs.service
 ConditionPathExists=!/storage/.pinas/.storage-resized
 
 [Service]
 Type=oneshot
-ExecStart=/storage/.pinas/bin/pinas-resize-storage.sh
+ExecStart=/usr/bin/pinas-resize-storage.sh
 RemainAfterExit=yes
 StandardOutput=journal
 StandardError=journal
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=local-fs-pre.target

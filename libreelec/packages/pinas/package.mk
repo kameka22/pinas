@@ -57,10 +57,10 @@ makeinstall_target() {
   ln -sf ../pinas.service ${INSTALL}/usr/lib/systemd/system/default.target.wants/pinas.service
   echo "Service enabled: pinas.service -> default.target.wants"
 
-  # Activer le service resize-storage au démarrage (très tôt dans le boot)
-  mkdir -p ${INSTALL}/usr/lib/systemd/system/sysinit.target.wants
-  ln -sf ../pinas-resize-storage.service ${INSTALL}/usr/lib/systemd/system/sysinit.target.wants/pinas-resize-storage.service
-  echo "Service enabled: pinas-resize-storage.service -> sysinit.target.wants"
+  # Activer le service resize-storage au démarrage (avant montage complet)
+  mkdir -p ${INSTALL}/usr/lib/systemd/system/local-fs-pre.target.wants
+  ln -sf ../pinas-resize-storage.service ${INSTALL}/usr/lib/systemd/system/local-fs-pre.target.wants/pinas-resize-storage.service
+  echo "Service enabled: pinas-resize-storage.service -> local-fs-pre.target.wants"
 
   # Installer la config tmpfiles (création dossiers)
   mkdir -p ${INSTALL}/usr/lib/tmpfiles.d
