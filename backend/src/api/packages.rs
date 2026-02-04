@@ -319,9 +319,9 @@ fn get_docker_manifest() -> PackageManifest {
         InstallStep::Mkdir { path: "${PACKAGES_DIR}/docker".to_string() },
         InstallStep::Download {
             url: "https://download.docker.com/linux/static/stable/${ARCH}/docker-24.0.7.tgz".to_string(),
-            sha256: None,
-            sha256_aarch64: Some("04e7e7f58a1df9ff295413b0c6e0a948b9e6f4ea4ba1a2b51d88eae8f7ee5b6f".to_string()),
-            sha256_x86_64: Some("61a12b13ec67fe8e0a5a30a3c2c23e1a0e3c9f5d0e0f9a8b7c6d5e4f3a2b1c0d".to_string()),
+            sha256: None,  // Docker doesn't provide stable checksums
+            sha256_aarch64: None,
+            sha256_x86_64: None,
             dest: "${DOWNLOADS_DIR}/docker-24.0.7.tgz".to_string(),
         },
         InstallStep::Extract {

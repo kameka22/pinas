@@ -223,12 +223,62 @@ impl PackageService {
         Ok(count > 0)
     }
 
+    /// Clean up any failed or incomplete installation
+    async fn cleanup_failed_installation(&self, package_id: &str) -> Result<()> {
+        // Check if there's a failed/installing record
+        let status: Option<String> = sqlx::query_scalar(
+            "SELECT status FROM installed_packages WHERE id = ?"
+        )
+        .bind(package_id)
+        .fetch_optional(&self.db)
+        .await?;
+
+        if let Some(status) = status {
+            if status == "error" || status == "installing" {
+                tracing::info!("Cleaning up failed installation for package: {} (status: {})", package_id, status);
+
+                // Delete related records
+                sqlx::query("DELETE FROM package_files WHERE package_id = ?")
+                    .bind(package_id)
+                    .execute(&self.db)
+                    .await?;
+
+                sqlx::query("DELETE FROM docker_containers WHERE package_id = ?")
+                    .bind(package_id)
+                    .execute(&self.db)
+                    .await?;
+
+                sqlx::query("DELETE FROM app_translations WHERE package_id = ?")
+                    .bind(package_id)
+                    .execute(&self.db)
+                    .await?;
+
+                sqlx::query("DELETE FROM package_tasks WHERE package_id = ?")
+                    .bind(package_id)
+                    .execute(&self.db)
+                    .await?;
+
+                sqlx::query("DELETE FROM installed_packages WHERE id = ?")
+                    .bind(package_id)
+                    .execute(&self.db)
+                    .await?;
+
+                tracing::info!("Cleanup completed for package: {}", package_id);
+            }
+        }
+
+        Ok(())
+    }
+
     /// Install a package from manifest
     pub async fn install(&self, manifest: &PackageManifest, manifest_url: Option<&str>) -> Result<String> {
-        // Check if already installed
+        // Check if already installed successfully
         if self.is_installed(&manifest.id).await? {
             return Err(anyhow!("Package {} is already installed", manifest.id));
         }
+
+        // Clean up any failed/incomplete previous installation
+        self.cleanup_failed_installation(&manifest.id).await?;
 
         // Check dependencies
         for dep in &manifest.requirements.dependencies {

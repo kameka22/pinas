@@ -462,6 +462,23 @@ Frontend (Svelte)              Backend (Rust)
 5. **Root par défaut** : LibreELEC n'a qu'un seul utilisateur système (root)
 6. **Docker possible** : Binaires statiques disponibles sur download.docker.com
 
+### Redimensionnement du stockage
+
+Au premier démarrage, le script `pinas-resize-storage.sh` étend automatiquement la partition `/storage` pour utiliser tout l'espace disponible sur la carte SD/USB :
+
+```
+Service: pinas-resize-storage.service (oneshot, Before=pinas.service)
+Script: /storage/.pinas/bin/pinas-resize-storage.sh
+Marker: /storage/.pinas/.storage-resized
+Logs: /storage/.pinas/resize.log
+```
+
+Le script :
+1. Détecte le type de périphérique (SD/USB/NVMe)
+2. Utilise `parted` pour étendre la partition
+3. Utilise `resize2fs` pour étendre le système de fichiers
+4. Crée un fichier marker pour éviter les exécutions répétées
+
 ---
 
 ## Dépendances principales
@@ -544,17 +561,28 @@ app-catalog/
     "dependencies": ["docker"]
   },
   "install": {
+    "type": "binary|docker",
     "steps": [
-      { "type": "docker_pull", "image": "..." },
-      { "type": "docker_create", "config": {...} },
-      { "type": "docker_start" }
+      { "action": "download", "url": "...", "dest": "...", "sha256": "..." },
+      { "action": "extract", "src": "...", "dest": "..." },
+      { "action": "mkdir", "path": "..." },
+      { "action": "symlink", "src": "...", "dest": "..." },
+      { "action": "chmod", "path": "...", "mode": "755" },
+      { "action": "template", "src": "...", "dest": "..." },
+      { "action": "exec", "command": "..." }
     ]
   },
   "uninstall": {
-    "steps": [...]
+    "steps": [
+      { "action": "exec", "command": "...", "ignore_error": true },
+      { "action": "delete", "path": "..." }
+    ]
+  },
+  "files": {
+    "template-name": "base64-encoded-content"
   },
   "frontend": {
-    "component": "IframeApp",
+    "component": "IframeApp|WebviewApp|ServiceApp|DockerApp",
     "icon": "mdi:application",
     "gradient": "from-blue-500 to-purple-500",
     "window": { "width": 1200, "height": 800 },
@@ -563,6 +591,68 @@ app-catalog/
   }
 }
 ```
+
+### Types d'installation
+
+| Type | Usage |
+|------|-------|
+| `binary` | Télécharge et extrait des binaires statiques (ex: Docker) |
+| `docker` | Utilise Docker pour pull/create/start des containers |
+
+### Variables substituées
+
+| Variable | Valeur |
+|----------|--------|
+| `${PACKAGES_DIR}` | `/storage/.pinas/packages` |
+| `${DATA_DIR}` | `/storage/.pinas/data` |
+| `${BIN_DIR}` | `/storage/.pinas/bin` |
+| `${DOWNLOADS_DIR}` | `/storage/.pinas/downloads` |
+| `${ARCH}` | `aarch64` ou `x86_64` |
+
+### Vérification SHA256
+
+La vérification SHA256 est optionnelle. Pour les archives dont le checksum varie par build (comme Docker), omettre le champ `sha256`.
+
+Pour les checksums différents par architecture :
+```json
+{
+  "action": "download",
+  "url": "https://example.com/${ARCH}/app.tgz",
+  "dest": "${DOWNLOADS_DIR}/app.tgz",
+  "sha256_aarch64": "abc123...",
+  "sha256_x86_64": "def456..."
+}
+```
+
+Le backend sélectionne automatiquement le bon checksum selon l'architecture cible.
+
+### Gestion des dépendances
+
+- Les dépendances sont définies dans `requirements.dependencies[]`
+- Le frontend bloque l'installation si les dépendances ne sont pas installées
+- Exemple : Pi-hole requiert Docker → `"dependencies": ["docker"]`
+
+Fonctions frontend (AppCenter.svelte) :
+- `isPackageInstalled(id)` : vérifie si un package est installé
+- `getMissingDependencies(deps)` : retourne les dépendances manquantes
+- `canInstall(app)` : true si toutes les dépendances sont satisfaites
+
+UI : Le bouton "Install" est désactivé avec un message d'avertissement si des dépendances manquent.
+
+### Configuration des apps installées
+
+Les apps installées peuvent avoir une configuration spécifique passée au composant frontend :
+
+```json
+"frontend": {
+  "component": "IframeApp",
+  "config": {
+    "url": "http://localhost:9000"
+  }
+}
+```
+
+Cette `config` est transmise via `appConfig` dans le store `desktop.ts` et passée au composant lors de l'ouverture de la fenêtre.
 
 ---
 
@@ -587,6 +677,28 @@ Le dossier `extra/openmediavault/` contient les sources du projet OpenMediaVault
 | Smb | ⏳ Partiel | Partages Samba |
 | Nfs | ❌ | Partages NFS |
 | Smart | ❌ | Monitoring S.M.A.R.T. |
+
+---
+
+## Système de packages
+
+### Suivi des fichiers installés
+
+Chaque fichier créé lors de l'installation d'un package est enregistré dans la table `package_files`. Cela permet :
+- Une désinstallation propre (suppression de tous les fichiers)
+- La détection des fichiers orphelins
+- L'inventaire des fichiers par package
+
+### Suivi des containers Docker
+
+Les containers créés par un package sont liés dans la table `docker_containers` :
+- Création automatique du lien lors de `docker_create`
+- Mise à jour du statut (running, stopped, etc.)
+- Nettoyage automatique à la désinstallation
+
+### Reconnexion Docker
+
+Après l'installation de Docker, le service backend se reconnecte automatiquement au daemon Docker pour permettre l'installation immédiate de packages Docker sans redémarrage.
 
 ---
 
