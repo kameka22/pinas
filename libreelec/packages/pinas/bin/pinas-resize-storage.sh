@@ -55,9 +55,18 @@ CURRENT_SIZE_KB=$(df -k /storage 2>/dev/null | awk 'NR==2 {print $2}')
 CURRENT_SIZE_MB=$((CURRENT_SIZE_KB / 1024))
 log "Current /storage filesystem size: ${CURRENT_SIZE_MB}MB"
 
-# Get disk total size
-DISK_SIZE_BYTES=$(blockdev --getsize64 "$DISK" 2>/dev/null)
-DISK_SIZE_GB=$((DISK_SIZE_BYTES / 1024 / 1024 / 1024))
+# Get disk total size (using /sys/block which is always available)
+DISK_NAME=$(basename "$DISK")
+if [ -f "/sys/block/${DISK_NAME}/size" ]; then
+    # Size is in 512-byte sectors
+    DISK_SECTORS=$(cat "/sys/block/${DISK_NAME}/size")
+    DISK_SIZE_BYTES=$((DISK_SECTORS * 512))
+    DISK_SIZE_GB=$((DISK_SIZE_BYTES / 1024 / 1024 / 1024))
+else
+    # Fallback: use parted to get disk size
+    DISK_SIZE_GB=$(parted -s "$DISK" print 2>/dev/null | grep "^Disk $DISK" | awk '{print $3}' | sed 's/GB//')
+    DISK_SIZE_GB=${DISK_SIZE_GB:-0}
+fi
 log "Total disk size: ${DISK_SIZE_GB}GB"
 
 # If storage is less than 500MB but disk is larger, it needs resizing
@@ -119,15 +128,17 @@ if [ "$CURRENT_SIZE_MB" -lt 500 ] && [ "$DISK_SIZE_GB" -gt 1 ]; then
         partx -u "$STORAGE_PART" >> "$LOG_FILE" 2>&1 || true
     fi
 
-    # And blockdev
-    blockdev --rereadpt "$DISK" >> "$LOG_FILE" 2>&1 || true
-
     # Wait for kernel to process
     sleep 2
 
-    # Get new partition size
-    NEW_PART_SIZE=$(blockdev --getsize64 "$STORAGE_PART" 2>/dev/null)
-    NEW_PART_SIZE_MB=$((NEW_PART_SIZE / 1024 / 1024))
+    # Get new partition size from /sys/block
+    PART_NAME=$(basename "$STORAGE_PART")
+    if [ -f "/sys/block/${DISK_NAME}/${PART_NAME}/size" ]; then
+        NEW_PART_SECTORS=$(cat "/sys/block/${DISK_NAME}/${PART_NAME}/size")
+        NEW_PART_SIZE_MB=$((NEW_PART_SECTORS * 512 / 1024 / 1024))
+    else
+        NEW_PART_SIZE_MB=0
+    fi
     log "New partition size: ${NEW_PART_SIZE_MB}MB"
 
     # Resize filesystem (online resize for ext4)
