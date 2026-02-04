@@ -421,6 +421,7 @@ fn get_docker_manifest() -> PackageManifest {
                 min_width: 800,
                 min_height: 500,
             },
+            config: HashMap::new(),
             i18n,
         }),
     }
