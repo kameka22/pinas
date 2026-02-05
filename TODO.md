@@ -190,6 +190,26 @@
   - [x] `DELETE /api/files` avec location_id
   - [x] `PATCH /api/files/rename` avec location_id
 
+### 2.11 SSH Service ✅ NOUVEAU
+- [x] `GET /api/ssh/status` - État du service SSH
+- [x] `POST /api/ssh/enable` - Activer SSH
+- [x] `POST /api/ssh/disable` - Désactiver SSH
+- [x] `POST /api/ssh/password` - Changer mot de passe root
+- [x] Support mode dev (simulation sans systemctl)
+- [x] Compatibilité LibreELEC (OpenSSH/sshd)
+- [x] Création automatique répertoire config `/storage/.cache/services`
+
+### 2.12 Permissions Service ✅ NOUVEAU
+- [x] `GET /api/permissions` - Liste permissions par dossier
+- [x] `GET /api/permissions/folders` - Liste dossiers avec permissions
+- [x] `GET /api/permissions/folder?path=...` - Permissions d'un dossier
+- [x] `GET /api/permissions/user/:id` - Permissions d'un utilisateur
+- [x] `POST /api/permissions` - Créer permission
+- [x] `PUT /api/permissions/:id` - Modifier permission
+- [x] `DELETE /api/permissions/:id` - Supprimer permission
+- [x] Niveaux: none, read, write
+- [x] Création automatique permission write sur home à la création utilisateur
+
 ---
 
 ## Phase 3 : Frontend SvelteKit - Fondations
@@ -331,6 +351,30 @@
 - [x] Registre composants (`apps/index.ts`)
 - [x] Traductions i18n pour les 3 composants (EN/FR)
 
+### 5.15 File Service (Control Panel) ✅ NOUVEAU
+- [x] Interface avec onglets (SSH, SMB, NFS, FTP)
+- [x] Onglet SSH fonctionnel :
+  - [x] Toggle enable/disable
+  - [x] Affichage statut (running/stopped)
+  - [x] Affichage port
+  - [x] Changement mot de passe (modal)
+  - [x] Informations connexion
+- [x] Intégration dans Control Panel (section "File Service")
+- [x] i18n complet (EN/FR)
+- [ ] Onglet SMB (placeholder)
+- [ ] Onglet NFS (placeholder)
+- [ ] Onglet FTP (placeholder)
+
+### 5.16 FolderPicker Component ✅ NOUVEAU
+- [x] Composant réutilisable pour sélection de dossiers
+- [x] Navigation dans les locations (home, shares, volumes)
+- [x] Breadcrumbs et navigation parent
+- [x] Intégré dans :
+  - [x] UserManager (permissions modal)
+  - [x] ShareManager (create share modal)
+  - [x] KodiApp (add media source modal)
+- [x] i18n complet (EN/FR)
+
 ---
 
 ## Phase 6 : Onboarding ✅
@@ -440,6 +484,8 @@
 - **Terminal API** : Exécution commandes avec sécurité
 - **Home Service** : Gestion automatique des dossiers home utilisateurs
 - **Locations API** : Emplacements navigables (home, shares, volumes)
+- **SSH Service** : Enable/disable SSH + changement mot de passe (compatible LibreELEC)
+- **Permissions API** : CRUD permissions par dossier/utilisateur/groupe
 
 ### App Catalog (GitHub)
 - **Repository** : `kameka22/pinas-app-catalog`

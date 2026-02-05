@@ -18,17 +18,22 @@ log "PiNAS: Initializing directories..."
 
 # Create main directories
 mkdir -p /storage/.pinas/files
+mkdir -p /storage/.pinas/homes
 mkdir -p /storage/.pinas/data
 mkdir -p /storage/.pinas/logs
 mkdir -p /storage/.pinas/www
 
-# Create default folders for file manager
-mkdir -p /storage/.pinas/files/Documents
-mkdir -p /storage/.pinas/files/Photos
-mkdir -p /storage/.pinas/files/Videos
-mkdir -p /storage/.pinas/files/Music
-
 log "PiNAS: Base directories created"
+
+# Ensure SSH configuration directory exists (for SSH service control)
+mkdir -p /storage/.cache/services
+mkdir -p /storage/.cache/ssh
+
+# Generate SSH host keys if they don't exist
+if [ ! -f /storage/.cache/ssh/ssh_host_rsa_key ]; then
+    log "PiNAS: Generating SSH host keys..."
+    ssh-keygen -A -f /storage/.cache/ssh 2>/dev/null || log "PiNAS: SSH key generation skipped (may already exist)"
+fi
 
 # Copy frontend files from read-only system to writable storage (if newer or missing)
 log "PiNAS: Checking frontend source at /usr/share/pinas/www..."

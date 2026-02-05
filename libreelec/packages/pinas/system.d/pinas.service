@@ -6,6 +6,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 Environment=PINAS_FILES_ROOT=/storage/.pinas/files
+Environment=PINAS_HOMES_ROOT=/storage/.pinas/homes
 Environment=PINAS_DATABASE_URL=sqlite:/storage/.pinas/data/pinas.db?mode=rwc
 Environment=PINAS_BIND_ADDRESS=0.0.0.0:3000
 Environment=PINAS_LOG_LEVEL=info
