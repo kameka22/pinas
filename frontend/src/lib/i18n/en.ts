@@ -175,10 +175,18 @@ export default {
 		permissions: {
 			title: 'Permissions',
 			user: 'User',
+			users: 'Users',
+			groups: 'Groups',
 			sharedFolder: 'Shared folder',
 			noAccess: 'No Access',
 			readOnly: 'Read Only',
-			readWrite: 'Read/Write'
+			readWrite: 'Read/Write',
+			addFolder: 'Add Folder',
+			folderPath: 'Folder Path',
+			folderPathHint: 'Enter the full path to the folder (e.g., /storage/shares/documents)',
+			noPermissions: 'No folder permissions configured',
+			noPermissionsHint: 'Add a folder to start managing permissions',
+			confirmRemoveFolder: 'Remove all permissions for {path}?'
 		},
 		messages: {
 			deleteConfirm: 'Are you sure you want to delete user "{username}"?',
@@ -815,6 +823,77 @@ export default {
 			toggleAddonFailed: 'Failed to toggle addon',
 			scanFailed: 'Failed to scan library'
 		}
+	},
+
+	// File Service
+	fileService: {
+		title: 'File Services',
+		ssh: {
+			description: 'Secure Shell access for remote administration',
+			enable: 'Enable SSH',
+			enableHint: 'Allow remote terminal access',
+			status: 'Status',
+			running: 'Running',
+			stopped: 'Stopped',
+			port: 'Port',
+			password: 'Password',
+			passwordHint: 'Used for SSH login as root',
+			changePassword: 'Change Password',
+			newPassword: 'New Password',
+			confirmPassword: 'Confirm Password',
+			passwordDescription: 'This password is used to connect via SSH as the root user.',
+			passwordTooShort: 'Password must be at least 4 characters',
+			passwordMismatch: 'Passwords do not match',
+			connectionInfo: 'Connect using:'
+		},
+		smb: {
+			description: 'Windows file sharing protocol'
+		},
+		nfs: {
+			description: 'Network File System for Unix/Linux'
+		},
+		ftp: {
+			description: 'File Transfer Protocol'
+		}
+	},
+
+	// Share Manager
+	shareManager: {
+		title: 'Shared Folders',
+		createShare: 'Create Share',
+		editShare: 'Edit Share',
+		deleteShare: 'Delete Share',
+		fields: {
+			name: 'Share Name',
+			namePlaceholder: 'Enter share name',
+			path: 'Path',
+			protocol: 'Protocol',
+			enabled: 'Enabled',
+			users: 'Users'
+		},
+		protocols: {
+			smb: 'SMB/CIFS',
+			nfs: 'NFS',
+			ftp: 'FTP'
+		},
+		messages: {
+			noShares: 'No shared folders configured',
+			deleteConfirm: 'Are you sure you want to delete this share?'
+		}
+	},
+
+	// Folder Picker
+	folderPicker: {
+		title: 'Select Folder',
+		browse: 'Browse',
+		select: 'Select',
+		selected: 'Selected',
+		location: 'Location',
+		noSubfolders: 'No subfolders',
+		emptyFolder: 'This folder is empty',
+		noLocations: 'No locations available',
+		loading: 'Loading...',
+		error: 'Failed to load folders'
 	},
 
 	// Docker App

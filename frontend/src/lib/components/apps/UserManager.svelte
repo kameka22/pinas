@@ -3,6 +3,8 @@
 	import Icon from '@iconify/svelte';
 	import { t } from '$lib/i18n';
 	import { api, auth } from '$lib/stores/api';
+	import type { FolderPermissions, PermissionLevel, PermissionEntry } from '$lib/stores/api';
+	import FolderPicker from '$lib/components/ui/FolderPicker.svelte';
 
 	// Types - matches API response from /users
 	interface User {
@@ -65,6 +67,13 @@
 	// Data from API
 	let users: User[] = [];
 	let groups: UserGroup[] = [];
+
+	// Permissions state
+	let folderPermissions: FolderPermissions[] = [];
+	let permissionsLoading = false;
+	let showAddFolderModal = false;
+	let newFolderPath = '';
+	let editingPermission: { folderId: string; userId?: string; groupId?: string; permission: PermissionLevel } | null = null;
 
 	// Form state for add user
 	let newUser = {
@@ -370,6 +379,93 @@
 		showAddDropdown = false;
 		showActionMenu = null;
 	}
+
+	// Permissions functions
+	async function loadPermissions() {
+		permissionsLoading = true;
+		try {
+			folderPermissions = await api.getPermissions();
+		} catch (e) {
+			console.error('Failed to load permissions:', e);
+		} finally {
+			permissionsLoading = false;
+		}
+	}
+
+	async function handlePermissionChange(folderId: string, userId: string | undefined, groupId: string | undefined, oldPermId: string | undefined, newPermission: PermissionLevel) {
+		try {
+			if (newPermission === 'none' && oldPermId) {
+				// Delete the permission
+				await api.deletePermission(oldPermId);
+			} else if (oldPermId) {
+				// Update existing
+				await api.updatePermission(oldPermId, newPermission);
+			} else {
+				// Create new
+				await api.createPermission({
+					path: folderId,
+					user_id: userId,
+					group_id: groupId,
+					permission: newPermission
+				});
+			}
+			await loadPermissions();
+		} catch (e) {
+			console.error('Failed to update permission:', e);
+			alert(e instanceof Error ? e.message : 'Failed to update permission');
+		}
+	}
+
+	async function addFolderForPermissions() {
+		if (!newFolderPath.trim()) return;
+
+		// Create a default permission to establish the folder
+		try {
+			// Add to the first user as no-access to create the folder entry
+			if (users.length > 0) {
+				await api.createPermission({
+					path: newFolderPath.trim(),
+					user_id: users[0].id,
+					permission: 'none'
+				});
+			}
+			showAddFolderModal = false;
+			newFolderPath = '';
+			await loadPermissions();
+		} catch (e) {
+			console.error('Failed to add folder:', e);
+			alert(e instanceof Error ? e.message : 'Failed to add folder');
+		}
+	}
+
+	async function removeFolderPermissions(path: string) {
+		if (!confirm($t.userManager.permissions.confirmRemoveFolder?.replace('{path}', path) || `Remove all permissions for ${path}?`)) return;
+
+		const folder = folderPermissions.find(f => f.path === path);
+		if (!folder) return;
+
+		try {
+			for (const perm of folder.permissions) {
+				await api.deletePermission(perm.id);
+			}
+			await loadPermissions();
+		} catch (e) {
+			console.error('Failed to remove folder permissions:', e);
+		}
+	}
+
+	function getPermissionForUser(folder: FolderPermissions, userId: string): PermissionEntry | undefined {
+		return folder.permissions.find(p => p.user_id === userId);
+	}
+
+	function getPermissionForGroup(folder: FolderPermissions, groupId: string): PermissionEntry | undefined {
+		return folder.permissions.find(p => p.group_id === groupId);
+	}
+
+	function openPermissionViewer() {
+		showPermissionViewer = true;
+		loadPermissions();
+	}
 </script>
 
 <svelte:window on:click={closeAllMenus} />
@@ -437,11 +533,12 @@
 				</div>
 				<div class="toolbar-right">
 					<button
-						class="icon-btn"
+						class="btn-secondary permissions-btn"
 						title={$t.userManager.modals.permissionViewer}
-						on:click|stopPropagation={() => showPermissionViewer = true}
+						on:click|stopPropagation={openPermissionViewer}
 					>
-						<Icon icon="mdi:cog-outline" class="w-5 h-5" />
+						<Icon icon="mdi:shield-key" class="w-4 h-4" />
+						{$t.userManager.permissions.title}
 					</button>
 					<div class="filter-input">
 						<Icon icon="mdi:filter-variant" class="w-4 h-4 text-gray-400" />
@@ -698,70 +795,143 @@
 <!-- Permission Viewer Modal -->
 {#if showPermissionViewer}
 	<div class="modal-overlay" on:click={() => showPermissionViewer = false}>
-		<div class="modal" on:click|stopPropagation>
+		<div class="modal modal-lg" on:click|stopPropagation>
 			<div class="modal-header">
-				<h2>{$t.userManager.modals.permissionViewer}</h2>
+				<h2>
+					<Icon icon="mdi:shield-key" class="w-5 h-5" />
+					{$t.userManager.permissions.title}
+				</h2>
 				<button class="modal-close" on:click={() => showPermissionViewer = false}>
 					<Icon icon="mdi:close" class="w-5 h-5" />
 				</button>
 			</div>
-			<div class="modal-body">
-				<div class="permission-filters">
-					<div class="select-group">
-						<label>{$t.userManager.permissions.user}</label>
-						<select>
-							<option value="">{$t.common.search}</option>
-							{#each users as user}
-								<option value={user.id}>{user.username}</option>
-							{/each}
-						</select>
+			<div class="modal-body permission-modal-body">
+				{#if permissionsLoading}
+					<div class="loading-state">
+						<Icon icon="mdi:loading" class="w-8 h-8 animate-spin" />
 					</div>
-					<div class="select-group">
-						<label>{$t.userManager.permissions.sharedFolder}</label>
-						<select>
-							<option value="">{$t.common.search}</option>
-							<option value="media">media</option>
-							<option value="documents">documents</option>
-							<option value="docker">docker</option>
-						</select>
+				{:else}
+					<!-- Toolbar -->
+					<div class="permission-toolbar">
+						<button class="btn-primary" on:click={() => showAddFolderModal = true}>
+							<Icon icon="mdi:folder-plus" class="w-4 h-4" />
+							{$t.userManager.permissions.addFolder}
+						</button>
 					</div>
-					<button class="btn-secondary">{$t.common.reset}</button>
-				</div>
-				<table class="data-table">
-					<thead>
-						<tr>
-							<th>{$t.userManager.table.username}</th>
-							<th>media</th>
-							<th>documents</th>
-							<th>docker</th>
-						</tr>
-					</thead>
-					<tbody>
-						{#each users.slice(0, 4) as user}
-							<tr>
-								<td>
-									<div class="user-cell">
-										<div class="avatar">
-											<Icon icon="mdi:account" class="w-5 h-5" />
+
+					{#if folderPermissions.length === 0}
+						<div class="empty-permissions">
+							<Icon icon="mdi:shield-off-outline" class="w-16 h-16" />
+							<p>{$t.userManager.permissions.noPermissions}</p>
+							<p class="text-secondary">{$t.userManager.permissions.noPermissionsHint}</p>
+						</div>
+					{:else}
+						<!-- Permission Table by Folder -->
+						<div class="permission-list">
+							{#each folderPermissions as folder}
+								<div class="permission-folder-card">
+									<div class="folder-header">
+										<div class="folder-info">
+											<Icon icon="mdi:folder" class="w-5 h-5 folder-icon" />
+											<span class="folder-path">{folder.path}</span>
 										</div>
-										<span>{user.username}</span>
+										<button
+											class="btn-icon-danger"
+											title={$t.common.delete}
+											on:click={() => removeFolderPermissions(folder.path)}
+										>
+											<Icon icon="mdi:delete" class="w-4 h-4" />
+										</button>
 									</div>
-								</td>
-								<td>{$t.userManager.permissions.readWrite}</td>
-								<td>{$t.userManager.permissions.readWrite}</td>
-								<td>{$t.userManager.permissions.readWrite}</td>
-							</tr>
-						{/each}
-					</tbody>
-				</table>
-				<div class="pagination">
-					<span>{$t.userManager.messages.userDataShown}: 1-{Math.min(users.length, 12)}</span>
-					<div class="pagination-controls">
-						<button disabled><Icon icon="mdi:chevron-left" class="w-4 h-4" /></button>
-						<span class="page-number">1</span>
-						<button disabled><Icon icon="mdi:chevron-right" class="w-4 h-4" /></button>
-					</div>
-				</div>
+
+									<div class="permission-grid">
+										<!-- Users section -->
+										<div class="permission-section">
+											<h4><Icon icon="mdi:account-multiple" class="w-4 h-4" /> {$t.userManager.permissions.users}</h4>
+											<div class="permission-rows">
+												{#each users as user}
+													{@const perm = getPermissionForUser(folder, user.id)}
+													<div class="permission-row">
+														<div class="entity-info">
+															<div class="avatar-sm">
+																<Icon icon="mdi:account" class="w-3 h-3" />
+															</div>
+															<span>{user.username}</span>
+														</div>
+														<select
+															class="permission-select"
+															value={perm?.permission || 'none'}
+															on:change={(e) => handlePermissionChange(folder.path, user.id, undefined, perm?.id, e.currentTarget.value as PermissionLevel)}
+														>
+															<option value="none">{$t.userManager.permissions.noAccess}</option>
+															<option value="read">{$t.userManager.permissions.readOnly}</option>
+															<option value="write">{$t.userManager.permissions.readWrite}</option>
+														</select>
+													</div>
+												{/each}
+											</div>
+										</div>
+
+										<!-- Groups section -->
+										{#if groups.length > 0}
+											<div class="permission-section">
+												<h4><Icon icon="mdi:account-group" class="w-4 h-4" /> {$t.userManager.permissions.groups}</h4>
+												<div class="permission-rows">
+													{#each groups as group}
+														{@const perm = getPermissionForGroup(folder, group.id)}
+														<div class="permission-row">
+															<div class="entity-info">
+																<div class="avatar-sm group-avatar">
+																	<Icon icon="mdi:account-group" class="w-3 h-3" />
+																</div>
+																<span>{group.name}</span>
+															</div>
+															<select
+																class="permission-select"
+																value={perm?.permission || 'none'}
+																on:change={(e) => handlePermissionChange(folder.path, undefined, group.id, perm?.id, e.currentTarget.value as PermissionLevel)}
+															>
+																<option value="none">{$t.userManager.permissions.noAccess}</option>
+																<option value="read">{$t.userManager.permissions.readOnly}</option>
+																<option value="write">{$t.userManager.permissions.readWrite}</option>
+															</select>
+														</div>
+													{/each}
+												</div>
+											</div>
+										{/if}
+									</div>
+								</div>
+							{/each}
+						</div>
+					{/if}
+				{/if}
+			</div>
+		</div>
+	</div>
+{/if}
+
+<!-- Add Folder Modal -->
+{#if showAddFolderModal}
+	<div class="modal-overlay" on:click={() => showAddFolderModal = false}>
+		<div class="modal modal-sm" on:click|stopPropagation>
+			<div class="modal-header">
+				<h2>{$t.userManager.permissions.addFolder}</h2>
+				<button class="modal-close" on:click={() => showAddFolderModal = false}>
+					<Icon icon="mdi:close" class="w-5 h-5" />
+				</button>
+			</div>
+			<div class="modal-body">
+				<FolderPicker
+					bind:value={newFolderPath}
+					label={$t.userManager.permissions.folderPath}
+					hint={$t.userManager.permissions.folderPathHint}
+					placeholder="/storage/shares/documents"
+				/>
+			</div>
+			<div class="modal-footer">
+				<button class="btn-secondary" on:click={() => showAddFolderModal = false}>{$t.common.cancel}</button>
+				<button class="btn-primary" on:click={addFolderForPermissions}>{$t.common.add}</button>
 			</div>
 		</div>
 	</div>
@@ -1682,5 +1852,189 @@
 		font-size: 14px;
 		color: #374151;
 		margin-bottom: 8px;
+	}
+
+	/* Large Modal */
+	.modal.modal-lg {
+		max-width: 800px;
+	}
+
+	.modal-header h2 {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+	}
+
+	/* Permissions Modal */
+	.permission-modal-body {
+		min-height: 400px;
+	}
+
+	.permission-toolbar {
+		display: flex;
+		justify-content: flex-end;
+		margin-bottom: 16px;
+	}
+
+	.empty-permissions {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		padding: 60px 20px;
+		color: #9ca3af;
+		text-align: center;
+	}
+
+	.empty-permissions p {
+		margin: 8px 0 0;
+		color: #6b7280;
+	}
+
+	.empty-permissions p.text-secondary {
+		font-size: 13px;
+		color: #9ca3af;
+	}
+
+	.permission-list {
+		display: flex;
+		flex-direction: column;
+		gap: 16px;
+	}
+
+	.permission-folder-card {
+		border: 1px solid #e5e7eb;
+		border-radius: 10px;
+		overflow: hidden;
+		background: white;
+	}
+
+	.folder-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 12px 16px;
+		background: #f9fafb;
+		border-bottom: 1px solid #e5e7eb;
+	}
+
+	.folder-info {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+	}
+
+	.folder-icon {
+		color: #f59e0b;
+	}
+
+	.folder-path {
+		font-weight: 500;
+		font-size: 14px;
+		color: #374151;
+		font-family: monospace;
+	}
+
+	.btn-icon-danger {
+		width: 32px;
+		height: 32px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		border-radius: 6px;
+		color: #6b7280;
+		transition: all 0.15s ease;
+	}
+
+	.btn-icon-danger:hover {
+		background: #fef2f2;
+		color: #ef4444;
+	}
+
+	.permission-grid {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 16px;
+		padding: 16px;
+	}
+
+	@media (max-width: 640px) {
+		.permission-grid {
+			grid-template-columns: 1fr;
+		}
+	}
+
+	.permission-section h4 {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		font-size: 13px;
+		font-weight: 600;
+		color: #6b7280;
+		margin-bottom: 10px;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+	}
+
+	.permission-rows {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+	}
+
+	.permission-row {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 8px 12px;
+		background: #f9fafb;
+		border-radius: 8px;
+	}
+
+	.entity-info {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		font-size: 14px;
+		color: #374151;
+	}
+
+	.avatar-sm {
+		width: 28px;
+		height: 28px;
+		border-radius: 50%;
+		background: #e5e7eb;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		color: #6b7280;
+	}
+
+	.avatar-sm.group-avatar {
+		background: #dbeafe;
+		color: #3b82f6;
+	}
+
+	.permission-select {
+		padding: 6px 10px;
+		border: 1px solid #e5e7eb;
+		border-radius: 6px;
+		font-size: 13px;
+		color: #374151;
+		background: white;
+		cursor: pointer;
+		min-width: 120px;
+	}
+
+	.permission-select:focus {
+		outline: none;
+		border-color: #3b82f6;
+		box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+	}
+
+	.permissions-btn {
+		display: flex;
+		align-items: center;
+		gap: 6px;
 	}
 </style>

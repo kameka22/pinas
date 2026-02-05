@@ -1,5 +1,7 @@
 <script lang="ts">
 	import Icon from '@iconify/svelte';
+	import { t } from '$lib/i18n';
+	import FolderPicker from '$lib/components/ui/FolderPicker.svelte';
 
 	interface Share {
 		id: string;
@@ -11,13 +13,29 @@
 	}
 
 	const shares: Share[] = [
-		{ id: '1', name: 'Media', path: '/srv/data/media', protocol: 'smb', enabled: true, users: ['john', 'jane'] },
-		{ id: '2', name: 'Documents', path: '/srv/data/documents', protocol: 'smb', enabled: true, users: ['john'] },
-		{ id: '3', name: 'Backups', path: '/srv/data/backups', protocol: 'nfs', enabled: true, users: ['admin'] },
-		{ id: '4', name: 'Public', path: '/srv/data/public', protocol: 'ftp', enabled: false, users: [] }
+		{ id: '1', name: 'Media', path: '/storage/shares/media', protocol: 'smb', enabled: true, users: ['john', 'jane'] },
+		{ id: '2', name: 'Documents', path: '/storage/shares/documents', protocol: 'smb', enabled: true, users: ['john'] },
+		{ id: '3', name: 'Backups', path: '/storage/shares/backups', protocol: 'nfs', enabled: true, users: ['admin'] },
+		{ id: '4', name: 'Public', path: '/storage/shares/public', protocol: 'ftp', enabled: false, users: [] }
 	];
 
 	let showCreateModal = false;
+
+	// New share form state
+	let newShare = {
+		name: '',
+		path: '',
+		protocol: 'smb' as 'smb' | 'nfs' | 'ftp'
+	};
+
+	function resetNewShare() {
+		newShare = { name: '', path: '', protocol: 'smb' };
+	}
+
+	function openCreateModal() {
+		resetNewShare();
+		showCreateModal = true;
+	}
 
 	function getProtocolIcon(protocol: string): string {
 		switch (protocol) {
@@ -40,10 +58,10 @@
 
 <div class="share-manager">
 	<header class="header">
-		<h1>Shared Folders</h1>
-		<button class="btn-primary" on:click={() => showCreateModal = true}>
+		<h1>{$t.shareManager?.title || 'Shared Folders'}</h1>
+		<button class="btn-primary" on:click={openCreateModal}>
 			<Icon icon="mdi:plus" class="w-4 h-4" />
-			Create Share
+			{$t.shareManager?.createShare || 'Create Share'}
 		</button>
 	</header>
 
@@ -109,7 +127,7 @@
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<div class="modal" on:click|stopPropagation>
 			<div class="modal-header">
-				<h2>Create New Share</h2>
+				<h2>{$t.shareManager?.createShare || 'Create New Share'}</h2>
 				<button class="btn-close" on:click={() => showCreateModal = false}>
 					<Icon icon="mdi:close" class="w-5 h-5" />
 				</button>
@@ -117,21 +135,19 @@
 
 			<div class="modal-body">
 				<div class="form-group">
-					<label>Share Name</label>
-					<input type="text" placeholder="Enter share name" />
+					<label>{$t.shareManager?.fields?.name || 'Share Name'}</label>
+					<input type="text" bind:value={newShare.name} placeholder={$t.shareManager?.fields?.namePlaceholder || 'Enter share name'} />
 				</div>
 				<div class="form-group">
-					<label>Path</label>
-					<div class="input-with-btn">
-						<input type="text" placeholder="/srv/data/" />
-						<button class="btn-browse">
-							<Icon icon="mdi:folder-search" class="w-4 h-4" />
-						</button>
-					</div>
+					<FolderPicker
+						bind:value={newShare.path}
+						label={$t.shareManager?.fields?.path || 'Path'}
+						placeholder="/storage/shares/"
+					/>
 				</div>
 				<div class="form-group">
-					<label>Protocol</label>
-					<select>
+					<label>{$t.shareManager?.fields?.protocol || 'Protocol'}</label>
+					<select bind:value={newShare.protocol}>
 						<option value="smb">SMB/CIFS</option>
 						<option value="nfs">NFS</option>
 						<option value="ftp">FTP</option>
@@ -140,8 +156,8 @@
 			</div>
 
 			<div class="modal-footer">
-				<button class="btn-secondary" on:click={() => showCreateModal = false}>Cancel</button>
-				<button class="btn-primary">Create Share</button>
+				<button class="btn-secondary" on:click={() => showCreateModal = false}>{$t.common.cancel}</button>
+				<button class="btn-primary">{$t.shareManager?.createShare || 'Create Share'}</button>
 			</div>
 		</div>
 	</div>
@@ -405,28 +421,6 @@
 	.form-group input:focus,
 	.form-group select:focus {
 		border-color: #3b82f6;
-	}
-
-	.input-with-btn {
-		display: flex;
-		gap: 8px;
-	}
-
-	.input-with-btn input {
-		flex: 1;
-	}
-
-	.btn-browse {
-		padding: 10px 12px;
-		background: #f1f5f9;
-		border: 1px solid #e2e8f0;
-		border-radius: 8px;
-		color: #64748b;
-		transition: all 0.15s ease;
-	}
-
-	.btn-browse:hover {
-		background: #e2e8f0;
 	}
 
 	.modal-footer {

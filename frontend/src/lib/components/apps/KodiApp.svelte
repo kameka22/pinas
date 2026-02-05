@@ -3,6 +3,7 @@
 	import { t } from '$lib/i18n';
 	import { onMount, onDestroy } from 'svelte';
 	import { api } from '$lib/stores/api';
+	import FolderPicker from '$lib/components/ui/FolderPicker.svelte';
 
 	// Types
 	interface KodiStatus {
@@ -584,16 +585,12 @@
 					/>
 				</div>
 				<div class="form-group">
-					<label for="source-path">{$t.kodi.sources.fields.serverPath}</label>
-					<input
-						type="text"
-						id="source-path"
+					<FolderPicker
 						bind:value={newSource.path}
+						label={$t.kodi.sources.fields.serverPath}
 						placeholder="smb://192.168.1.100/movies"
+						hint={$t.kodi.sources.pathFormats}
 					/>
-					<p class="help-text">
-						{$t.kodi.sources.pathFormats}
-					</p>
 				</div>
 				<div class="form-group">
 					<label for="source-type">{$t.kodi.sources.fields.mediaType}</label>

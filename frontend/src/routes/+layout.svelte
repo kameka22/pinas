@@ -38,12 +38,27 @@
 		showChangePasswordModal = true;
 	}
 
+	let wsDisconnect: (() => void) | null = null;
+
 	onMount(() => {
 		console.log('[Layout] Calling initOnboarding...');
 		initOnboarding();
-		const disconnect = connectWebSocket();
-		return () => disconnect();
+
+		return () => {
+			if (wsDisconnect) {
+				wsDisconnect();
+				wsDisconnect = null;
+			}
+		};
 	});
+
+	// Connect WebSocket only when authenticated
+	$: if (isAuthenticated && !wsDisconnect) {
+		wsDisconnect = connectWebSocket();
+	} else if (!isAuthenticated && wsDisconnect) {
+		wsDisconnect();
+		wsDisconnect = null;
+	}
 </script>
 
 <!-- Show loading screen while checking setup state -->

@@ -93,6 +93,7 @@
 			class="desktop-icon"
 			on:dblclick={() => handleIconDblClick(app)}
 			on:contextmenu={(e) => handleContextMenu(e, app)}
+			title={getAppLabel(app)}
 		>
 			<div class="icon-wrapper bg-gradient-to-br {app.gradient}">
 				<Icon icon={app.icon} class="w-8 h-8 text-white" />
@@ -116,8 +117,8 @@
 		top: 24px;
 		left: 24px;
 		display: grid;
-		grid-template-columns: repeat(auto-fill, 80px);
-		grid-auto-rows: 90px;
+		grid-template-columns: repeat(auto-fill, 88px);
+		grid-auto-rows: 100px;
 		gap: 8px;
 		padding: 0;
 		align-content: start;
@@ -135,8 +136,8 @@
 		transition: all 0.15s ease;
 		background: transparent;
 		border: none;
-		width: 80px;
-		height: 88px;
+		width: 88px;
+		min-height: 96px;
 	}
 
 	.desktop-icon:hover {
@@ -170,12 +171,13 @@
 		color: white;
 		text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
 		text-align: center;
-		max-width: 76px;
-		line-height: 1.2;
+		max-width: 80px;
+		line-height: 1.3;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		display: -webkit-box;
 		-webkit-line-clamp: 2;
 		-webkit-box-orient: vertical;
+		word-break: break-word;
 	}
 </style>

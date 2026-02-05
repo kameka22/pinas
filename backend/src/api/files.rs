@@ -12,6 +12,7 @@ use std::time::SystemTime;
 
 use crate::api::middleware::AuthUser;
 use crate::services::home::HomeService;
+use crate::services::permission::PermissionService;
 use crate::services::user::get_user_by_id;
 use crate::AppState;
 
@@ -325,6 +326,9 @@ async fn list_files(
         }
     };
 
+    // Get permission service for filtering
+    let permission_service = PermissionService::new(state.db.clone());
+
     let mut files: Vec<FileItem> = Vec::new();
 
     for entry in entries.flatten() {
@@ -354,6 +358,38 @@ async fn list_files(
         } else {
             format!("{}/{}", rel_path.trim_end_matches('/'), name)
         };
+
+        // Check permissions for this item (only for non-admin users)
+        // Admin users see everything, regular users are filtered by permissions
+        if !user.is_admin {
+            // Build full path for permission check
+            let full_item_path = base_path.join(&item_rel_path);
+            let path_str = full_item_path.to_string_lossy().to_string();
+
+            // Check if user has read permission
+            let can_read = permission_service.can_read(&user.id, &path_str).await.unwrap_or(false);
+
+            // For files/folders without explicit permissions, check parent folder
+            // If no permissions are set at all, allow access (permissive default)
+            let has_any_permissions = permission_service
+                .list_by_user(&user.id)
+                .await
+                .map(|perms| !perms.is_empty())
+                .unwrap_or(false);
+
+            // If permissions are configured but user can't read, skip this entry
+            if has_any_permissions && !can_read {
+                // Check if there's a more specific permission for this exact path
+                let exact_perm = permission_service
+                    .get_effective_permission(&user.id, &path_str)
+                    .await
+                    .unwrap_or(crate::models::permission::PermissionLevel::None);
+
+                if !exact_perm.can_read() {
+                    continue;
+                }
+            }
+        }
 
         let mime_type = if is_dir { None } else { get_mime_type(&path) };
 

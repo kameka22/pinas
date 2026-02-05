@@ -84,7 +84,19 @@ class ApiClient {
 			throw new Error(error.message || `HTTP ${response.status}`);
 		}
 
-		return response.json();
+		// Handle empty responses (204 No Content or empty body)
+		const contentLength = response.headers.get('content-length');
+		if (response.status === 204 || contentLength === '0') {
+			return undefined as T;
+		}
+
+		// Try to parse JSON, return undefined if empty
+		const text = await response.text();
+		if (!text || text.trim() === '') {
+			return undefined as T;
+		}
+
+		return JSON.parse(text) as T;
 	}
 
 	async get<T>(endpoint: string): Promise<T> {
@@ -403,6 +415,52 @@ class ApiClient {
 	async renameFile(path: string, newName: string, locationId?: string): Promise<FileItem> {
 		return this.patch<FileItem>('/files/rename', { path, new_name: newName, location_id: locationId });
 	}
+
+	// Permissions endpoints
+	async getPermissions(): Promise<FolderPermissions[]> {
+		return this.get<FolderPermissions[]>('/permissions');
+	}
+
+	async getPermissionFolders(): Promise<string[]> {
+		return this.get<string[]>('/permissions/folders');
+	}
+
+	async getFolderPermissions(path: string): Promise<FolderPermissions> {
+		return this.get<FolderPermissions>(`/permissions/folder?path=${encodeURIComponent(path)}`);
+	}
+
+	async getUserPermissions(userId: string): Promise<PermissionResponse[]> {
+		return this.get<PermissionResponse[]>(`/permissions/user/${userId}`);
+	}
+
+	async createPermission(data: CreatePermissionRequest): Promise<PermissionResponse> {
+		return this.post<PermissionResponse>('/permissions', data);
+	}
+
+	async updatePermission(id: string, permission: PermissionLevel): Promise<PermissionResponse> {
+		return this.put<PermissionResponse>(`/permissions/${id}`, { permission });
+	}
+
+	async deletePermission(id: string): Promise<void> {
+		return this.delete(`/permissions/${id}`);
+	}
+
+	// SSH endpoints
+	async getSshStatus(): Promise<SshStatus> {
+		return this.get<SshStatus>('/ssh/status');
+	}
+
+	async enableSsh(): Promise<void> {
+		return this.post<void>('/ssh/enable');
+	}
+
+	async disableSsh(): Promise<void> {
+		return this.post<void>('/ssh/disable');
+	}
+
+	async changeSshPassword(password: string): Promise<void> {
+		return this.post<void>('/ssh/password', { password });
+	}
 }
 
 // File item type
@@ -565,6 +623,45 @@ export interface ProcessListResponse {
 	memory_usage: number;
 	total_memory: number;
 	used_memory: number;
+}
+
+// Permission types
+export type PermissionLevel = 'none' | 'read' | 'write';
+
+export interface PermissionEntry {
+	id: string;
+	user_id?: string;
+	username?: string;
+	group_id?: string;
+	group_name?: string;
+	permission: PermissionLevel;
+}
+
+export interface FolderPermissions {
+	path: string;
+	permissions: PermissionEntry[];
+}
+
+export interface PermissionResponse {
+	id: string;
+	path: string;
+	user_id: string | null;
+	group_id: string | null;
+	permission: PermissionLevel;
+}
+
+export interface CreatePermissionRequest {
+	path: string;
+	user_id?: string;
+	group_id?: string;
+	permission: PermissionLevel;
+}
+
+// SSH types
+export interface SshStatus {
+	enabled: boolean;
+	running: boolean;
+	port: number;
 }
 
 export const api = new ApiClient(API_BASE);

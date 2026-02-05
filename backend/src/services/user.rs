@@ -1,9 +1,11 @@
 use sqlx::SqlitePool;
 use thiserror::Error;
 
+use crate::models::permission::PermissionLevel;
 use crate::models::user::User;
 use crate::services::auth::{hash_password, AuthError};
 use crate::services::home::HomeService;
+use crate::services::permission::PermissionService;
 
 /// User service errors
 #[derive(Debug, Error)]
@@ -87,12 +89,36 @@ pub async fn create_user_with_home(
     let user = create_user(db, username, password, email, is_admin).await?;
 
     // Create home directory (non-blocking on failure)
-    if let Err(e) = home_service.create_home(username).await {
-        tracing::warn!(
-            "Failed to create home directory for user {}: {}",
-            username,
-            e
-        );
+    match home_service.create_home(username).await {
+        Ok(home_path) => {
+            // Create write permission for the user on their home directory
+            let permission_service = PermissionService::new(db.clone());
+            let home_path_str = home_path.to_string_lossy().to_string();
+
+            if let Err(e) = permission_service
+                .create(&home_path_str, Some(&user.id), None, PermissionLevel::Write)
+                .await
+            {
+                tracing::warn!(
+                    "Failed to create home permission for user {}: {}",
+                    username,
+                    e
+                );
+            } else {
+                tracing::info!(
+                    "Created write permission for user {} on home directory {}",
+                    username,
+                    home_path_str
+                );
+            }
+        }
+        Err(e) => {
+            tracing::warn!(
+                "Failed to create home directory for user {}: {}",
+                username,
+                e
+            );
+        }
     }
 
     Ok(user)

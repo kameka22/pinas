@@ -175,10 +175,18 @@ export default {
 		permissions: {
 			title: 'Permissions',
 			user: 'Utilisateur',
+			users: 'Utilisateurs',
+			groups: 'Groupes',
 			sharedFolder: 'Dossier partagé',
 			noAccess: 'Pas d\'accès',
 			readOnly: 'Lecture seule',
-			readWrite: 'Lecture/Écriture'
+			readWrite: 'Lecture/Écriture',
+			addFolder: 'Ajouter un dossier',
+			folderPath: 'Chemin du dossier',
+			folderPathHint: 'Entrez le chemin complet du dossier (ex: /storage/shares/documents)',
+			noPermissions: 'Aucune permission de dossier configurée',
+			noPermissionsHint: 'Ajoutez un dossier pour commencer à gérer les permissions',
+			confirmRemoveFolder: 'Supprimer toutes les permissions pour {path} ?'
 		},
 		messages: {
 			deleteConfirm: 'Êtes-vous sûr de vouloir supprimer l\'utilisateur "{username}" ?',
@@ -815,6 +823,77 @@ export default {
 			toggleAddonFailed: 'Échec de l\'activation/désactivation de l\'addon',
 			scanFailed: 'Échec de l\'analyse de la médiathèque'
 		}
+	},
+
+	// File Service
+	fileService: {
+		title: 'Services de fichiers',
+		ssh: {
+			description: 'Accès Shell sécurisé pour l\'administration à distance',
+			enable: 'Activer SSH',
+			enableHint: 'Autoriser l\'accès terminal à distance',
+			status: 'État',
+			running: 'En cours',
+			stopped: 'Arrêté',
+			port: 'Port',
+			password: 'Mot de passe',
+			passwordHint: 'Utilisé pour la connexion SSH en tant que root',
+			changePassword: 'Changer le mot de passe',
+			newPassword: 'Nouveau mot de passe',
+			confirmPassword: 'Confirmer le mot de passe',
+			passwordDescription: 'Ce mot de passe est utilisé pour se connecter via SSH en tant qu\'utilisateur root.',
+			passwordTooShort: 'Le mot de passe doit contenir au moins 4 caractères',
+			passwordMismatch: 'Les mots de passe ne correspondent pas',
+			connectionInfo: 'Se connecter avec :'
+		},
+		smb: {
+			description: 'Protocole de partage de fichiers Windows'
+		},
+		nfs: {
+			description: 'Système de fichiers réseau pour Unix/Linux'
+		},
+		ftp: {
+			description: 'Protocole de transfert de fichiers'
+		}
+	},
+
+	// Share Manager
+	shareManager: {
+		title: 'Dossiers partagés',
+		createShare: 'Créer un partage',
+		editShare: 'Modifier le partage',
+		deleteShare: 'Supprimer le partage',
+		fields: {
+			name: 'Nom du partage',
+			namePlaceholder: 'Entrez le nom du partage',
+			path: 'Chemin',
+			protocol: 'Protocole',
+			enabled: 'Activé',
+			users: 'Utilisateurs'
+		},
+		protocols: {
+			smb: 'SMB/CIFS',
+			nfs: 'NFS',
+			ftp: 'FTP'
+		},
+		messages: {
+			noShares: 'Aucun dossier partagé configuré',
+			deleteConfirm: 'Êtes-vous sûr de vouloir supprimer ce partage ?'
+		}
+	},
+
+	// Folder Picker
+	folderPicker: {
+		title: 'Sélectionner un dossier',
+		browse: 'Parcourir',
+		select: 'Sélectionner',
+		selected: 'Sélectionné',
+		location: 'Emplacement',
+		noSubfolders: 'Aucun sous-dossier',
+		emptyFolder: 'Ce dossier est vide',
+		noLocations: 'Aucun emplacement disponible',
+		loading: 'Chargement...',
+		error: 'Échec du chargement des dossiers'
 	},
 
 	// Docker App

@@ -2,6 +2,7 @@
 	import Icon from '@iconify/svelte';
 	import UserManager from './UserManager.svelte';
 	import TimeLanguage from './TimeLanguage.svelte';
+	import FileService from './FileService.svelte';
 	import { t } from '$lib/i18n';
 
 	type ViewMode = 'grid' | 'detail';
@@ -27,7 +28,7 @@
 			titleKey: 'controlPanel.categories.connectionAccess',
 			items: [
 				{ id: 'users', icon: 'mdi:account-multiple', labelKey: 'controlPanel.items.userManagement', iconColor: 'text-blue-500', component: 'UserManager' },
-				{ id: 'files', icon: 'mdi:folder', labelKey: 'controlPanel.items.fileService', iconColor: 'text-orange-500' },
+				{ id: 'files', icon: 'mdi:folder', labelKey: 'controlPanel.items.fileService', iconColor: 'text-orange-500', component: 'FileService' },
 				{ id: 'device', icon: 'mdi:monitor-screenshot', labelKey: 'controlPanel.items.deviceConnection', iconColor: 'text-slate-500' },
 				{ id: 'domain', icon: 'mdi:domain', labelKey: 'controlPanel.items.domainLdap', iconColor: 'text-blue-600' },
 				{ id: 'terminal', icon: 'mdi:console-line', labelKey: 'controlPanel.items.terminal', iconColor: 'text-purple-500' }
@@ -222,6 +223,9 @@
 			{#if selectedItem === 'users'}
 				<!-- User Management -->
 				<UserManager />
+			{:else if selectedItem === 'files'}
+				<!-- File Services -->
+				<FileService />
 			{:else if selectedItem === 'time'}
 				<!-- Time & Language -->
 				<TimeLanguage />
