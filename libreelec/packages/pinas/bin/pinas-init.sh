@@ -68,4 +68,25 @@ else
     log "PiNAS: ERROR - Frontend not available! Web interface will not work."
 fi
 
+# Setup PATH for PiNAS binaries in user profile
+PROFILE_FILE="/storage/.profile"
+PINAS_PATH_LINE='export PATH="/storage/.pinas/bin:$PATH"'
+
+if [ -f "$PROFILE_FILE" ]; then
+    # Check if already configured
+    if ! grep -q "/storage/.pinas/bin" "$PROFILE_FILE" 2>/dev/null; then
+        log "PiNAS: Adding bin directory to PATH in .profile"
+        echo "" >> "$PROFILE_FILE"
+        echo "# PiNAS binaries" >> "$PROFILE_FILE"
+        echo "$PINAS_PATH_LINE" >> "$PROFILE_FILE"
+    fi
+else
+    log "PiNAS: Creating .profile with PATH configuration"
+    echo "# PiNAS binaries" > "$PROFILE_FILE"
+    echo "$PINAS_PATH_LINE" >> "$PROFILE_FILE"
+fi
+
+# Also create bin directory if it doesn't exist
+mkdir -p /storage/.pinas/bin
+
 log "PiNAS: Initialization complete"

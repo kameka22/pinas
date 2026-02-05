@@ -57,6 +57,11 @@
 	let selectedPackage: AppPackage | null = null;
 	let installError: string | null = null;
 
+	// Uninstall modal state
+	let showUninstallModal = false;
+	let uninstallTarget: AppPackage | null = null;
+	let deleteAppData = true;
+
 	const categories = [
 		{ id: 'all', labelKey: 'all', icon: 'mdi:view-grid' },
 		{ id: 'containers', labelKey: 'containers', icon: 'mdi:docker' },
@@ -340,11 +345,26 @@
 		throw new Error('Installation timed out');
 	}
 
-	async function handleUninstall(pkg: AppPackage | null) {
+	function showUninstallConfirmation(pkg: AppPackage | null) {
 		if (!pkg) return;
+		uninstallTarget = pkg;
+		deleteAppData = true;
+		showUninstallModal = true;
+	}
+
+	function cancelUninstall() {
+		showUninstallModal = false;
+		uninstallTarget = null;
+	}
+
+	async function confirmUninstall() {
+		if (!uninstallTarget) return;
+
+		const pkg = uninstallTarget;
+		showUninstallModal = false;
 
 		try {
-			const response = await fetch(`/api/packages/${pkg.id}`, {
+			const response = await fetch(`/api/packages/${pkg.id}?delete_data=${deleteAppData}`, {
 				method: 'DELETE'
 			});
 
@@ -364,6 +384,8 @@
 			console.error('Uninstall failed:', error);
 			installError = error instanceof Error ? error.message : 'Uninstall failed';
 		}
+
+		uninstallTarget = null;
 	}
 
 	function handleOpenApp(pkg: AppPackage | null) {
@@ -509,7 +531,7 @@
 								<Icon icon="mdi:open-in-new" class="w-5 h-5" />
 								{$t.appCenter.actions.open}
 							</button>
-							<button class="btn-danger" on:click={() => handleUninstall(selectedPackage)}>
+							<button class="btn-danger" on:click={() => showUninstallConfirmation(selectedPackage)}>
 								<Icon icon="mdi:delete" class="w-5 h-5" />
 								{$t.appCenter.actions.uninstall}
 							</button>
@@ -593,6 +615,34 @@
 			</div>
 		{/if}
 	</main>
+
+	<!-- Uninstall Confirmation Modal -->
+	{#if showUninstallModal && uninstallTarget}
+		<div class="modal-overlay" on:click={cancelUninstall} on:keydown={(e) => e.key === 'Escape' && cancelUninstall()} role="button" tabindex="0">
+			<div class="modal" on:click|stopPropagation role="dialog" aria-modal="true">
+				<div class="modal-header">
+					<Icon icon="mdi:alert-circle" class="w-6 h-6 text-red-500" />
+					<h3>{$t.appCenter.uninstallModal?.title || 'Uninstall Application'}</h3>
+				</div>
+				<div class="modal-body">
+					<p>{$t.appCenter.uninstallModal?.message || 'Do you want to uninstall'} <strong>{uninstallTarget.name}</strong> ?</p>
+					<label class="checkbox-label">
+						<input type="checkbox" bind:checked={deleteAppData} />
+						<span>{$t.appCenter.uninstallModal?.deleteData || 'Delete application data'}</span>
+					</label>
+				</div>
+				<div class="modal-actions">
+					<button class="btn-secondary" on:click={cancelUninstall}>
+						{$t.common.cancel}
+					</button>
+					<button class="btn-danger" on:click={confirmUninstall}>
+						<Icon icon="mdi:delete" class="w-5 h-5" />
+						{$t.appCenter.actions.uninstall}
+					</button>
+				</div>
+			</div>
+		</div>
+	{/if}
 </div>
 
 <style>
@@ -1095,5 +1145,80 @@
 	.loading-state p {
 		color: #64748b;
 		font-size: 14px;
+	}
+
+	/* Modal styles */
+	.modal-overlay {
+		position: fixed;
+		inset: 0;
+		background: rgba(0, 0, 0, 0.5);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		z-index: 1000;
+	}
+
+	.modal {
+		background: white;
+		border-radius: 12px;
+		width: 100%;
+		max-width: 420px;
+		box-shadow: 0 20px 50px rgba(0, 0, 0, 0.2);
+	}
+
+	.modal-header {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		padding: 20px 24px;
+		border-bottom: 1px solid #e2e8f0;
+	}
+
+	.modal-header h3 {
+		font-size: 18px;
+		font-weight: 600;
+		color: #1e293b;
+		margin: 0;
+	}
+
+	.modal-body {
+		padding: 20px 24px;
+	}
+
+	.modal-body p {
+		font-size: 14px;
+		color: #475569;
+		margin-bottom: 16px;
+		line-height: 1.5;
+	}
+
+	.checkbox-label {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		cursor: pointer;
+		font-size: 14px;
+		color: #334155;
+		padding: 12px;
+		background: #f8fafc;
+		border-radius: 8px;
+		border: 1px solid #e2e8f0;
+	}
+
+	.checkbox-label input[type="checkbox"] {
+		width: 18px;
+		height: 18px;
+		accent-color: #3b82f6;
+		cursor: pointer;
+	}
+
+	.modal-actions {
+		display: flex;
+		justify-content: flex-end;
+		gap: 12px;
+		padding: 16px 24px;
+		border-top: 1px solid #e2e8f0;
+		background: #f8fafc;
+		border-radius: 0 0 12px 12px;
 	}
 </style>

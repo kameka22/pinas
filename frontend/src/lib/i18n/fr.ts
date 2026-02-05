@@ -410,6 +410,11 @@ export default {
 			open: 'Ouvrir',
 			update: 'Mettre à jour'
 		},
+		uninstallModal: {
+			title: 'Désinstaller l\'application',
+			message: 'Voulez-vous désinstaller',
+			deleteData: 'Supprimer les données de l\'application'
+		},
 		missingDependencies: 'Dépendances manquantes',
 		requiresInstall: 'Nécessite',
 		dependencies: 'Dépendances',

@@ -1,11 +1,21 @@
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
     routing::{delete, get, post},
     Json, Router,
 };
 use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Deserialize)]
+struct UninstallQuery {
+    #[serde(default = "default_delete_data")]
+    delete_data: bool,
+}
+
+fn default_delete_data() -> bool {
+    true
+}
 
 use crate::models::manifest::{
     PackageManifest, Requirements, InstallConfig, UninstallConfig, FrontendConfig, WindowConfig,
@@ -431,10 +441,13 @@ fn get_docker_manifest() -> PackageManifest {
 async fn uninstall_package(
     State(state): State<AppState>,
     Path(id): Path<String>,
+    Query(query): Query<UninstallQuery>,
 ) -> impl IntoResponse {
     let service = PackageService::new(state.db.clone()).await;
 
-    match service.uninstall(&id).await {
+    tracing::info!("Uninstalling package: {}, delete_data: {}", id, query.delete_data);
+
+    match service.uninstall(&id, query.delete_data).await {
         Ok(_) => StatusCode::NO_CONTENT.into_response(),
         Err(e) => {
             tracing::error!("Failed to uninstall package: {}", e);

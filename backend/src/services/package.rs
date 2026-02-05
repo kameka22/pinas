@@ -667,7 +667,11 @@ impl PackageService {
     }
 
     /// Uninstall a package
-    pub async fn uninstall(&self, package_id: &str) -> Result<()> {
+    /// If delete_data is true, all tracked files including data directories will be deleted
+    /// If delete_data is false, only config/service files will be deleted, data is preserved
+    pub async fn uninstall(&self, package_id: &str, delete_data: bool) -> Result<()> {
+        tracing::info!("Uninstalling package: {}, delete_data: {}", package_id, delete_data);
+
         let package = self.get_installed(package_id).await?
             .ok_or_else(|| anyhow!("Package not found: {}", package_id))?;
 
@@ -697,27 +701,59 @@ impl PackageService {
             }
         }
 
-        // Delete tracked files
-        let files: Vec<String> = sqlx::query_scalar(
-            "SELECT path FROM package_files WHERE package_id = ? ORDER BY id DESC"
+        // Delete tracked files based on delete_data option
+        // file_type can be: "data", "config", "service", "symlink"
+        let files: Vec<(String, String)> = sqlx::query_as(
+            "SELECT path, file_type FROM package_files WHERE package_id = ? ORDER BY id DESC"
         )
         .bind(package_id)
         .fetch_all(&self.db)
         .await?;
 
-        for file_path in files {
-            if let Err(e) = fs::remove_file(&file_path).await {
-                tracing::warn!("Failed to remove file {}: {}", file_path, e);
+        for (file_path, file_type) in &files {
+            // Skip data files if delete_data is false
+            if !delete_data && file_type == "data" {
+                tracing::info!("Preserving data file: {}", file_path);
+                continue;
+            }
+
+            // Try to remove (could be file or directory)
+            if let Ok(metadata) = fs::metadata(&file_path).await {
+                if metadata.is_dir() {
+                    if let Err(e) = fs::remove_dir_all(&file_path).await {
+                        tracing::warn!("Failed to remove directory {}: {}", file_path, e);
+                    } else {
+                        tracing::info!("Removed directory: {}", file_path);
+                    }
+                } else {
+                    if let Err(e) = fs::remove_file(&file_path).await {
+                        tracing::warn!("Failed to remove file {}: {}", file_path, e);
+                    } else {
+                        tracing::info!("Removed file: {}", file_path);
+                    }
+                }
             }
         }
 
-        // Remove from database
-        sqlx::query("DELETE FROM package_files WHERE package_id = ?")
+        // Remove from database (keep data entries if not deleting data for potential reinstall)
+        if delete_data {
+            sqlx::query("DELETE FROM package_files WHERE package_id = ?")
+                .bind(package_id)
+                .execute(&self.db)
+                .await?;
+        } else {
+            sqlx::query("DELETE FROM package_files WHERE package_id = ? AND file_type != 'data'")
+                .bind(package_id)
+                .execute(&self.db)
+                .await?;
+        }
+
+        sqlx::query("DELETE FROM app_translations WHERE package_id = ?")
             .bind(package_id)
             .execute(&self.db)
             .await?;
 
-        sqlx::query("DELETE FROM app_translations WHERE package_id = ?")
+        sqlx::query("DELETE FROM docker_containers WHERE package_id = ?")
             .bind(package_id)
             .execute(&self.db)
             .await?;
