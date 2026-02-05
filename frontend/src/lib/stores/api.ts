@@ -163,28 +163,84 @@ class ApiClient {
 		}>('/system/info');
 	}
 
-	// Storage endpoints
-	async getDisks() {
-		return this.get<Array<{
-			device: string;
-			name: string;
-			size: number;
-			used: number;
-			mount_point: string | null;
-			filesystem: string | null;
-			is_removable: boolean;
-		}>>('/storage/disks');
+	async getProcesses(): Promise<ProcessListResponse> {
+		return this.get<ProcessListResponse>('/system/processes');
 	}
 
-	async getFilesystems() {
-		return this.get<Array<{
-			device: string;
-			mount_point: string;
-			filesystem: string;
-			total: number;
-			used: number;
-			available: number;
-		}>>('/storage/filesystems');
+	async killProcess(pid: number): Promise<{ success: boolean; message: string }> {
+		return this.post<{ success: boolean; message: string }>(`/system/processes/${pid}/kill`);
+	}
+
+	// Storage endpoints - Disks
+	async getDisks(): Promise<Disk[]> {
+		return this.get<Disk[]>('/storage/disks');
+	}
+
+	async getDiskSmartInfo(deviceName: string): Promise<SmartInfo> {
+		return this.get<SmartInfo>(`/storage/disks/${encodeURIComponent(deviceName)}/smart`);
+	}
+
+	async wipeDisk(deviceName: string): Promise<void> {
+		return this.post(`/storage/disks/${encodeURIComponent(deviceName)}/wipe`);
+	}
+
+	async getDiskCandidates(): Promise<DiskCandidate[]> {
+		return this.get<DiskCandidate[]>('/storage/candidates');
+	}
+
+	// Storage endpoints - Pools
+	async getPools(): Promise<StoragePool[]> {
+		return this.get<StoragePool[]>('/storage/pools');
+	}
+
+	async getPool(id: string): Promise<StoragePool> {
+		return this.get<StoragePool>(`/storage/pools/${id}`);
+	}
+
+	async createPool(data: CreatePoolRequest): Promise<{ id: string }> {
+		return this.post<{ id: string }>('/storage/pools', data);
+	}
+
+	async updatePool(id: string, data: UpdatePoolRequest): Promise<void> {
+		return this.put(`/storage/pools/${id}`, data);
+	}
+
+	async deletePool(id: string): Promise<void> {
+		return this.delete(`/storage/pools/${id}`);
+	}
+
+	async scrubPool(id: string): Promise<void> {
+		return this.post(`/storage/pools/${id}/scrub`);
+	}
+
+	// Storage endpoints - Volumes
+	async getVolumes(): Promise<VolumeInfo[]> {
+		return this.get<VolumeInfo[]>('/storage/volumes');
+	}
+
+	async getVolume(id: string): Promise<VolumeInfo> {
+		return this.get<VolumeInfo>(`/storage/volumes/${id}`);
+	}
+
+	async createVolume(poolId: string, data: CreateVolumeRequest): Promise<{ id: string }> {
+		return this.post<{ id: string }>(`/storage/pools/${poolId}/volumes`, data);
+	}
+
+	async deleteVolume(id: string): Promise<void> {
+		return this.delete(`/storage/volumes/${id}`);
+	}
+
+	async mountVolume(id: string): Promise<void> {
+		return this.post(`/storage/volumes/${id}/mount`);
+	}
+
+	async unmountVolume(id: string): Promise<void> {
+		return this.post(`/storage/volumes/${id}/unmount`);
+	}
+
+	// Legacy filesystem endpoint
+	async getFilesystems(): Promise<VolumeInfo[]> {
+		return this.get<VolumeInfo[]>('/storage/filesystems');
 	}
 
 	// Shares endpoints
@@ -316,23 +372,36 @@ class ApiClient {
 		return this.delete(`/groups/${groupId}/members/${userId}`);
 	}
 
+	// Locations endpoints
+	async getLocations(): Promise<BrowsableLocation[]> {
+		return this.get<BrowsableLocation[]>('/locations');
+	}
+
 	// Files endpoints
-	async getFiles(path: string = ''): Promise<FileItem[]> {
-		const encodedPath = encodeURIComponent(path);
-		return this.get<FileItem[]>(`/files?path=${encodedPath}`);
+	async getFiles(path: string = '', locationId?: string): Promise<FileItem[]> {
+		const params = new URLSearchParams();
+		params.set('path', path);
+		if (locationId) {
+			params.set('location_id', locationId);
+		}
+		return this.get<FileItem[]>(`/files?${params.toString()}`);
 	}
 
-	async createFolder(parentPath: string, name: string): Promise<FileItem> {
-		return this.post<FileItem>('/files/folder', { path: parentPath, name });
+	async createFolder(parentPath: string, name: string, locationId?: string): Promise<FileItem> {
+		return this.post<FileItem>('/files/folder', { path: parentPath, name, location_id: locationId });
 	}
 
-	async deleteFile(path: string): Promise<void> {
-		const encodedPath = encodeURIComponent(path);
-		return this.request<void>('DELETE', `/files?path=${encodedPath}`);
+	async deleteFile(path: string, locationId?: string): Promise<void> {
+		const params = new URLSearchParams();
+		params.set('path', path);
+		if (locationId) {
+			params.set('location_id', locationId);
+		}
+		return this.request<void>('DELETE', `/files?${params.toString()}`);
 	}
 
-	async renameFile(path: string, newName: string): Promise<FileItem> {
-		return this.patch<FileItem>('/files/rename', { path, new_name: newName });
+	async renameFile(path: string, newName: string, locationId?: string): Promise<FileItem> {
+		return this.patch<FileItem>('/files/rename', { path, new_name: newName, location_id: locationId });
 	}
 }
 
@@ -344,6 +413,158 @@ export interface FileItem {
 	size: number | null;
 	modified: string;
 	mime_type?: string;
+}
+
+// Browsable location types for File Manager sidebar
+export type BrowsableLocationType = 'home' | 'share' | 'volume';
+
+export interface BrowsableLocation {
+	type: BrowsableLocationType;
+	id: string;
+	name: string;
+	path: string;
+	icon: string;
+	// Share-specific fields
+	share_type?: string;
+	enabled?: boolean;
+	// Volume-specific fields
+	status?: string;
+	fs_type?: string;
+	usage_percent?: number;
+	pool_name?: string;
+}
+
+// Storage types
+export type DiskType = 'hdd' | 'ssd' | 'nvme' | 'sd' | 'usb' | 'unknown';
+export type RaidType = 'basic' | 'jbod' | 'raid0' | 'raid1' | 'raid5' | 'raid10' | 'btrfs-single' | 'btrfs-raid0' | 'btrfs-raid1' | 'btrfs-raid10';
+export type PoolStatus = 'normal' | 'degraded' | 'rebuilding' | 'error' | 'creating';
+export type VolumeStatus = 'mounted' | 'unmounted' | 'error' | 'creating';
+
+export interface Partition {
+	device_path: string;
+	number: number;
+	size: number;
+	fs_type: string | null;
+	label: string | null;
+	uuid: string | null;
+	mount_point: string | null;
+	is_system: boolean;
+}
+
+export interface Disk {
+	device_name: string;
+	device_path: string;
+	device_by_id: string | null;
+	model: string;
+	serial: string | null;
+	size: number;
+	disk_type: DiskType;
+	temperature: number | null;
+	health_status: string | null;
+	is_system: boolean;
+	is_removable: boolean;
+	partitions: Partition[];
+}
+
+export interface DiskCandidate {
+	device_path: string;
+	device_by_id: string | null;
+	model: string;
+	size: number;
+	disk_type: DiskType;
+	is_empty: boolean;
+}
+
+export interface SmartAttribute {
+	id: number;
+	name: string;
+	value: number;
+	worst: number;
+	threshold: number;
+	raw_value: string;
+}
+
+export interface SmartInfo {
+	device_path: string;
+	model: string;
+	serial: string | null;
+	firmware: string | null;
+	health_status: string;
+	temperature: number | null;
+	power_on_hours: number | null;
+	power_cycle_count: number | null;
+	reallocated_sectors: number | null;
+	pending_sectors: number | null;
+	attributes: SmartAttribute[];
+}
+
+export interface VolumeInfo {
+	id: string;
+	pool_id: string;
+	name: string;
+	fs_type: string;
+	mount_point: string;
+	size: number;
+	used: number;
+	available: number;
+	usage_percent: number;
+	status: VolumeStatus;
+	created_at: string;
+}
+
+export interface StoragePool {
+	id: string;
+	name: string;
+	description: string | null;
+	raid_type: RaidType;
+	status: PoolStatus;
+	devices: string[];
+	total_size: number;
+	used_size: number;
+	available_size: number;
+	volumes: VolumeInfo[];
+	created_at: string;
+}
+
+export interface CreatePoolRequest {
+	name: string;
+	description?: string;
+	raid_type: RaidType;
+	devices: string[];
+	wipe_devices?: boolean;
+}
+
+export interface UpdatePoolRequest {
+	name?: string;
+	description?: string;
+}
+
+export interface CreateVolumeRequest {
+	name: string;
+	fs_type: string;
+}
+
+// Process types
+export interface ProcessInfo {
+	pid: number;
+	name: string;
+	user: string;
+	cpu: number;
+	memory: number;
+	memory_percent: number;
+	status: string;
+	command: string;
+	start_time: number;
+}
+
+export interface ProcessListResponse {
+	processes: ProcessInfo[];
+	total_processes: number;
+	running_processes: number;
+	cpu_usage: number;
+	memory_usage: number;
+	total_memory: number;
+	used_memory: number;
 }
 
 export const api = new ApiClient(API_BASE);

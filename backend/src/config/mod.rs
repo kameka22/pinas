@@ -19,9 +19,17 @@ pub struct AppConfig {
     #[serde(default = "default_jwt_expiration")]
     pub jwt_expiration_hours: u64,
 
-    /// Root directory for file manager
+    /// Root directory for file manager (legacy, use homes_root instead)
     #[serde(default = "default_files_root")]
     pub files_root: String,
+
+    /// Root directory for user home directories
+    #[serde(default = "default_homes_root")]
+    pub homes_root: String,
+
+    /// Policy for handling home directory when user is deleted: "archive", "delete", "keep"
+    #[serde(default = "default_home_on_delete")]
+    pub home_on_delete: String,
 
     /// Directory for static frontend files (optional)
     #[serde(default)]
@@ -52,6 +60,14 @@ fn default_files_root() -> String {
     "./data/files".to_string()
 }
 
+fn default_homes_root() -> String {
+    "./data/homes".to_string()
+}
+
+fn default_home_on_delete() -> String {
+    "archive".to_string()
+}
+
 fn default_dev_mode() -> bool {
     false
 }
@@ -72,6 +88,8 @@ impl AppConfig {
             jwt_secret: default_jwt_secret(),
             jwt_expiration_hours: default_jwt_expiration(),
             files_root: default_files_root(),
+            homes_root: default_homes_root(),
+            home_on_delete: default_home_on_delete(),
             static_dir: None,
             dev_mode: default_dev_mode(),
         });

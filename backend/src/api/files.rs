@@ -10,6 +10,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
+use crate::api::middleware::AuthUser;
+use crate::services::home::HomeService;
+use crate::services::user::get_user_by_id;
 use crate::AppState;
 
 /// File or folder item
@@ -29,6 +32,8 @@ pub struct FileItem {
 #[derive(Debug, Deserialize)]
 pub struct ListQuery {
     pub path: Option<String>,
+    /// Location ID: "home-{user_id}", "share-{id}", "volume-{id}"
+    pub location_id: Option<String>,
 }
 
 /// Request to create a folder
@@ -36,12 +41,14 @@ pub struct ListQuery {
 pub struct CreateFolderRequest {
     pub path: String,
     pub name: String,
+    pub location_id: Option<String>,
 }
 
 /// Request to delete a file/folder
 #[derive(Debug, Deserialize)]
 pub struct DeleteQuery {
     pub path: String,
+    pub location_id: Option<String>,
 }
 
 /// Request to rename a file/folder
@@ -49,6 +56,7 @@ pub struct DeleteQuery {
 pub struct RenameRequest {
     pub path: String,
     pub new_name: String,
+    pub location_id: Option<String>,
 }
 
 /// Error response
@@ -102,6 +110,78 @@ fn validate_path(base: &Path, requested: &str) -> Result<PathBuf, String> {
     }
 
     Ok(full_path)
+}
+
+/// Resolve a location_id to its base path
+async fn resolve_location_path(
+    state: &AppState,
+    user: &AuthUser,
+    location_id: &str,
+) -> Result<PathBuf, String> {
+    if location_id.starts_with("home-") {
+        // User home directory
+        let home_user_id = location_id.strip_prefix("home-").unwrap();
+
+        // User can only access their own home (unless admin)
+        if home_user_id != user.id && !user.is_admin {
+            return Err("Access denied".to_string());
+        }
+
+        // Get the username for the home directory
+        let target_user = get_user_by_id(&state.db, home_user_id)
+            .await
+            .map_err(|e| format!("Database error: {}", e))?
+            .ok_or_else(|| "User not found".to_string())?;
+
+        let home_service = HomeService::new(&state.config);
+        Ok(home_service.get_home_path(&target_user.username))
+    } else if location_id.starts_with("share-") {
+        // Shared folder
+        let share_id = location_id.strip_prefix("share-").unwrap();
+
+        // Get share from database
+        let share: Option<(String,)> = sqlx::query_as(
+            "SELECT path FROM shares WHERE id = ? AND enabled = TRUE"
+        )
+        .bind(share_id)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|e| format!("Database error: {}", e))?;
+
+        match share {
+            Some((path,)) => Ok(PathBuf::from(path)),
+            None => Err("Share not found or disabled".to_string()),
+        }
+    } else if location_id.starts_with("volume-") {
+        // Mounted volume
+        let volume_id = location_id.strip_prefix("volume-").unwrap();
+
+        // Only admin can access volumes directly
+        if !user.is_admin {
+            return Err("Access denied: admin only".to_string());
+        }
+
+        // Get volume mount point from database
+        let volume: Option<(String, String)> = sqlx::query_as(
+            "SELECT mount_point, status FROM storage_volumes WHERE id = ?"
+        )
+        .bind(volume_id)
+        .fetch_optional(&state.db)
+        .await
+        .map_err(|e| format!("Database error: {}", e))?;
+
+        match volume {
+            Some((mount_point, status)) => {
+                if status != "mounted" {
+                    return Err("Volume is not mounted".to_string());
+                }
+                Ok(PathBuf::from(mount_point))
+            }
+            None => Err("Volume not found".to_string()),
+        }
+    } else {
+        Err("Invalid location_id format".to_string())
+    }
 }
 
 /// Get MIME type from file extension
@@ -167,9 +247,34 @@ fn format_time(time: SystemTime) -> String {
 /// List files in a directory
 async fn list_files(
     State(state): State<AppState>,
+    user: AuthUser,
     Query(query): Query<ListQuery>,
 ) -> impl IntoResponse {
-    let base_path = PathBuf::from(&state.config.files_root);
+    // Determine base path based on location_id
+    let base_path = if let Some(ref loc_id) = query.location_id {
+        match resolve_location_path(&state, &user, loc_id).await {
+            Ok(path) => path,
+            Err(e) => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(ErrorResponse { error: e }),
+                ).into_response();
+            }
+        }
+    } else {
+        // Default to user's home directory
+        let home_service = HomeService::new(&state.config);
+        let home_path = home_service.get_home_path(&user.username);
+
+        // Create home if it doesn't exist
+        if !home_path.exists() {
+            if let Err(e) = home_service.create_home(&user.username).await {
+                tracing::warn!("Failed to create home directory: {}", e);
+            }
+        }
+
+        home_path
+    };
 
     // Ensure base directory exists
     if !base_path.exists() {
@@ -277,9 +382,24 @@ async fn list_files(
 /// Create a new folder
 async fn create_folder(
     State(state): State<AppState>,
+    user: AuthUser,
     Json(payload): Json<CreateFolderRequest>,
 ) -> impl IntoResponse {
-    let base_path = PathBuf::from(&state.config.files_root);
+    // Determine base path based on location_id
+    let base_path = if let Some(ref loc_id) = payload.location_id {
+        match resolve_location_path(&state, &user, loc_id).await {
+            Ok(path) => path,
+            Err(e) => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(ErrorResponse { error: e }),
+                ).into_response();
+            }
+        }
+    } else {
+        let home_service = HomeService::new(&state.config);
+        home_service.get_home_path(&user.username)
+    };
 
     // Validate parent path
     let parent_path = match validate_path(&base_path, &payload.path) {
@@ -343,9 +463,24 @@ async fn create_folder(
 /// Delete a file or folder
 async fn delete_file(
     State(state): State<AppState>,
+    user: AuthUser,
     Query(query): Query<DeleteQuery>,
 ) -> impl IntoResponse {
-    let base_path = PathBuf::from(&state.config.files_root);
+    // Determine base path based on location_id
+    let base_path = if let Some(ref loc_id) = query.location_id {
+        match resolve_location_path(&state, &user, loc_id).await {
+            Ok(path) => path,
+            Err(e) => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(ErrorResponse { error: e }),
+                ).into_response();
+            }
+        }
+    } else {
+        let home_service = HomeService::new(&state.config);
+        home_service.get_home_path(&user.username)
+    };
 
     // Validate path
     let full_path = match validate_path(&base_path, &query.path) {
@@ -393,9 +528,24 @@ async fn delete_file(
 /// Rename a file or folder
 async fn rename_file(
     State(state): State<AppState>,
+    user: AuthUser,
     Json(payload): Json<RenameRequest>,
 ) -> impl IntoResponse {
-    let base_path = PathBuf::from(&state.config.files_root);
+    // Determine base path based on location_id
+    let base_path = if let Some(ref loc_id) = payload.location_id {
+        match resolve_location_path(&state, &user, loc_id).await {
+            Ok(path) => path,
+            Err(e) => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(ErrorResponse { error: e }),
+                ).into_response();
+            }
+        }
+    } else {
+        let home_service = HomeService::new(&state.config);
+        home_service.get_home_path(&user.username)
+    };
 
     // Validate original path
     let full_path = match validate_path(&base_path, &payload.path) {

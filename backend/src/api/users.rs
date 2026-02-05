@@ -8,8 +8,9 @@ use axum::{
 use serde::{Deserialize, Serialize};
 
 use crate::api::middleware::{AdminUser, AuthErrorResponse, AuthUser};
+use crate::services::home::HomeService;
 use crate::services::user::{
-    self, change_password, create_user as create_user_service, delete_user as delete_user_service,
+    self, change_password, create_user_with_home, delete_user_with_home,
     get_user_by_id, list_users as list_users_service, update_user as update_user_service,
     UserError, UserUpdate,
 };
@@ -142,12 +143,16 @@ async fn create_user(
             .into_response();
     }
 
-    match create_user_service(
+    // Create HomeService to manage user's home directory
+    let home_service = HomeService::new(&state.config);
+
+    match create_user_with_home(
         &state.db,
         &payload.username,
         &payload.password,
         payload.email,
         payload.is_admin,
+        &home_service,
     )
     .await
     {
@@ -257,7 +262,10 @@ async fn delete_user(
     admin: AdminUser,
     Path(id): Path<String>,
 ) -> impl IntoResponse {
-    match delete_user_service(&state.db, &id, &admin.id).await {
+    // Create HomeService to handle user's home directory cleanup
+    let home_service = HomeService::new(&state.config);
+
+    match delete_user_with_home(&state.db, &id, &admin.id, &home_service).await {
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(e) => {
             tracing::error!("Failed to delete user: {}", e);

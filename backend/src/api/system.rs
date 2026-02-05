@@ -1,12 +1,12 @@
 use axum::{
-    extract::State,
+    extract::{Path, State},
     http::StatusCode,
     response::IntoResponse,
     routing::{get, post},
     Json, Router,
 };
-use serde::Serialize;
-use sysinfo::System;
+use serde::{Deserialize, Serialize};
+use sysinfo::{System, Signal, Pid};
 
 use crate::AppState;
 
@@ -14,6 +14,8 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/info", get(get_info))
         .route("/services", get(get_services))
+        .route("/processes", get(get_processes))
+        .route("/processes/{pid}/kill", post(kill_process))
         .route("/reboot", post(reboot))
         .route("/shutdown", post(shutdown))
 }
@@ -57,6 +59,35 @@ pub struct ServiceStatus {
     pub name: String,
     pub status: String,
     pub enabled: bool,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ProcessInfo {
+    pub pid: u32,
+    pub name: String,
+    pub user: String,
+    pub cpu: f32,
+    pub memory: u64,
+    pub memory_percent: f32,
+    pub status: String,
+    pub command: String,
+    pub start_time: u64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ProcessListResponse {
+    pub processes: Vec<ProcessInfo>,
+    pub total_processes: usize,
+    pub running_processes: usize,
+    pub cpu_usage: f32,
+    pub memory_usage: f32,
+    pub total_memory: u64,
+    pub used_memory: u64,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct KillProcessRequest {
+    pub signal: Option<String>,
 }
 
 /// Get system information
@@ -136,4 +167,98 @@ async fn shutdown(State(_state): State<AppState>) -> impl IntoResponse {
     // nix::sys::reboot::reboot(nix::sys::reboot::RebootMode::RB_POWER_OFF)
     tracing::info!("Shutdown requested");
     StatusCode::OK
+}
+
+/// Get list of running processes
+async fn get_processes(State(_state): State<AppState>) -> impl IntoResponse {
+    let mut sys = System::new_all();
+    sys.refresh_all();
+
+    // Wait a bit for CPU measurements to be accurate
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    sys.refresh_all();
+
+    let total_memory = sys.total_memory();
+    let used_memory = sys.used_memory();
+    let cpu_usage = sys.global_cpu_info().cpu_usage();
+    let memory_usage = (used_memory as f32 / total_memory as f32) * 100.0;
+
+    let mut processes: Vec<ProcessInfo> = sys
+        .processes()
+        .iter()
+        .map(|(pid, process)| {
+            let status = match process.status() {
+                sysinfo::ProcessStatus::Run => "running",
+                sysinfo::ProcessStatus::Sleep => "sleeping",
+                sysinfo::ProcessStatus::Stop => "stopped",
+                sysinfo::ProcessStatus::Zombie => "zombie",
+                sysinfo::ProcessStatus::Idle => "idle",
+                _ => "unknown",
+            };
+
+            // Get user name from user_id
+            let user = process
+                .user_id()
+                .map(|uid| {
+                    sysinfo::Users::new_with_refreshed_list()
+                        .iter()
+                        .find(|u| u.id() == uid)
+                        .map(|u| u.name().to_string())
+                        .unwrap_or_else(|| format!("{}", **uid))
+                })
+                .unwrap_or_else(|| "unknown".to_string());
+
+            ProcessInfo {
+                pid: pid.as_u32(),
+                name: process.name().to_string(),
+                user,
+                cpu: process.cpu_usage(),
+                memory: process.memory(),
+                memory_percent: (process.memory() as f32 / total_memory as f32) * 100.0,
+                status: status.to_string(),
+                command: process.cmd().join(" "),
+                start_time: process.start_time(),
+            }
+        })
+        .collect();
+
+    // Sort by CPU usage descending
+    processes.sort_by(|a, b| b.cpu.partial_cmp(&a.cpu).unwrap_or(std::cmp::Ordering::Equal));
+
+    let total_processes = processes.len();
+    let running_processes = processes.iter().filter(|p| p.status == "running").count();
+
+    Json(ProcessListResponse {
+        processes,
+        total_processes,
+        running_processes,
+        cpu_usage,
+        memory_usage,
+        total_memory,
+        used_memory,
+    })
+}
+
+/// Kill a process by PID
+async fn kill_process(
+    State(_state): State<AppState>,
+    Path(pid): Path<u32>,
+) -> impl IntoResponse {
+    let mut sys = System::new_all();
+    sys.refresh_all();
+
+    let pid = Pid::from_u32(pid);
+
+    if let Some(process) = sys.process(pid) {
+        // Default to SIGTERM for graceful termination
+        if process.kill_with(Signal::Term).unwrap_or(false) {
+            tracing::info!("Process {} killed successfully", pid);
+            return (StatusCode::OK, Json(serde_json::json!({"success": true, "message": "Process terminated"})));
+        } else {
+            tracing::warn!("Failed to kill process {}", pid);
+            return (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"success": false, "message": "Failed to kill process"})));
+        }
+    }
+
+    (StatusCode::NOT_FOUND, Json(serde_json::json!({"success": false, "message": "Process not found"})))
 }

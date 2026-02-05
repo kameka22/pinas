@@ -54,3 +54,11 @@ libreelec/packages/pinas/bin/pinas
 .worktrees/
 .security-key
 logs/security/
+
+# Claude-mem context files (subdirectories only, root CLAUDE.md is tracked)
+*/CLAUDE.md
+*/*/CLAUDE.md
+*/*/*/CLAUDE.md
+*/*/*/*/CLAUDE.md
+*/*/*/*/*/CLAUDE.md
+PLAN.md

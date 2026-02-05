@@ -87,13 +87,37 @@
 - [x] Utiliser crate `sysinfo` pour les métriques
 - [ ] Utiliser crate `nix` pour les appels système
 
-### 2.2 Storage Service
-- [ ] `GET /api/storage/disks` - Liste des disques
-- [ ] `GET /api/storage/partitions` - Partitions
-- [ ] `GET /api/storage/filesystems` - FS montés
-- [ ] `POST /api/storage/mount` - Monter
-- [ ] `POST /api/storage/unmount` - Démonter
-- [ ] `POST /api/storage/format` - Formater (avec confirmation)
+### 2.2 Storage Service (Storage Manager complet) ✅
+
+#### 2.2.1 Disques physiques
+- [x] `GET /api/storage/disks` - Liste disques + partitions (lsblk)
+- [x] `GET /api/storage/disks/:name/smart` - Données S.M.A.R.T. (smartctl)
+- [x] `POST /api/storage/disks/:name/wipe` - Effacer disque (protégé si système)
+- [x] `GET /api/storage/candidates` - Disques disponibles pour pools
+- [x] Protection automatique disques système (/flash, /storage, mmcblk0)
+
+#### 2.2.2 Pools de stockage
+- [x] Migration DB `005_storage.sql` (storage_pools, storage_volumes)
+- [x] `GET /api/storage/pools` - Liste des pools
+- [x] `POST /api/storage/pools` - Créer pool (Basic, JBOD, RAID)
+- [x] `GET /api/storage/pools/:id` - Détails pool
+- [x] `PUT /api/storage/pools/:id` - Modifier pool (nom, description)
+- [x] `DELETE /api/storage/pools/:id` - Supprimer pool
+- [x] `POST /api/storage/pools/:id/scrub` - Vérification RAID
+
+#### 2.2.3 Volumes
+- [x] `GET /api/storage/volumes` - Liste volumes
+- [x] `POST /api/storage/pools/:id/volumes` - Créer volume (mkfs)
+- [x] `DELETE /api/storage/volumes/:id` - Supprimer volume
+- [x] `POST /api/storage/volumes/:id/mount` - Monter
+- [x] `POST /api/storage/volumes/:id/unmount` - Démonter
+- [ ] `POST /api/storage/volumes/:id/resize` - Redimensionner
+
+#### 2.2.4 Types RAID supportés
+- [x] Basic (partition simple)
+- [x] JBOD (Just a Bunch of Disks)
+- [x] RAID 0, 1, 5, 10
+- [x] Btrfs RAID (single, raid0, raid1, raid10 natif)
 
 ### 2.3 Share Service
 - [ ] `GET /api/shares` - Liste des partages
@@ -144,6 +168,27 @@
 - [x] `GET /api/docker/images` - Liste images
 - [x] Pull image via bollard
 - [x] Create container via bollard
+
+### 2.9 Home Service ✅ NOUVEAU
+- [x] Configuration `homes_root` et `home_on_delete` dans config
+- [x] Service `HomeService` (`services/home.rs`)
+  - [x] `create_home(username)` - Crée dossier home avec sous-dossiers
+  - [x] `handle_user_deletion(username)` - Archive/supprime/conserve selon config
+  - [x] `get_home_path(username)` - Retourne chemin du home
+- [x] Sous-dossiers par défaut : Documents, Downloads, Photos, Music, Videos
+- [x] Intégration avec User Service (création/suppression utilisateur)
+- [x] Création home admin lors du setup initial
+
+### 2.10 Locations Service ✅ NOUVEAU
+- [x] `GET /api/locations` - Emplacements navigables pour File Manager
+  - [x] Home directories utilisateurs
+  - [x] Partages (shares)
+  - [x] Volumes montés (admin uniquement)
+- [x] Support `location_id` dans API Files
+  - [x] `GET /api/files?location_id=...`
+  - [x] `POST /api/files/folder` avec location_id
+  - [x] `DELETE /api/files` avec location_id
+  - [x] `PATCH /api/files/rename` avec location_id
 
 ---
 
@@ -215,12 +260,22 @@
 ## Phase 5 : Applications (Fenêtres)
 
 ### 5.1-5.6 Applications existantes
-- [x] Storage Manager (UI mockup)
-- [x] File Manager (UI + connexion API)
+- [x] Storage Manager (complet - pools, volumes, disks, partitions, S.M.A.R.T., wipe)
+- [x] File Manager (complet - sidebar dynamique avec home/shares/volumes)
 - [x] Share Manager (UI mockup)
 - [x] User Manager (complet style UGOS)
 - [x] Control Panel (complet style UGOS)
 - [x] System Settings (UI mockup)
+
+### 5.14 File Manager amélioré ✅ NOUVEAU
+- [x] Sidebar dynamique avec sections collapsibles
+  - [x] Section "Personnel" (dossier home utilisateur)
+  - [x] Section "Dossiers partagés" (shares actifs)
+  - [x] Section "Volumes" (volumes montés, admin uniquement)
+- [x] Navigation entre locations (home, shares, volumes)
+- [x] Barre d'utilisation pour volumes
+- [x] Indicateurs de statut (monté/démonté, activé/désactivé)
+- [x] i18n complet (EN/FR) pour les nouvelles sections
 
 ### 5.9 Package Manager / App Center ✅ NOUVEAU
 - [x] App Center (UI complète avec catégories, recherche, détails)
@@ -264,8 +319,10 @@
 - [x] Stats système (CPU, mémoire)
 - [x] Liste processus triable (PID, nom, CPU%, RAM)
 - [x] Barre de recherche/filtre
-- [x] Simulation données (fake process list)
-- [x] Mise à jour temps réel des stats
+- [x] Connexion API backend avec données réelles
+- [x] Kill process avec confirmation
+- [x] Auto-refresh toutes les 3 secondes
+- [x] i18n complet (EN/FR)
 
 ### 5.13 Composants Apps Génériques ✅
 - [x] `IframeApp.svelte` - Affiche app web dans iframe avec toolbar
@@ -365,9 +422,11 @@
 - **i18n** : Traductions EN/FR + support dynamique par app + labelKey pour noms d'apps
 - **Window Manager** : Support appConfig pour composants dynamiques
 - **Terminal** : Application terminal web avec historique et commandes built-in
-- **Process Manager** : Gestionnaire de processus (simulation)
+- **Process Manager** : Gestionnaire de processus avec données système réelles
 - **User Dropdown** : Menu utilisateur dans TopBar (profil, mot de passe, logout)
 - **Modales** : ProfileModal, ChangePasswordModal
+- **Storage Manager** : Complet avec pools, volumes, disks, partitions, S.M.A.R.T., wipe, scrub
+- **File Manager** : Sidebar dynamique avec home/shares/volumes et navigation multi-locations
 
 ### Backend (Fonctionnel)
 - **Package Manager** : Installation complète avec Docker support
@@ -379,6 +438,8 @@
 - **Users/Groups** : CRUD complet avec API REST
 - **Setup API** : Endpoint onboarding avec création admin
 - **Terminal API** : Exécution commandes avec sécurité
+- **Home Service** : Gestion automatique des dossiers home utilisateurs
+- **Locations API** : Emplacements navigables (home, shares, volumes)
 
 ### App Catalog (GitHub)
 - **Repository** : `kameka22/pinas-app-catalog`
@@ -393,26 +454,47 @@
 
 ## Prochaines étapes
 
+### Terminé récemment ✅
+- [x] **Storage Manager complet**
+  - [x] Backend: API disques, pools, volumes (avec dev mode)
+  - [x] Frontend: Refonte UI avec wizard création pool
+  - [x] Protection disques système automatique
+  - [x] Support RAID (Basic, JBOD, RAID0/1/5/10, Btrfs)
+  - [x] Pool Scrub operation, Pool Edit, Disk Wipe, Disk Details, S.M.A.R.T.
+  - [x] i18n complet (EN/FR)
+- [x] **Home directories & File Manager dynamique**
+  - [x] Backend: HomeService (création/archivage dossiers home)
+  - [x] Backend: Locations API (GET /api/locations)
+  - [x] Backend: Support location_id dans API Files
+  - [x] Frontend: Sidebar dynamique avec sections (Personnel, Partages, Volumes)
+  - [x] i18n complet (EN/FR)
+
 ### Court terme
 - [ ] Tester installation réelle d'apps sur Pi
 - [ ] Ajouter plus d'apps au catalogue (Nextcloud, Transmission, Home Assistant)
 - [x] Implémenter endpoint `/api/services` pour ServiceApp
-- [ ] Connecter Process Manager aux vraies données système
+- [x] Connecter Process Manager aux vraies données système
 - [ ] Améliorer Terminal avec auto-completion
 
 ### Moyen terme
 - [ ] Connexion complète UI ↔ Backend pour toutes les apps
 - [x] Gestion utilisateurs fonctionnelle
 - [ ] Partages SMB via interface
-- [ ] Storage Manager connecté au backend
+- [x] Storage Manager connecté au backend
+- [x] File Manager avec locations dynamiques
+- [ ] Volume resize
+- [ ] Drag & drop dans File Manager
+- [ ] Upload fichiers dans File Manager
 
 ### Long terme
 - [ ] Support NFS
-- [ ] S.M.A.R.T. monitoring
+- [x] S.M.A.R.T. monitoring (intégré au Storage Manager)
 - [ ] Synchronisation cloud (rclone)
 - [ ] Backup/Restore système
+- [ ] Real-time updates via WebSocket pour Storage Manager
+- [ ] Permissions par dossier/volume
 
 ---
 
-*Dernière mise à jour : Janvier 2025*
+*Dernière mise à jour : 5 Février 2026*
 *Cible OS : LibreELEC 12.x (package intégré à l'image)*

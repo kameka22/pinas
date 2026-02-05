@@ -12,6 +12,7 @@ import AppCenter from './AppCenter.svelte';
 import DockerApp from './DockerApp.svelte';
 import TerminalApp from './TerminalApp.svelte';
 import ProcessManager from './ProcessManager.svelte';
+import KodiApp from './KodiApp.svelte';
 import IframeApp from './IframeApp.svelte';
 import WebviewApp from './WebviewApp.svelte';
 import ServiceApp from './ServiceApp.svelte';
@@ -43,6 +44,7 @@ export const appComponents: Record<string, AnyComponent> = {
 	DockerApp,
 	TerminalApp,
 	ProcessManager,
+	KodiApp,
 
 	// Generic app containers
 	IframeApp,
@@ -88,6 +90,7 @@ export {
 	DockerApp,
 	TerminalApp,
 	ProcessManager,
+	KodiApp,
 	IframeApp,
 	WebviewApp,
 	ServiceApp

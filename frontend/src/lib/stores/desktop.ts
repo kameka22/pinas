@@ -98,6 +98,14 @@ export const builtInApps: DesktopApp[] = [
 		icon: 'mdi:chart-timeline-variant',
 		component: 'ProcessManager',
 		gradient: 'from-emerald-500 to-teal-600'
+	},
+	{
+		id: 'kodi',
+		label: 'Kodi',
+		labelKey: 'kodi',
+		icon: 'mdi:kodi',
+		component: 'KodiApp',
+		gradient: 'from-cyan-500 to-teal-500'
 	}
 ];
 

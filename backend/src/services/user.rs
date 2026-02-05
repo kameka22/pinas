@@ -3,6 +3,7 @@ use thiserror::Error;
 
 use crate::models::user::User;
 use crate::services::auth::{hash_password, AuthError};
+use crate::services::home::HomeService;
 
 /// User service errors
 #[derive(Debug, Error)]
@@ -69,6 +70,30 @@ pub async fn create_user(
     .bind(&user.updated_at)
     .execute(db)
     .await?;
+
+    Ok(user)
+}
+
+/// Create a new user with home directory
+pub async fn create_user_with_home(
+    db: &SqlitePool,
+    username: &str,
+    password: &str,
+    email: Option<String>,
+    is_admin: bool,
+    home_service: &HomeService,
+) -> Result<User, UserError> {
+    // Create the user in database first
+    let user = create_user(db, username, password, email, is_admin).await?;
+
+    // Create home directory (non-blocking on failure)
+    if let Err(e) = home_service.create_home(username).await {
+        tracing::warn!(
+            "Failed to create home directory for user {}: {}",
+            username,
+            e
+        );
+    }
 
     Ok(user)
 }
@@ -167,6 +192,32 @@ pub async fn delete_user(
         .bind(id)
         .execute(db)
         .await?;
+
+    Ok(())
+}
+
+/// Delete a user and handle their home directory
+pub async fn delete_user_with_home(
+    db: &SqlitePool,
+    id: &str,
+    current_user_id: &str,
+    home_service: &HomeService,
+) -> Result<(), UserError> {
+    // Get user info before deletion (need username for home dir)
+    let user = get_user_by_id(db, id).await?.ok_or(UserError::NotFound)?;
+    let username = user.username.clone();
+
+    // Delete the user from database
+    delete_user(db, id, current_user_id).await?;
+
+    // Handle home directory (non-blocking on failure)
+    if let Err(e) = home_service.handle_user_deletion(&username).await {
+        tracing::warn!(
+            "Failed to handle home directory for deleted user {}: {}",
+            username,
+            e
+        );
+    }
 
     Ok(())
 }

@@ -2,65 +2,53 @@
 	import { onMount, onDestroy } from 'svelte';
 	import Icon from '@iconify/svelte';
 	import { t } from '$lib/i18n';
+	import { api, type ProcessInfo } from '$lib/stores/api';
 
-	interface Process {
-		pid: number;
-		name: string;
-		user: string;
-		cpu: number;
-		memory: number;
-		status: 'running' | 'sleeping' | 'stopped';
-	}
-
-	// Fake process data
-	const fakeProcesses: Process[] = [
-		{ pid: 1, name: 'systemd', user: 'root', cpu: 0.1, memory: 12.4, status: 'running' },
-		{ pid: 245, name: 'kodi', user: 'kodi', cpu: 8.2, memory: 324.5, status: 'running' },
-		{ pid: 312, name: 'pinas-backend', user: 'root', cpu: 2.4, memory: 48.2, status: 'running' },
-		{ pid: 456, name: 'smbd', user: 'root', cpu: 0.3, memory: 18.7, status: 'running' },
-		{ pid: 489, name: 'nmbd', user: 'root', cpu: 0.1, memory: 8.2, status: 'running' },
-		{ pid: 523, name: 'avahi-daemon', user: 'avahi', cpu: 0.0, memory: 4.1, status: 'sleeping' },
-		{ pid: 567, name: 'sshd', user: 'root', cpu: 0.0, memory: 6.8, status: 'sleeping' },
-		{ pid: 612, name: 'dockerd', user: 'root', cpu: 1.2, memory: 86.4, status: 'running' },
-		{ pid: 678, name: 'containerd', user: 'root', cpu: 0.8, memory: 42.1, status: 'running' },
-		{ pid: 734, name: 'rsyslogd', user: 'root', cpu: 0.0, memory: 5.6, status: 'sleeping' },
-		{ pid: 789, name: 'crond', user: 'root', cpu: 0.0, memory: 2.1, status: 'sleeping' },
-		{ pid: 823, name: 'nginx', user: 'www-data', cpu: 0.2, memory: 12.3, status: 'running' },
-		{ pid: 891, name: 'php-fpm', user: 'www-data', cpu: 0.5, memory: 28.9, status: 'sleeping' },
-		{ pid: 934, name: 'mariadb', user: 'mysql', cpu: 1.8, memory: 156.2, status: 'running' },
-		{ pid: 1023, name: 'node', user: 'pinas', cpu: 3.1, memory: 92.4, status: 'running' },
-	];
-
-	let processes: Process[] = [...fakeProcesses];
-	let sortColumn: keyof Process = 'cpu';
+	let processes: ProcessInfo[] = [];
+	let sortColumn: keyof ProcessInfo = 'cpu';
 	let sortDirection: 'asc' | 'desc' = 'desc';
 	let searchQuery = '';
 	let refreshInterval: ReturnType<typeof setInterval>;
+	let loading = true;
+	let error: string | null = null;
 
-	// System stats (fake)
-	let cpuUsage = 15.4;
-	let memoryUsage = 42.8;
-	let totalProcesses = processes.length;
-	let runningProcesses = processes.filter(p => p.status === 'running').length;
+	// System stats
+	let cpuUsage = 0;
+	let memoryUsage = 0;
+	let totalMemory = 0;
+	let usedMemory = 0;
+	let totalProcesses = 0;
+	let runningProcesses = 0;
+
+	async function loadProcesses() {
+		try {
+			const data = await api.getProcesses();
+			processes = data.processes;
+			cpuUsage = data.cpu_usage;
+			memoryUsage = data.memory_usage;
+			totalMemory = data.total_memory;
+			usedMemory = data.used_memory;
+			totalProcesses = data.total_processes;
+			runningProcesses = data.running_processes;
+			error = null;
+		} catch (e) {
+			error = e instanceof Error ? e.message : $t.processManager?.errors?.loadFailed || 'Failed to load processes';
+		} finally {
+			loading = false;
+		}
+	}
 
 	onMount(() => {
-		// Simulate random CPU/memory fluctuations
-		refreshInterval = setInterval(() => {
-			processes = processes.map(p => ({
-				...p,
-				cpu: Math.max(0, p.cpu + (Math.random() - 0.5) * 0.5),
-				memory: Math.max(0, p.memory + (Math.random() - 0.5) * 2)
-			}));
-			cpuUsage = Math.max(5, Math.min(95, cpuUsage + (Math.random() - 0.5) * 3));
-			memoryUsage = Math.max(20, Math.min(90, memoryUsage + (Math.random() - 0.5) * 2));
-		}, 2000);
+		loadProcesses();
+		// Refresh every 3 seconds
+		refreshInterval = setInterval(loadProcesses, 3000);
 	});
 
 	onDestroy(() => {
 		if (refreshInterval) clearInterval(refreshInterval);
 	});
 
-	function sortBy(column: keyof Process) {
+	function sortBy(column: keyof ProcessInfo) {
 		if (sortColumn === column) {
 			sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
 		} else {
@@ -71,7 +59,8 @@
 
 	$: filteredProcesses = processes
 		.filter(p => p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-					 p.user.toLowerCase().includes(searchQuery.toLowerCase()))
+					 p.user.toLowerCase().includes(searchQuery.toLowerCase()) ||
+					 p.pid.toString().includes(searchQuery))
 		.sort((a, b) => {
 			const aVal = a[sortColumn];
 			const bVal = b[sortColumn];
@@ -82,25 +71,49 @@
 			return ((aVal as number) - (bVal as number)) * modifier;
 		});
 
-	function getStatusColor(status: Process['status']): string {
+	function getStatusColor(status: string): string {
 		switch (status) {
 			case 'running': return 'text-green-500';
-			case 'sleeping': return 'text-blue-400';
+			case 'sleeping':
+			case 'idle': return 'text-blue-400';
 			case 'stopped': return 'text-red-500';
+			case 'zombie': return 'text-orange-500';
 			default: return 'text-gray-400';
 		}
 	}
 
-	function formatMemory(mb: number): string {
-		if (mb >= 1024) {
-			return (mb / 1024).toFixed(1) + ' GB';
+	function formatMemory(bytes: number): string {
+		if (bytes >= 1024 * 1024 * 1024) {
+			return (bytes / (1024 * 1024 * 1024)).toFixed(1) + ' GB';
 		}
-		return mb.toFixed(1) + ' MB';
+		if (bytes >= 1024 * 1024) {
+			return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+		}
+		if (bytes >= 1024) {
+			return (bytes / 1024).toFixed(1) + ' KB';
+		}
+		return bytes + ' B';
 	}
 
-	function handleKillProcess(pid: number) {
-		// Fake kill - just remove from list
-		processes = processes.filter(p => p.pid !== pid);
+	function formatTotalMemory(bytes: number): string {
+		return (bytes / (1024 * 1024 * 1024)).toFixed(1) + ' GB';
+	}
+
+	async function handleKillProcess(pid: number) {
+		if (!confirm($t.processManager?.confirmKill || `Are you sure you want to kill process ${pid}?`)) {
+			return;
+		}
+		try {
+			await api.killProcess(pid);
+			// Remove from local list immediately for responsiveness
+			processes = processes.filter(p => p.pid !== pid);
+		} catch (e) {
+			error = e instanceof Error ? e.message : $t.processManager?.errors?.killFailed || 'Failed to kill process';
+		}
+	}
+
+	function getStatusLabel(status: string): string {
+		return $t.processManager?.status?.[status] || status;
 	}
 </script>
 
@@ -116,7 +129,7 @@
 				<span class="stat-value">{cpuUsage.toFixed(1)}%</span>
 			</div>
 			<div class="stat-bar">
-				<div class="stat-bar-fill cpu" style="width: {cpuUsage}%"></div>
+				<div class="stat-bar-fill cpu" style="width: {Math.min(cpuUsage, 100)}%"></div>
 			</div>
 		</div>
 
@@ -125,22 +138,26 @@
 				<Icon icon="mdi:memory" class="w-5 h-5" />
 			</div>
 			<div class="stat-info">
-				<span class="stat-label">{$t.widgets.memory}</span>
+				<span class="stat-label">{$t.widgets?.memory || 'Memory'}</span>
 				<span class="stat-value">{memoryUsage.toFixed(1)}%</span>
 			</div>
 			<div class="stat-bar">
-				<div class="stat-bar-fill memory" style="width: {memoryUsage}%"></div>
+				<div class="stat-bar-fill memory" style="width: {Math.min(memoryUsage, 100)}%"></div>
 			</div>
+		</div>
+
+		<div class="stat-memory-info">
+			<span class="memory-detail">{formatTotalMemory(usedMemory)} / {formatTotalMemory(totalMemory)}</span>
 		</div>
 
 		<div class="stat-count">
 			<span class="count-value">{totalProcesses}</span>
-			<span class="count-label">Processes</span>
+			<span class="count-label">{$t.processManager?.processes || 'Processes'}</span>
 		</div>
 
 		<div class="stat-count">
 			<span class="count-value running">{runningProcesses}</span>
-			<span class="count-label">Running</span>
+			<span class="count-label">{$t.processManager?.running || 'Running'}</span>
 		</div>
 	</div>
 
@@ -150,94 +167,120 @@
 			<Icon icon="mdi:magnify" class="w-4 h-4 text-gray-400" />
 			<input
 				type="text"
-				placeholder={$t.common.filter}
+				placeholder={$t.common?.filter || 'Filter'}
 				bind:value={searchQuery}
 			/>
 		</div>
-		<button class="btn-refresh" on:click={() => processes = [...fakeProcesses]}>
+		<button class="btn-refresh" onclick={loadProcesses}>
 			<Icon icon="mdi:refresh" class="w-4 h-4" />
-			{$t.common.refresh}
+			{$t.common?.refresh || 'Refresh'}
 		</button>
 	</div>
 
-	<!-- Process Table -->
-	<div class="table-container">
-		<table class="process-table">
-			<thead>
-				<tr>
-					<th class="sortable" on:click={() => sortBy('pid')}>
-						PID
-						{#if sortColumn === 'pid'}
-							<Icon icon={sortDirection === 'asc' ? 'mdi:chevron-up' : 'mdi:chevron-down'} class="w-4 h-4" />
-						{/if}
-					</th>
-					<th class="sortable" on:click={() => sortBy('name')}>
-						Name
-						{#if sortColumn === 'name'}
-							<Icon icon={sortDirection === 'asc' ? 'mdi:chevron-up' : 'mdi:chevron-down'} class="w-4 h-4" />
-						{/if}
-					</th>
-					<th class="sortable" on:click={() => sortBy('user')}>
-						User
-						{#if sortColumn === 'user'}
-							<Icon icon={sortDirection === 'asc' ? 'mdi:chevron-up' : 'mdi:chevron-down'} class="w-4 h-4" />
-						{/if}
-					</th>
-					<th class="sortable" on:click={() => sortBy('cpu')}>
-						CPU %
-						{#if sortColumn === 'cpu'}
-							<Icon icon={sortDirection === 'asc' ? 'mdi:chevron-up' : 'mdi:chevron-down'} class="w-4 h-4" />
-						{/if}
-					</th>
-					<th class="sortable" on:click={() => sortBy('memory')}>
-						Memory
-						{#if sortColumn === 'memory'}
-							<Icon icon={sortDirection === 'asc' ? 'mdi:chevron-up' : 'mdi:chevron-down'} class="w-4 h-4" />
-						{/if}
-					</th>
-					<th class="sortable" on:click={() => sortBy('status')}>
-						Status
-						{#if sortColumn === 'status'}
-							<Icon icon={sortDirection === 'asc' ? 'mdi:chevron-up' : 'mdi:chevron-down'} class="w-4 h-4" />
-						{/if}
-					</th>
-					<th>Actions</th>
-				</tr>
-			</thead>
-			<tbody>
-				{#each filteredProcesses as process}
+	<!-- Error state -->
+	{#if error}
+		<div class="error-banner">
+			<Icon icon="mdi:alert-circle" class="w-5 h-5" />
+			<span>{error}</span>
+			<button onclick={() => error = null}>
+				<Icon icon="mdi:close" class="w-4 h-4" />
+			</button>
+		</div>
+	{/if}
+
+	<!-- Loading state -->
+	{#if loading}
+		<div class="loading-state">
+			<Icon icon="mdi:loading" class="w-8 h-8 animate-spin text-blue-500" />
+			<p>{$t.common?.loading || 'Loading...'}</p>
+		</div>
+	{:else}
+		<!-- Process Table -->
+		<div class="table-container">
+			<table class="process-table">
+				<thead>
 					<tr>
-						<td class="pid">{process.pid}</td>
-						<td class="name">
-							<Icon icon="mdi:application" class="w-4 h-4 text-gray-400" />
-							{process.name}
-						</td>
-						<td class="user">{process.user}</td>
-						<td class="cpu">
-							<div class="cpu-bar-container">
-								<div class="cpu-bar" style="width: {Math.min(process.cpu * 10, 100)}%"></div>
-							</div>
-							{process.cpu.toFixed(1)}%
-						</td>
-						<td class="memory">{formatMemory(process.memory)}</td>
-						<td class="status">
-							<span class="status-dot {getStatusColor(process.status)}">●</span>
-							{process.status}
-						</td>
-						<td class="actions">
-							<button
-								class="btn-kill"
-								title="End process"
-								on:click={() => handleKillProcess(process.pid)}
-							>
-								<Icon icon="mdi:close" class="w-4 h-4" />
-							</button>
-						</td>
+						<th class="sortable" onclick={() => sortBy('pid')}>
+							PID
+							{#if sortColumn === 'pid'}
+								<Icon icon={sortDirection === 'asc' ? 'mdi:chevron-up' : 'mdi:chevron-down'} class="w-4 h-4" />
+							{/if}
+						</th>
+						<th class="sortable" onclick={() => sortBy('name')}>
+							{$t.processManager?.columns?.name || 'Name'}
+							{#if sortColumn === 'name'}
+								<Icon icon={sortDirection === 'asc' ? 'mdi:chevron-up' : 'mdi:chevron-down'} class="w-4 h-4" />
+							{/if}
+						</th>
+						<th class="sortable" onclick={() => sortBy('user')}>
+							{$t.processManager?.columns?.user || 'User'}
+							{#if sortColumn === 'user'}
+								<Icon icon={sortDirection === 'asc' ? 'mdi:chevron-up' : 'mdi:chevron-down'} class="w-4 h-4" />
+							{/if}
+						</th>
+						<th class="sortable" onclick={() => sortBy('cpu')}>
+							CPU %
+							{#if sortColumn === 'cpu'}
+								<Icon icon={sortDirection === 'asc' ? 'mdi:chevron-up' : 'mdi:chevron-down'} class="w-4 h-4" />
+							{/if}
+						</th>
+						<th class="sortable" onclick={() => sortBy('memory')}>
+							{$t.processManager?.columns?.memory || 'Memory'}
+							{#if sortColumn === 'memory'}
+								<Icon icon={sortDirection === 'asc' ? 'mdi:chevron-up' : 'mdi:chevron-down'} class="w-4 h-4" />
+							{/if}
+						</th>
+						<th class="sortable" onclick={() => sortBy('status')}>
+							{$t.processManager?.columns?.status || 'Status'}
+							{#if sortColumn === 'status'}
+								<Icon icon={sortDirection === 'asc' ? 'mdi:chevron-up' : 'mdi:chevron-down'} class="w-4 h-4" />
+							{/if}
+						</th>
+						<th>{$t.common?.actions || 'Actions'}</th>
 					</tr>
-				{/each}
-			</tbody>
-		</table>
-	</div>
+				</thead>
+				<tbody>
+					{#each filteredProcesses as process}
+						<tr>
+							<td class="pid">{process.pid}</td>
+							<td class="name">
+								<Icon icon="mdi:application" class="w-4 h-4 text-gray-400" />
+								<span class="name-text" title={process.command || process.name}>{process.name}</span>
+							</td>
+							<td class="user">{process.user}</td>
+							<td class="cpu">
+								<div class="cpu-bar-container">
+									<div class="cpu-bar" style="width: {Math.min(process.cpu, 100)}%"></div>
+								</div>
+								{process.cpu.toFixed(1)}%
+							</td>
+							<td class="memory">{formatMemory(process.memory)}</td>
+							<td class="status">
+								<span class="status-dot {getStatusColor(process.status)}">●</span>
+								{getStatusLabel(process.status)}
+							</td>
+							<td class="actions">
+								<button
+									class="btn-kill"
+									title={$t.processManager?.endProcess || 'End process'}
+									onclick={() => handleKillProcess(process.pid)}
+								>
+									<Icon icon="mdi:close" class="w-4 h-4" />
+								</button>
+							</td>
+						</tr>
+					{/each}
+					{#if filteredProcesses.length === 0}
+						<tr>
+							<td colspan="7" class="no-results">
+								{$t.processManager?.noProcesses || 'No processes found'}
+							</td>
+						</tr>
+					{/if}
+				</tbody>
+			</table>
+		</div>
+	{/if}
 </div>
 
 <style>
@@ -322,6 +365,16 @@
 		background: linear-gradient(90deg, #8b5cf6, #6d28d9);
 	}
 
+	.stat-memory-info {
+		padding: 0 16px;
+		border-left: 1px solid #e2e8f0;
+	}
+
+	.memory-detail {
+		font-size: 13px;
+		color: #64748b;
+	}
+
 	.stat-count {
 		display: flex;
 		flex-direction: column;
@@ -392,6 +445,41 @@
 		background: #e2e8f0;
 	}
 
+	/* Error banner */
+	.error-banner {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		padding: 12px 20px;
+		background: #fef2f2;
+		border-bottom: 1px solid #fecaca;
+		color: #dc2626;
+	}
+
+	.error-banner span {
+		flex: 1;
+	}
+
+	.error-banner button {
+		color: #dc2626;
+		opacity: 0.7;
+	}
+
+	.error-banner button:hover {
+		opacity: 1;
+	}
+
+	/* Loading state */
+	.loading-state {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 16px;
+		padding: 60px 20px;
+		color: #64748b;
+	}
+
 	/* Table */
 	.table-container {
 		flex: 1;
@@ -448,6 +536,13 @@
 		align-items: center;
 		gap: 8px;
 		font-weight: 500;
+	}
+
+	.name-text {
+		max-width: 200px;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 
 	.user {
@@ -513,8 +608,23 @@
 		color: #dc2626;
 	}
 
+	.no-results {
+		text-align: center;
+		color: #64748b;
+		padding: 40px 20px !important;
+	}
+
 	.text-green-500 { color: #22c55e; }
 	.text-blue-400 { color: #60a5fa; }
 	.text-red-500 { color: #ef4444; }
+	.text-orange-500 { color: #f97316; }
 	.text-gray-400 { color: #9ca3af; }
+
+	/* Animation */
+	@keyframes spin {
+		from { transform: rotate(0deg); }
+		to { transform: rotate(360deg); }
+	}
+
+	.animate-spin { animation: spin 1s linear infinite; }
 </style>

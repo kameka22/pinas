@@ -84,12 +84,14 @@ PiNAS est un système d'exploitation NAS moderne et performant, inspiré des int
 │   │   │   ├── apps.rs       # Registre applications
 │   │   │   ├── services.rs   # Services systemd
 │   │   │   ├── terminal.rs   # Exécution commandes shell
+│   │   │   ├── locations.rs  # Emplacements navigables (home, shares, volumes)
 │   │   │   ├── ws.rs         # WebSocket handler
 │   │   │   └── middleware.rs # Auth middleware, CORS
 │   │   ├── services/         # Logique métier
 │   │   │   ├── auth.rs       # JWT, password hashing
 │   │   │   ├── user.rs       # Gestion utilisateurs
 │   │   │   ├── group.rs      # Gestion groupes
+│   │   │   ├── home.rs       # Gestion répertoires home utilisateurs
 │   │   │   ├── session.rs    # Sessions
 │   │   │   ├── package.rs    # Installation packages
 │   │   │   ├── docker.rs     # Client Docker (bollard)
@@ -303,17 +305,43 @@ DELETE /api/groups/:id/members/:user_id  # Retirer membre
 # Système
 GET    /api/system/info           # Infos système (CPU, RAM, uptime, etc.)
 
+# Emplacements (File Manager sidebar)
+GET    /api/locations             # Liste emplacements navigables (home, shares, volumes)
+
 # Fichiers
-GET    /api/files                 # Liste fichiers (query: path)
-POST   /api/files/mkdir           # Créer dossier
-POST   /api/files/delete          # Supprimer fichier/dossier
-POST   /api/files/rename          # Renommer
+GET    /api/files                 # Liste fichiers (query: path, location_id)
+POST   /api/files/folder          # Créer dossier (avec location_id)
+DELETE /api/files                 # Supprimer fichier/dossier (query: path, location_id)
+PATCH  /api/files/rename          # Renommer (avec location_id)
 POST   /api/files/upload          # Upload fichier (multipart)
 GET    /api/files/download        # Télécharger fichier
 
-# Stockage (partiellement implémenté)
-GET    /api/storage/disks         # Liste des disques
-GET    /api/storage/filesystems   # Systèmes de fichiers montés
+# Stockage (Storage Manager)
+# Disques physiques
+GET    /api/storage/disks              # Liste disques + partitions
+GET    /api/storage/disks/:name/smart  # Données S.M.A.R.T. détaillées
+POST   /api/storage/disks/:name/wipe   # Effacer disque (protégé si système)
+GET    /api/storage/candidates         # Disques disponibles pour pools
+
+# Pools de stockage
+GET    /api/storage/pools              # Liste des pools
+POST   /api/storage/pools              # Créer pool (RAID type, disques)
+GET    /api/storage/pools/:id          # Détails pool
+PUT    /api/storage/pools/:id          # Modifier pool (nom, description)
+DELETE /api/storage/pools/:id          # Supprimer pool
+POST   /api/storage/pools/:id/scrub    # Lancer vérification RAID
+
+# Volumes
+GET    /api/storage/volumes            # Liste tous les volumes
+POST   /api/storage/pools/:id/volumes  # Créer volume dans pool
+GET    /api/storage/volumes/:id        # Détails volume
+DELETE /api/storage/volumes/:id        # Supprimer volume
+POST   /api/storage/volumes/:id/mount  # Monter volume
+POST   /api/storage/volumes/:id/unmount # Démonter volume
+POST   /api/storage/volumes/:id/resize # Redimensionner volume
+
+# Legacy (compatibilité)
+GET    /api/storage/filesystems        # Alias pour volumes montés
 
 # Partages (UI existe, backend partiel)
 GET    /api/shares                # Liste des partages
@@ -432,6 +460,107 @@ Frontend (Svelte)              Backend (Rust)
 
 ---
 
+## Storage Manager
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        DISQUES PHYSIQUES                        │
+├─────────────────────────────────────────────────────────────────┤
+│  /dev/mmcblk0 (SD System)     │  /dev/sda (USB)  │  /dev/nvme0  │
+│  ├─ mmcblk0p1 (/flash) 🔒     │  └─ sda1         │  └─ nvme0n1p1│
+│  └─ mmcblk0p2 (/storage) 🔒   │     (disponible) │    (dispo)   │
+├─────────────────────────────────────────────────────────────────┤
+│                        STORAGE POOLS                            │
+├─────────────────────────────────────────────────────────────────┤
+│  Pool "Media" (RAID1)         │  Pool "Backup" (Basic)         │
+│  ├─ /dev/sda + /dev/sdb       │  └─ /dev/nvme0n1p1             │
+│  └─ Volume 1 (ext4, 2TB)      │     └─ Volume 1 (btrfs, 500GB) │
+│     └─ /storage/pools/media   │        └─ /storage/pools/backup│
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Structures de données
+
+```rust
+// Disque physique
+struct Disk {
+    device_name: String,          // "sda", "nvme0n1"
+    device_path: String,          // "/dev/sda"
+    device_by_id: Option<String>, // "/dev/disk/by-id/..."
+    model: String,
+    serial: String,
+    size: u64,                    // bytes
+    disk_type: DiskType,          // SSD, HDD, NVMe, SD, USB
+    temperature: Option<i32>,     // S.M.A.R.T.
+    health_status: Option<String>,
+    is_system: bool,              // 🔒 Protégé (ne peut pas être modifié)
+    is_removable: bool,
+    partitions: Vec<Partition>,
+}
+
+// Pool de stockage
+struct StoragePool {
+    id: String,                   // UUID
+    name: String,
+    description: Option<String>,
+    raid_type: RaidType,          // Basic, JBOD, RAID0, RAID1, RAID5
+    status: PoolStatus,           // Normal, Degraded, Error
+    devices: Vec<String>,         // device paths
+    total_size: u64,
+    created_at: DateTime,
+}
+
+// Volume dans un pool
+struct Volume {
+    id: String,
+    pool_id: String,
+    name: String,
+    fs_type: String,              // ext4, btrfs, xfs
+    size: u64,
+    used: u64,
+    mount_point: String,          // /storage/pools/{pool}/{volume}
+    status: VolumeStatus,
+}
+
+enum RaidType { Basic, JBOD, RAID0, RAID1, RAID5, RAID10 }
+```
+
+### Protection disque système
+
+Les disques contenant `/flash` ou `/storage` sont automatiquement protégés :
+- Affichés avec indicateur 🔒 dans l'UI
+- Endpoints de modification retournent erreur 403
+- Détection via `/proc/mounts` et analyse des partitions
+
+### Tables base de données
+
+```sql
+-- storage_pools: Pools de stockage configurés
+CREATE TABLE storage_pools (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE,
+    description TEXT,
+    raid_type TEXT NOT NULL,      -- basic, jbod, raid0, raid1, raid5
+    status TEXT DEFAULT 'normal',
+    devices TEXT NOT NULL,        -- JSON array
+    created_at TEXT NOT NULL
+);
+
+-- storage_volumes: Volumes dans les pools
+CREATE TABLE storage_volumes (
+    id TEXT PRIMARY KEY,
+    pool_id TEXT REFERENCES storage_pools(id),
+    name TEXT NOT NULL,
+    fs_type TEXT NOT NULL,
+    mount_point TEXT UNIQUE,
+    created_at TEXT NOT NULL
+);
+```
+
+---
+
 ## Contraintes LibreELEC
 
 ### Filesystem
@@ -442,6 +571,8 @@ Frontend (Svelte)              Backend (Rust)
 | `/storage` | Read-write | Config, DB, logs, shares |
 | `/storage/.pinas/` | Read-write | Données PiNAS |
 | `/storage/.pinas/www/` | Read-write | Frontend (copié au 1er boot) |
+| `/storage/homes/` | Read-write | Répertoires home utilisateurs |
+| `/storage/homes/{username}/` | Read-write | Home avec Documents, Downloads, Photos, Music, Videos |
 | `/tmp` | tmpfs | Cache temporaire |
 
 ### Services disponibles
@@ -744,6 +875,8 @@ PINAS_SHARES_ROOT=/storage/shares
 PINAS_WWW_PATH=/storage/.pinas/www
 PINAS_PACKAGES_DIR=/storage/.pinas/packages
 PINAS_DATA_DIR=/storage/.pinas/data
+PINAS_HOMES_ROOT=/storage/homes        # Répertoires home utilisateurs
+PINAS_HOME_ON_DELETE=archive           # archive, delete, ou keep
 
 # Frontend (build-time)
 PUBLIC_API_URL=/api

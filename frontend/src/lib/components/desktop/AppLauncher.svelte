@@ -19,7 +19,7 @@
 	const categoryDefs: AppCategory[] = [
 		{
 			titleKey: 'system',
-			appIds: ['control-panel']
+			appIds: ['control-panel', 'process-manager']
 		},
 		{
 			titleKey: 'storageFiles',
@@ -27,7 +27,7 @@
 		},
 		{
 			titleKey: 'services',
-			appIds: ['app-center', 'docker', 'terminal']
+			appIds: ['app-center', 'docker', 'terminal', 'kodi']
 		}
 	];
 

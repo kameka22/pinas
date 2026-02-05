@@ -2,7 +2,7 @@
 	import Icon from '@iconify/svelte';
 	import { t, locale } from '$lib/i18n';
 	import { onMount } from 'svelte';
-	import { api, type FileItem as ApiFileItem } from '$lib/stores/api';
+	import { api, type FileItem as ApiFileItem, type BrowsableLocation } from '$lib/stores/api';
 
 	// Types for display (extends API type with icon)
 	interface FileItem {
@@ -14,15 +14,6 @@
 		modified: Date;
 		icon: string;
 		path: string;
-	}
-
-	interface FolderNode {
-		id: string;
-		name: string;
-		nameKey: string;
-		icon: string;
-		expanded: boolean;
-		children?: FolderNode[];
 	}
 
 	// State
@@ -40,16 +31,23 @@
 	let renameTarget: FileItem | null = null;
 	let renameValue = '';
 
-	// Sidebar folders (simplified for MVP)
-	let sidebarFolders: FolderNode[] = [
-		{
-			id: 'root',
-			name: 'Fichiers',
-			nameKey: 'personalFolder',
-			icon: 'mdi:folder-home',
-			expanded: true
-		}
-	];
+	// Locations state
+	let locations: BrowsableLocation[] = [];
+	let selectedLocationId: string | null = null;
+	let locationsLoading = false;
+	let locationsError: string | null = null;
+
+	// Computed: Group locations by type
+	$: homeLocations = locations.filter(l => l.type === 'home');
+	$: shareLocations = locations.filter(l => l.type === 'share');
+	$: volumeLocations = locations.filter(l => l.type === 'volume');
+
+	// Sidebar section expansion state
+	let expandedSections = {
+		personal: true,
+		shares: true,
+		volumes: false
+	};
 
 	// Get icon for file type
 	function getFileIcon(item: ApiFileItem): string {
@@ -83,12 +81,39 @@
 		};
 	}
 
+	// Load locations from API
+	async function loadLocations() {
+		locationsLoading = true;
+		locationsError = null;
+		try {
+			locations = await api.getLocations();
+			// Auto-select home if available and nothing selected
+			if (!selectedLocationId && homeLocations.length > 0) {
+				selectLocation(homeLocations[0]);
+			} else if (!selectedLocationId && locations.length > 0) {
+				selectLocation(locations[0]);
+			}
+		} catch (e) {
+			locationsError = e instanceof Error ? e.message : 'Failed to load locations';
+			locations = [];
+		} finally {
+			locationsLoading = false;
+		}
+	}
+
+	// Select a location and load its files
+	function selectLocation(location: BrowsableLocation) {
+		selectedLocationId = location.id;
+		currentPath = '';
+		loadFiles('');
+	}
+
 	// Load files from API
 	async function loadFiles(path: string = '') {
 		loading = true;
 		error = null;
 		try {
-			const apiFiles = await api.getFiles(path);
+			const apiFiles = await api.getFiles(path, selectedLocationId || undefined);
 			files = apiFiles.map(toDisplayItem);
 			currentPath = path;
 			selectedFiles = [];
@@ -100,9 +125,9 @@
 		}
 	}
 
-	// Load files on mount
+	// Load locations on mount
 	onMount(() => {
-		loadFiles();
+		loadLocations();
 	});
 
 	// Navigation history
@@ -148,9 +173,8 @@
 		loadFiles(path);
 	}
 
-	function toggleFolderExpand(folder: FolderNode) {
-		folder.expanded = !folder.expanded;
-		sidebarFolders = [...sidebarFolders];
+	function toggleSection(section: 'personal' | 'shares' | 'volumes') {
+		expandedSections[section] = !expandedSections[section];
 	}
 
 	function goBack() {
@@ -176,7 +200,7 @@
 		const name = prompt($t.fileManager.toolbar.newFolderPrompt || 'Nom du dossier:');
 		if (name && name.trim()) {
 			try {
-				await api.createFolder(currentPath, name.trim());
+				await api.createFolder(currentPath, name.trim(), selectedLocationId || undefined);
 				await loadFiles(currentPath);
 			} catch (e) {
 				alert(e instanceof Error ? e.message : 'Error creating folder');
@@ -192,7 +216,7 @@
 
 		if (confirm(confirmMsg)) {
 			try {
-				await api.deleteFile(file.path);
+				await api.deleteFile(file.path, selectedLocationId || undefined);
 				await loadFiles(currentPath);
 			} catch (e) {
 				alert(e instanceof Error ? e.message : 'Error deleting file');
@@ -211,7 +235,7 @@
 	async function confirmRename() {
 		if (renameTarget && renameValue.trim() && renameValue !== renameTarget.name) {
 			try {
-				await api.renameFile(renameTarget.path, renameValue.trim());
+				await api.renameFile(renameTarget.path, renameValue.trim(), selectedLocationId || undefined);
 				await loadFiles(currentPath);
 			} catch (e) {
 				alert(e instanceof Error ? e.message : 'Error renaming file');
@@ -286,8 +310,10 @@
 	}
 
 	function getCurrentFolderName(): string {
-		if (!currentPath) return '/';
-		return '/' + currentPath;
+		const location = locations.find(l => l.id === selectedLocationId);
+		const locationName = location?.name || '';
+		if (!currentPath) return locationName ? `/${locationName}` : '/';
+		return `/${locationName}/${currentPath}`;
 	}
 
 	// Go to parent folder
@@ -333,40 +359,127 @@
 	<!-- Sidebar -->
 	<aside class="sidebar">
 		<nav class="sidebar-nav">
-			{#each sidebarFolders as folder}
-				<div class="sidebar-folder">
-					<div
-						class="sidebar-item"
-						class:active={currentPath === '' && folder.id === 'root'}
-					>
+			{#if locationsLoading}
+				<div class="sidebar-loading">
+					<Icon icon="mdi:loading" class="w-5 h-5 animate-spin" />
+				</div>
+			{:else if locationsError}
+				<div class="sidebar-error">
+					<Icon icon="mdi:alert-circle" class="w-5 h-5" />
+					<span>{locationsError}</span>
+				</div>
+			{:else}
+				<!-- Personal section -->
+				{#if homeLocations.length > 0}
+					<div class="sidebar-section">
 						<button
-							class="expand-btn"
-							on:click|stopPropagation={() => toggleFolderExpand(folder)}
+							class="section-header"
+							on:click={() => expandedSections.personal = !expandedSections.personal}
 						>
 							<Icon
-								icon={folder.expanded ? 'mdi:chevron-down' : 'mdi:chevron-right'}
+								icon={expandedSections.personal ? 'mdi:chevron-down' : 'mdi:chevron-right'}
 								class="w-4 h-4"
 							/>
+							<span>{$t.fileManager.sections?.personal || 'Personal'}</span>
 						</button>
-						<button
-							class="folder-name-btn"
-							on:click={() => selectFolder('')}
-						>
-							<Icon icon={folder.icon} class="w-4 h-4 mr-2 folder-icon" />
-							{folder.name}
-						</button>
-					</div>
-					{#if folder.expanded && folder.children}
-						<div class="sidebar-children">
-							{#each folder.children as child}
-								<button class="sidebar-item child">
-									<span>{child.name}</span>
+						{#if expandedSections.personal}
+							{#each homeLocations as loc}
+								<button
+									class="sidebar-item"
+									class:active={selectedLocationId === loc.id}
+									on:click={() => selectLocation(loc)}
+								>
+									<Icon icon={loc.icon} class="w-4 h-4 location-icon home-icon" />
+									<span>{loc.name}</span>
 								</button>
 							{/each}
-						</div>
-					{/if}
-				</div>
-			{/each}
+						{/if}
+					</div>
+				{/if}
+
+				<!-- Shares section -->
+				{#if shareLocations.length > 0}
+					<div class="sidebar-section">
+						<button
+							class="section-header"
+							on:click={() => expandedSections.shares = !expandedSections.shares}
+						>
+							<Icon
+								icon={expandedSections.shares ? 'mdi:chevron-down' : 'mdi:chevron-right'}
+								class="w-4 h-4"
+							/>
+							<span>{$t.fileManager.sections?.shares || 'Shared Folders'}</span>
+						</button>
+						{#if expandedSections.shares}
+							{#each shareLocations as loc}
+								<button
+									class="sidebar-item"
+									class:active={selectedLocationId === loc.id}
+									class:disabled={!loc.enabled}
+									on:click={() => loc.enabled && selectLocation(loc)}
+									disabled={!loc.enabled}
+								>
+									<Icon icon={loc.icon} class="w-4 h-4 location-icon share-icon" />
+									<span>{loc.name}</span>
+									{#if !loc.enabled}
+										<span class="status-badge disabled">{$t.fileManager.statuses?.disabled || 'Disabled'}</span>
+									{/if}
+								</button>
+							{/each}
+						{/if}
+					</div>
+				{/if}
+
+				<!-- Volumes section -->
+				{#if volumeLocations.length > 0}
+					<div class="sidebar-section">
+						<button
+							class="section-header"
+							on:click={() => expandedSections.volumes = !expandedSections.volumes}
+						>
+							<Icon
+								icon={expandedSections.volumes ? 'mdi:chevron-down' : 'mdi:chevron-right'}
+								class="w-4 h-4"
+							/>
+							<span>{$t.fileManager.sections?.volumes || 'Volumes'}</span>
+						</button>
+						{#if expandedSections.volumes}
+							{#each volumeLocations as loc}
+								<button
+									class="sidebar-item"
+									class:active={selectedLocationId === loc.id}
+									class:disabled={loc.status !== 'mounted'}
+									on:click={() => loc.status === 'mounted' && selectLocation(loc)}
+									disabled={loc.status !== 'mounted'}
+								>
+									<Icon icon={loc.icon} class="w-4 h-4 location-icon volume-icon" />
+									<div class="location-info">
+										<span class="location-name">{loc.name}</span>
+										{#if loc.pool_name}
+											<span class="location-detail">{loc.pool_name}</span>
+										{/if}
+									</div>
+									{#if loc.status === 'mounted' && loc.usage_percent !== undefined}
+										<div class="usage-bar">
+											<div class="usage-fill" style="width: {loc.usage_percent}%"></div>
+										</div>
+									{:else if loc.status !== 'mounted'}
+										<span class="status-badge unmounted">{$t.fileManager.statuses?.unmounted || 'Unmounted'}</span>
+									{/if}
+								</button>
+							{/each}
+						{/if}
+					</div>
+				{/if}
+
+				<!-- Empty state -->
+				{#if locations.length === 0}
+					<div class="sidebar-empty">
+						<Icon icon="mdi:folder-off-outline" class="w-8 h-8" />
+						<span>{$t.fileManager.noLocations || 'No locations available'}</span>
+					</div>
+				{/if}
+			{/if}
 		</nav>
 	</aside>
 
@@ -677,25 +790,44 @@
 		padding: 8px 0;
 	}
 
-	.sidebar-folder {
+	.sidebar-section {
+		margin-bottom: 4px;
+	}
+
+	.section-header {
 		display: flex;
-		flex-direction: column;
+		align-items: center;
+		gap: 6px;
+		width: 100%;
+		padding: 8px 12px;
+		font-size: 11px;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+		color: #6b7280;
+		text-align: left;
+		transition: all 0.15s ease;
+	}
+
+	.section-header:hover {
+		color: #374151;
+		background: rgba(0, 0, 0, 0.03);
 	}
 
 	.sidebar-item {
 		display: flex;
 		align-items: center;
-		gap: 4px;
+		gap: 10px;
 		width: 100%;
-		padding: 10px 12px 10px 8px;
-		font-size: 14px;
+		padding: 8px 12px 8px 28px;
+		font-size: 13px;
 		color: #374151;
 		text-align: left;
 		transition: all 0.15s ease;
 		border-left: 3px solid transparent;
 	}
 
-	.sidebar-item:hover {
+	.sidebar-item:hover:not(:disabled) {
 		background: #eef2ff;
 	}
 
@@ -703,43 +835,97 @@
 		background: #eef2ff;
 		border-left-color: #3b82f6;
 		color: #1f2937;
+		font-weight: 500;
 	}
 
-	.sidebar-item.child {
-		padding-left: 40px;
-		font-size: 13px;
-		cursor: pointer;
+	.sidebar-item.disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
 	}
 
-	.expand-btn {
-		width: 20px;
-		height: 20px;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		color: #6b7280;
-		border-radius: 4px;
+	.location-icon {
 		flex-shrink: 0;
 	}
 
-	.expand-btn:hover {
-		background: rgba(0, 0, 0, 0.08);
+	.home-icon {
+		color: #3b82f6;
 	}
 
-	.folder-name-btn {
-		flex: 1;
-		text-align: left;
-		font-weight: 500;
-		color: inherit;
-		background: none;
-		border: none;
-		padding: 0;
-		cursor: pointer;
+	.share-icon {
+		color: #10b981;
 	}
 
-	.sidebar-children {
+	.volume-icon {
+		color: #8b5cf6;
+	}
+
+	.location-info {
 		display: flex;
 		flex-direction: column;
+		flex: 1;
+		min-width: 0;
+	}
+
+	.location-name {
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.location-detail {
+		font-size: 11px;
+		color: #9ca3af;
+	}
+
+	.status-badge {
+		font-size: 10px;
+		padding: 2px 6px;
+		border-radius: 4px;
+		font-weight: 500;
+	}
+
+	.status-badge.disabled {
+		background: #fef3c7;
+		color: #92400e;
+	}
+
+	.status-badge.unmounted {
+		background: #f3f4f6;
+		color: #6b7280;
+	}
+
+	.usage-bar {
+		width: 40px;
+		height: 4px;
+		background: #e5e7eb;
+		border-radius: 2px;
+		overflow: hidden;
+		flex-shrink: 0;
+	}
+
+	.usage-fill {
+		height: 100%;
+		background: #3b82f6;
+		border-radius: 2px;
+		transition: width 0.3s ease;
+	}
+
+	.sidebar-loading,
+	.sidebar-error,
+	.sidebar-empty {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 8px;
+		padding: 24px 16px;
+		color: #6b7280;
+		font-size: 13px;
+		text-align: center;
+	}
+
+	.sidebar-error {
+		color: #ef4444;
 	}
 
 	/* Main content */

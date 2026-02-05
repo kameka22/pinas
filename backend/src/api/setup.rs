@@ -10,8 +10,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::services::auth::generate_jwt;
 use crate::services::group::{add_member, get_group_by_name};
+use crate::services::home::HomeService;
 use crate::services::session::create_session;
-use crate::services::user::{create_user, has_any_users};
+use crate::services::user::{create_user_with_home, has_any_users};
 use crate::AppState;
 
 pub fn router() -> Router<AppState> {
@@ -152,13 +153,17 @@ async fn complete_setup(
             .into_response();
     }
 
-    // Create the admin user
-    let user = match create_user(
+    // Create HomeService to manage admin's home directory
+    let home_service = HomeService::new(&state.config);
+
+    // Create the admin user with home directory
+    let user = match create_user_with_home(
         &state.db,
         &payload.admin_username,
         &payload.admin_password,
         Some(format!("{}@pinas.local", payload.admin_username)),
         true,
+        &home_service,
     )
     .await
     {

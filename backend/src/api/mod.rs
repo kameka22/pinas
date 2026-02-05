@@ -3,6 +3,8 @@ pub mod auth;
 pub mod docker;
 pub mod files;
 pub mod groups;
+pub mod kodi;
+pub mod locations;
 pub mod middleware;
 pub mod packages;
 pub mod services;

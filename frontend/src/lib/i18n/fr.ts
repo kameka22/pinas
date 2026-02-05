@@ -236,7 +236,8 @@ export default {
 		docker: 'Docker',
 		terminal: 'Terminal',
 		users: 'Utilisateurs',
-		processManager: 'Gestionnaire de processus'
+		processManager: 'Gestionnaire de processus',
+		kodi: 'Kodi'
 	},
 
 	// Top Bar
@@ -340,6 +341,17 @@ export default {
 			sharedFolder: 'Dossier partagé',
 			userFolder: 'Dossier utilisateur'
 		},
+		sections: {
+			personal: 'Personnel',
+			shares: 'Dossiers partagés',
+			volumes: 'Volumes'
+		},
+		statuses: {
+			mounted: 'Monté',
+			unmounted: 'Non monté',
+			disabled: 'Désactivé'
+		},
+		noLocations: 'Aucun emplacement disponible',
 		toolbar: {
 			refresh: 'Actualiser',
 			search: 'Rechercher...',
@@ -462,6 +474,347 @@ export default {
 		recentLogs: 'Journaux récents',
 		noLogs: 'Aucun journal disponible',
 		configPlaceholder: 'Options de configuration bientôt disponibles'
+	},
+
+	// Storage Manager
+	storageManager: {
+		title: 'Gestionnaire de stockage',
+		sidebar: {
+			overview: 'Aperçu',
+			storage: 'Stockage',
+			hardDisk: 'Disque dur',
+			externalStorage: 'Stockage externe'
+		},
+		tabs: {
+			poolsVolumes: 'Pool de stockage & volume',
+			dataOrganizing: 'Organisation des données',
+			advancedSettings: 'Paramètres avancés'
+		},
+		overview: {
+			title: 'Aperçu du stockage',
+			disks: 'Disques',
+			pools: 'Pools',
+			volumes: 'Volumes',
+			totalCapacity: 'Capacité totale'
+		},
+		pools: {
+			title: 'Pools de stockage',
+			create: 'Créer',
+			createPool: 'Pool de stockage',
+			createVolume: 'Volume',
+			noPoolsConfigured: 'Aucun pool de stockage configuré',
+			noPools: 'Aucun pool',
+			pool: 'pool',
+			pools: 'pools',
+			disk: 'disque',
+			disks: 'disques',
+			noVolumes: 'Aucun volume dans ce pool',
+			createVolumeLink: 'Créer un volume'
+		},
+		volumes: {
+			title: 'Volumes',
+			used: 'Utilisé',
+			mount: 'Monter',
+			unmount: 'Démonter'
+		},
+		disks: {
+			title: 'Disques durs',
+			system: 'Système',
+			smart: 'S.M.A.R.T.',
+			details: 'Détails',
+			wipe: 'Effacer',
+			noExternalDevices: 'Aucun périphérique de stockage externe connecté'
+		},
+		status: {
+			normal: 'Normal',
+			degraded: 'Dégradé',
+			rebuilding: 'Reconstruction',
+			error: 'Erreur',
+			creating: 'Création',
+			mounted: 'Monté',
+			unmounted: 'Démonté'
+		},
+		raidTypes: {
+			basic: 'Basique',
+			jbod: 'JBOD',
+			raid0: 'RAID 0',
+			raid1: 'RAID 1',
+			raid5: 'RAID 5',
+			raid10: 'RAID 10',
+			btrfsSingle: 'Btrfs Simple',
+			btrfsRaid1: 'Btrfs RAID1',
+			basicDesc: 'Disque unique, pas de redondance. Données perdues si le disque tombe en panne.',
+			jbodDesc: 'Ensemble de disques. Pas de redondance, combine la capacité.',
+			raid0Desc: 'Striping. Performance maximale, pas de redondance.',
+			raid1Desc: 'Miroir. 50% de capacité, survit à 1 panne de disque.',
+			raid5Desc: 'Striping avec parité. Survit à 1 panne de disque.',
+			raid10Desc: 'Striping + Miroir. Haute performance, survit aux pannes.',
+			btrfsSingleDesc: 'Système de fichiers Btrfs, pas de redondance.',
+			btrfsRaid1Desc: 'Miroir Btrfs. Survit à 1 panne de disque.'
+		},
+		modals: {
+			createPool: {
+				title: 'Créer un pool de stockage',
+				preview: 'Aperçu',
+				poolName: 'Nom du pool',
+				selectHardDisk: 'Sélectionner le disque dur',
+				noDisksAvailable: 'Aucun disque disponible trouvé',
+				selectRaidType: 'Sélectionner le type RAID',
+				available: 'Disponible',
+				wipeDisks: 'Effacer les disques sélectionnés avant de créer le pool',
+				total: 'Total',
+				raidType: 'Type RAID',
+				useHardDisk: 'Utiliser le disque dur',
+				recommended: 'Rec.'
+			},
+			createVolume: {
+				title: 'Créer un volume',
+				storagePool: 'Pool de stockage',
+				selectPool: 'Sélectionner un pool...',
+				volumeName: 'Nom du volume',
+				fileSystem: 'Système de fichiers'
+			},
+			deletePool: {
+				title: 'Supprimer le pool',
+				confirmMessage: 'Êtes-vous sûr de vouloir supprimer',
+				willDeleteVolumes: 'Cela supprimera également',
+				volume: 'volume',
+				volumes: 'volumes',
+				cannotBeUndone: 'Cette action est irréversible.'
+			},
+			deleteVolume: {
+				title: 'Supprimer le volume',
+				confirmMessage: 'Êtes-vous sûr de vouloir supprimer',
+				dataLost: 'Toutes les données sur ce volume seront perdues.',
+				cannotBeUndone: 'Cette action est irréversible.'
+			},
+			smartInfo: {
+				title: 'Informations S.M.A.R.T.',
+				temperature: 'Température',
+				powerOnHours: 'Heures de fonctionnement',
+				powerCycles: 'Cycles de démarrage',
+				serial: 'N° de série',
+				attributes: 'Attributs',
+				loadingData: 'Chargement des données S.M.A.R.T....',
+				loadFailed: 'Échec du chargement des informations S.M.A.R.T.'
+			},
+			editPool: {
+				title: 'Modifier le pool',
+				poolName: 'Nom du pool',
+				description: 'Description'
+			},
+			wipeDisk: {
+				title: 'Effacer le disque',
+				warning: 'Attention : Cette opération est destructive !',
+				confirmMessage: 'Êtes-vous sûr de vouloir effacer',
+				allDataLost: 'Toutes les données sur ce disque seront définitivement supprimées.',
+				cannotBeUndone: 'Cette action est irréversible.',
+				wiping: 'Effacement...'
+			},
+			diskDetails: {
+				title: 'Détails du disque',
+				totalSize: 'Taille totale',
+				type: 'Type',
+				serial: 'Numéro de série',
+				deviceId: 'ID du périphérique',
+				partitions: 'Partitions',
+				noPartitions: 'Aucune partition trouvée sur ce disque'
+			}
+		},
+		contextMenu: {
+			createVolume: 'Créer un volume',
+			edit: 'Modifier',
+			scrub: 'Vérifier',
+			scrubbing: 'Vérification...',
+			changeRaidType: 'Changer le type RAID',
+			delete: 'Supprimer'
+		},
+		messages: {
+			loading: 'Chargement des informations de stockage...',
+			comingSoon: 'bientôt disponible',
+			dataOrganizingComingSoon: 'Fonctionnalités d\'organisation des données bientôt disponibles',
+			advancedSettingsComingSoon: 'Paramètres avancés bientôt disponibles',
+			empty: 'Vide'
+		},
+		errors: {
+			loadFailed: 'Échec du chargement des données de stockage',
+			createPoolFailed: 'Échec de la création du pool',
+			createVolumeFailed: 'Échec de la création du volume',
+			deletePoolFailed: 'Échec de la suppression du pool',
+			deleteVolumeFailed: 'Échec de la suppression du volume',
+			toggleMountFailed: 'Échec du montage/démontage du volume',
+			scrubFailed: 'Échec du lancement de la vérification',
+			editPoolFailed: 'Échec de la modification du pool',
+			wipeDiskFailed: 'Échec de l\'effacement du disque'
+		}
+	},
+
+	// Process Manager
+	processManager: {
+		title: 'Gestionnaire de processus',
+		processes: 'Processus',
+		running: 'En cours',
+		endProcess: 'Terminer le processus',
+		confirmKill: 'Êtes-vous sûr de vouloir terminer ce processus ?',
+		noProcesses: 'Aucun processus trouvé',
+		columns: {
+			name: 'Nom',
+			user: 'Utilisateur',
+			memory: 'Mémoire',
+			status: 'Statut'
+		},
+		status: {
+			running: 'En cours',
+			sleeping: 'En veille',
+			stopped: 'Arrêté',
+			zombie: 'Zombie',
+			idle: 'Inactif',
+			unknown: 'Inconnu'
+		},
+		errors: {
+			loadFailed: 'Échec du chargement des processus',
+			killFailed: 'Échec de la terminaison du processus'
+		}
+	},
+
+	// Kodi App
+	kodi: {
+		title: 'Kodi',
+		tabs: {
+			remote: 'Télécommande',
+			sources: 'Sources',
+			settings: 'Paramètres',
+			addons: 'Extensions',
+			library: 'Médiathèque'
+		},
+		status: {
+			connected: 'Connecté',
+			disconnected: 'Déconnecté',
+			playing: 'Lecture',
+			paused: 'Pause',
+			stopped: 'Arrêté'
+		},
+		remote: {
+			nowPlaying: 'En cours de lecture',
+			nothingPlaying: 'Rien en lecture',
+			volume: 'Volume',
+			mute: 'Muet',
+			playback: 'Lecture',
+			previous: 'Précédent',
+			next: 'Suivant',
+			stop: 'Stop',
+			navigation: 'Navigation',
+			back: 'Retour',
+			home: 'Accueil',
+			menu: 'Menu',
+			info: 'Info'
+		},
+		sources: {
+			title: 'Sources multimédia',
+			addSource: 'Ajouter une source',
+			editSource: 'Modifier la source',
+			deleteSource: 'Supprimer la source',
+			noSources: 'Aucune source multimédia configurée',
+			type: 'Type',
+			path: 'Chemin',
+			name: 'Nom',
+			types: {
+				smb: 'SMB/CIFS',
+				nfs: 'NFS',
+				local: 'Local'
+			},
+			mediaTypes: {
+				video: 'Vidéo',
+				music: 'Musique',
+				pictures: 'Images',
+				files: 'Fichiers'
+			},
+			allTypes: 'Tous les types',
+			pathFormats: 'Formats: smb://server/share, nfs://server/path, /storage/path',
+			fields: {
+				sourceName: 'Nom de la source',
+				sourceType: 'Type de source',
+				mediaType: 'Type de média',
+				serverPath: 'Serveur/Chemin',
+				username: "Nom d'utilisateur",
+				password: 'Mot de passe'
+			},
+			deleteConfirm: 'Êtes-vous sûr de vouloir supprimer cette source ?'
+		},
+		settings: {
+			title: 'Paramètres Kodi',
+			categories: {
+				player: 'Lecteur',
+				media: 'Médias',
+				interface: 'Interface',
+				services: 'Services',
+				system: 'Système'
+			},
+			player: {
+				skipSteps: 'Pas de saut (secondes)',
+				defaultPlayer: 'Lecteur par défaut'
+			},
+			media: {
+				showHiddenFiles: 'Afficher les fichiers cachés',
+				autoScanLibrary: 'Analyse auto de la médiathèque'
+			},
+			interface: {
+				language: 'Langue',
+				skin: 'Thème',
+				soundsEnabled: 'Sons de l\'interface'
+			},
+			services: {
+				webServer: 'Serveur web',
+				airplay: 'AirPlay',
+				upnp: 'UPnP/DLNA'
+			},
+			system: {
+				powerSaving: 'Économie d\'énergie',
+				debugLogging: 'Journalisation debug'
+			}
+		},
+		addons: {
+			title: 'Extensions',
+			installed: 'Installées',
+			available: 'Disponibles',
+			enable: 'Activer',
+			disable: 'Désactiver',
+			noAddons: 'Aucune extension trouvée'
+		},
+		library: {
+			title: 'Médiathèque',
+			videoLibrary: 'Vidéothèque',
+			musicLibrary: 'Musicothèque',
+			scan: 'Analyser',
+			clean: 'Nettoyer',
+			scanVideo: 'Analyser la vidéothèque',
+			scanMusic: 'Analyser la musicothèque',
+			cleanVideo: 'Nettoyer la vidéothèque',
+			cleanMusic: 'Nettoyer la musicothèque',
+			scanning: 'Analyse en cours...',
+			cleaning: 'Nettoyage en cours...',
+			scanStarted: 'Analyse de la médiathèque lancée',
+			lastScanned: 'Dernière analyse',
+			movies: 'Films',
+			tvShows: 'Séries TV',
+			albums: 'Albums',
+			artists: 'Artistes'
+		},
+		actions: {
+			reboot: 'Redémarrer Kodi',
+			shutdown: 'Éteindre Kodi',
+			sendNotification: 'Envoyer une notification'
+		},
+		errors: {
+			connectionFailed: 'Échec de la connexion à Kodi',
+			actionFailed: 'Action échouée',
+			loadFailed: 'Échec du chargement des données Kodi',
+			addSourceFailed: 'Échec de l\'ajout de la source',
+			removeSourceFailed: 'Échec de la suppression de la source',
+			updateSettingFailed: 'Échec de la mise à jour du paramètre',
+			toggleAddonFailed: 'Échec de l\'activation/désactivation de l\'addon',
+			scanFailed: 'Échec de l\'analyse de la médiathèque'
+		}
 	},
 
 	// Docker App

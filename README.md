@@ -127,8 +127,13 @@ extra/LibreELEC.tv/target/LibreELEC-RPi5.aarch64-*.img.gz
 | `POST /api/auth/login` | Authentication |
 | `GET /api/system/info` | System information |
 | `GET /api/storage/disks` | List disks |
+| `GET /api/storage/pools` | List storage pools |
+| `GET /api/storage/volumes` | List volumes |
 | `GET /api/shares` | List shares |
-| `GET /api/files/*` | File browser |
+| `GET /api/locations` | Browsable locations (home, shares, volumes) |
+| `GET /api/files` | File browser (supports location_id) |
+| `GET /api/users` | List users |
+| `GET /api/groups` | List groups |
 | `WS /api/ws` | Real-time events |
 
 ## Configuration
