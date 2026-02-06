@@ -180,6 +180,30 @@ async fn resolve_location_path(
             }
             None => Err("Volume not found".to_string()),
         }
+    } else if location_id.starts_with("perm-") {
+        // Permission-based folder access
+        let perm_id = location_id.strip_prefix("perm-").unwrap();
+        let permission_service = PermissionService::new(state.db.clone());
+
+        // Look up the permission record to get the path
+        let perm = permission_service
+            .get_by_id(perm_id)
+            .await
+            .map_err(|e| format!("Permission error: {}", e))?
+            .ok_or_else(|| "Permission not found".to_string())?;
+
+        // Verify the user actually has read access to this path
+        if !user.is_admin {
+            let can_read = permission_service
+                .can_read(&user.id, &perm.path)
+                .await
+                .map_err(|e| format!("Permission check error: {}", e))?;
+            if !can_read {
+                return Err("Access denied".to_string());
+            }
+        }
+
+        Ok(PathBuf::from(&perm.path))
     } else {
         Err("Invalid location_id format".to_string())
     }

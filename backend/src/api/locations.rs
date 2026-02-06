@@ -5,6 +5,7 @@ use std::path::Path;
 use crate::api::middleware::AuthUser;
 use crate::models::storage::VolumeStatus;
 use crate::services::home::HomeService;
+use crate::services::permission::PermissionService;
 use crate::services::storage::StorageService;
 use crate::AppState;
 
@@ -72,7 +73,54 @@ async fn get_locations(
         }
     }
 
-    // 2. Shared folders from database
+    // 2. Folders the user has been granted permission to access
+    let permission_service = PermissionService::new(state.db.clone());
+    match permission_service.list_by_user(&user.id).await {
+        Ok(permissions) => {
+            let user_home = home_service.get_home_path(&user.username);
+            let user_home_str = user_home.to_string_lossy().to_string();
+
+            // Deduplicate: collect unique paths, keeping the first permission ID
+            let mut seen_paths: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+            for perm in &permissions {
+                if perm.permission_level().can_read() {
+                    let path = perm.path.trim_end_matches('/').to_string();
+                    // Keep the first permission ID for each unique path
+                    seen_paths.entry(path).or_insert_with(|| perm.id.clone());
+                }
+            }
+
+            for (path, perm_id) in seen_paths {
+                // Skip the user's own home (already shown above)
+                if path.trim_end_matches('/') == user_home_str.trim_end_matches('/') {
+                    continue;
+                }
+
+                // Only add if the path exists on disk
+                if !Path::new(&path).exists() {
+                    continue;
+                }
+
+                // Derive a display name from the path (last component)
+                let name = Path::new(&path)
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_else(|| path.clone());
+
+                locations.push(BrowsableLocation::Home {
+                    id: format!("perm-{}", perm_id),
+                    name,
+                    path,
+                    icon: "mdi:folder-account".to_string(),
+                });
+            }
+        }
+        Err(e) => {
+            tracing::warn!("Failed to load user permissions: {}", e);
+        }
+    }
+
+    // 3. Shared folders from database
     match get_enabled_shares(&state).await {
         Ok(shares) => {
             for share in shares {
@@ -100,7 +148,7 @@ async fn get_locations(
         }
     }
 
-    // 3. Mounted volumes (for admin users or if volume access control is implemented)
+    // 4. Mounted volumes (for admin users or if volume access control is implemented)
     let storage_service = StorageService::new(state.db.clone());
     match storage_service.list_pools().await {
         Ok(pools) => {

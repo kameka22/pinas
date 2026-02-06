@@ -36,7 +36,7 @@ pub fn router() -> Router<AppState> {
 
 /// List installed packages
 async fn list_packages(State(state): State<AppState>) -> impl IntoResponse {
-    let service = PackageService::new(state.db.clone()).await;
+    let service = PackageService::new(state.db.clone(), state.task_tx.clone()).await;
 
     match service.list_installed().await {
         Ok(packages) => Json(packages).into_response(),
@@ -107,7 +107,7 @@ async fn get_package(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> impl IntoResponse {
-    let service = PackageService::new(state.db.clone()).await;
+    let service = PackageService::new(state.db.clone(), state.task_tx.clone()).await;
 
     match service.get_installed(&id).await {
         Ok(Some(package)) => Json(package).into_response(),
@@ -144,7 +144,7 @@ async fn install_package(
     State(state): State<AppState>,
     Json(request): Json<InstallRequest>,
 ) -> impl IntoResponse {
-    let service = PackageService::new(state.db.clone()).await;
+    let service = PackageService::new(state.db.clone(), state.task_tx.clone()).await;
 
     // Initialize directories
     if let Err(e) = service.init_directories().await {
@@ -443,7 +443,7 @@ async fn uninstall_package(
     Path(id): Path<String>,
     Query(query): Query<UninstallQuery>,
 ) -> impl IntoResponse {
-    let service = PackageService::new(state.db.clone()).await;
+    let service = PackageService::new(state.db.clone(), state.task_tx.clone()).await;
 
     tracing::info!("Uninstalling package: {}, delete_data: {}", id, query.delete_data);
 
@@ -461,7 +461,7 @@ async fn get_task(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> impl IntoResponse {
-    let service = PackageService::new(state.db.clone()).await;
+    let service = PackageService::new(state.db.clone(), state.task_tx.clone()).await;
 
     match service.get_task(&id).await {
         Ok(Some(task)) => Json(task).into_response(),

@@ -6,8 +6,10 @@ use std::path::Path;
 use tokio::fs;
 use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
+use tokio::sync::broadcast;
 use uuid::Uuid;
 
+use crate::api::ws::TaskProgressEvent;
 use crate::models::manifest::{InstallStep, PackageManifest};
 use crate::models::package::{InstalledPackage, PackageTask};
 use crate::services::docker::DockerService;
@@ -22,10 +24,11 @@ pub struct PackageService {
     bin_dir: String,
     docker_service: DockerService,
     dev_mode: bool,
+    task_tx: broadcast::Sender<TaskProgressEvent>,
 }
 
 impl PackageService {
-    pub async fn new(db: SqlitePool) -> Self {
+    pub async fn new(db: SqlitePool, task_tx: broadcast::Sender<TaskProgressEvent>) -> Self {
         let data_dir = std::env::var("PINAS_DATA_DIR")
             .unwrap_or_else(|_| "/storage/.pinas".to_string());
 
@@ -34,7 +37,7 @@ impl PackageService {
             .unwrap_or(false);
 
         if dev_mode {
-            tracing::info!("PackageService running in dev mode - installation steps will be skipped");
+            tracing::info!("PackageService running in dev mode - fake installation with simulated steps");
         }
 
         Self {
@@ -50,6 +53,7 @@ impl PackageService {
                 .unwrap_or_else(|_| format!("{}/bin", data_dir)),
             docker_service: DockerService::new().await,
             dev_mode,
+            task_tx,
         }
     }
 
@@ -329,10 +333,9 @@ impl PackageService {
         .execute(&self.db)
         .await?;
 
-        // Execute installation steps (skip in dev mode)
+        // Execute installation steps (simulated in dev mode)
         let result = if self.dev_mode {
-            tracing::info!("Dev mode: skipping installation steps for {}", manifest.id);
-            Ok(())
+            self.execute_dev_mode_steps(&manifest.id, &task_id).await
         } else {
             self.execute_install_steps(manifest, &task_id).await
         };
@@ -394,15 +397,103 @@ impl PackageService {
         Ok(task_id)
     }
 
+    /// Broadcast a task progress event via WebSocket
+    fn broadcast_progress(
+        &self,
+        task_id: &str,
+        package_id: &str,
+        status: &str,
+        progress: i32,
+        total_steps: i32,
+        current_step: Option<&str>,
+    ) {
+        let progress_percent = if total_steps == 0 {
+            0
+        } else {
+            ((progress as f32 / total_steps as f32) * 100.0) as i32
+        };
+
+        let event = TaskProgressEvent {
+            task_id: task_id.to_string(),
+            package_id: package_id.to_string(),
+            status: status.to_string(),
+            progress,
+            total_steps,
+            progress_percent,
+            current_step: current_step.map(|s| s.to_string()),
+            error_message: None,
+        };
+
+        // Ignore send errors (no subscribers)
+        let _ = self.task_tx.send(event);
+    }
+
+    /// Get a human-readable description for an install step
+    fn step_description(step: &InstallStep) -> String {
+        match step {
+            InstallStep::Download { url, .. } => {
+                let filename = url.rsplit('/').next().unwrap_or("file");
+                format!("Downloading {}", filename)
+            }
+            InstallStep::Extract { src, .. } => {
+                let filename = src.rsplit('/').next().unwrap_or("archive");
+                format!("Extracting {}", filename)
+            }
+            InstallStep::Copy { dest, .. } => {
+                let filename = dest.rsplit('/').next().unwrap_or("file");
+                format!("Copying {}", filename)
+            }
+            InstallStep::Symlink { dest, .. } => {
+                let filename = dest.rsplit('/').next().unwrap_or("link");
+                format!("Creating link {}", filename)
+            }
+            InstallStep::Chmod { path, .. } => {
+                let filename = path.rsplit('/').next().unwrap_or("file");
+                format!("Setting permissions on {}", filename)
+            }
+            InstallStep::Mkdir { path } => {
+                let dirname = path.rsplit('/').next().unwrap_or("directory");
+                format!("Creating directory {}", dirname)
+            }
+            InstallStep::Template { dest, .. } | InstallStep::WriteFile { dest, .. } => {
+                let filename = dest.rsplit('/').next().unwrap_or("file");
+                format!("Writing {}", filename)
+            }
+            InstallStep::Exec { command, .. } => {
+                // Show a simplified version of the command
+                if command.contains("systemctl start") {
+                    "Starting service".to_string()
+                } else if command.contains("systemctl enable") {
+                    "Enabling service".to_string()
+                } else if command.contains("systemctl daemon-reload") {
+                    "Reloading services".to_string()
+                } else {
+                    let short = if command.len() > 40 { &command[..40] } else { command };
+                    format!("Running: {}", short)
+                }
+            }
+            InstallStep::Delete { path } => {
+                let filename = path.rsplit('/').next().unwrap_or("file");
+                format!("Removing {}", filename)
+            }
+            InstallStep::DockerPull { image } => format!("Pulling image {}", image),
+            InstallStep::DockerCreate { config } => format!("Creating container {}", config.name),
+            InstallStep::DockerStart { container } => format!("Starting container {}", container),
+            InstallStep::DockerStop { container } => format!("Stopping container {}", container),
+            InstallStep::DockerRm { container } => format!("Removing container {}", container),
+        }
+    }
+
     /// Execute installation steps
     async fn execute_install_steps(&self, manifest: &PackageManifest, task_id: &str) -> Result<()> {
-        for (i, step) in manifest.install.steps.iter().enumerate() {
-            // Apply variable substitution
-            let substituted_step = self.substitute_step(step);
-            let step_desc = format!("{:?}", substituted_step);
-            tracing::info!("Executing step {}/{}: {}", i + 1, manifest.install.steps.len(), step_desc);
+        let total = manifest.install.steps.len() as i32;
 
-            // Update progress
+        for (i, step) in manifest.install.steps.iter().enumerate() {
+            let substituted_step = self.substitute_step(step);
+            let step_desc = Self::step_description(&substituted_step);
+            tracing::info!("Executing step {}/{}: {}", i + 1, total, step_desc);
+
+            // Update progress in DB
             sqlx::query("UPDATE package_tasks SET progress = ?, current_step = ? WHERE id = ?")
                 .bind(i as i32)
                 .bind(&step_desc)
@@ -410,9 +501,57 @@ impl PackageService {
                 .execute(&self.db)
                 .await?;
 
+            // Broadcast progress via WebSocket
+            self.broadcast_progress(task_id, &manifest.id, "running", i as i32, total, Some(&step_desc));
+
             self.execute_step(&substituted_step, manifest, &manifest.id).await
                 .with_context(|| format!("Failed at step {}: {:?}", i + 1, substituted_step))?;
         }
+
+        // Broadcast completion
+        self.broadcast_progress(task_id, &manifest.id, "completed", total, total, None);
+
+        Ok(())
+    }
+
+    /// Execute fake installation steps in dev mode
+    async fn execute_dev_mode_steps(&self, package_id: &str, task_id: &str) -> Result<()> {
+        let fake_steps = [
+            ("Downloading package...", 2000),
+            ("Extracting files...", 1500),
+            ("Configuring...", 1000),
+            ("Installing services...", 1500),
+            ("Finalizing...", 1000),
+        ];
+        let total = fake_steps.len() as i32;
+
+        // Update total_steps in DB
+        sqlx::query("UPDATE package_tasks SET total_steps = ? WHERE id = ?")
+            .bind(total)
+            .bind(task_id)
+            .execute(&self.db)
+            .await?;
+
+        for (i, (desc, delay_ms)) in fake_steps.iter().enumerate() {
+            tracing::info!("[DEV MODE] Step {}/{}: {}", i + 1, total, desc);
+
+            // Update DB
+            sqlx::query("UPDATE package_tasks SET progress = ?, current_step = ? WHERE id = ?")
+                .bind(i as i32)
+                .bind(*desc)
+                .bind(task_id)
+                .execute(&self.db)
+                .await?;
+
+            // Broadcast via WebSocket
+            self.broadcast_progress(task_id, package_id, "running", i as i32, total, Some(desc));
+
+            // Simulate work
+            tokio::time::sleep(std::time::Duration::from_millis(*delay_ms)).await;
+        }
+
+        // Broadcast completion
+        self.broadcast_progress(task_id, package_id, "completed", total, total, None);
 
         Ok(())
     }

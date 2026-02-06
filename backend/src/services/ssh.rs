@@ -10,16 +10,23 @@ pub struct SshStatus {
     pub port: u16,
 }
 
+/// LibreELEC SSH config file path
+/// This file controls whether sshd starts at boot.
+/// Format: SSHD_START="true" or SSHD_START="false"
+const SSHD_CONF_PATH: &str = "/storage/.cache/services/sshd.conf";
+const SSHD_CONF_DIR: &str = "/storage/.cache/services";
+
+/// Possible service names for SSH daemon on LibreELEC
+const SSHD_SERVICE_NAMES: &[&str] = &["sshd", "sshd.service", "dropbear"];
+
 /// SSH service manager for LibreELEC
 ///
-/// On LibreELEC, SSH is provided by OpenSSH (sshd).
-/// The service can be controlled via systemctl, but may also be
-/// controlled by Kodi Settings (which uses kernel command line).
+/// On LibreELEC, SSH is controlled via:
+/// 1. Config file: /storage/.cache/services/sshd.conf (SSHD_START=true/false)
+/// 2. Service: systemctl start/stop sshd
 ///
-/// Configuration files:
-/// - /etc/ssh/sshd_config (read-only, system default)
-/// - /storage/.cache/services/sshd.conf (read-write, runtime config)
-/// - SSH keys in /storage/.cache/ssh/
+/// systemctl enable/disable does NOT work (service is "static").
+/// The config file is what controls auto-start at boot.
 pub struct SshService {
     dev_mode: bool,
 }
@@ -42,43 +49,23 @@ impl SshService {
 
     /// Get current SSH status
     pub async fn get_status(&self) -> anyhow::Result<SshStatus> {
-        // Return fake data in dev mode
         if self.dev_mode {
             let enabled = DEV_SSH_ENABLED.load(Ordering::Relaxed);
             return Ok(SshStatus {
                 enabled,
-                running: enabled, // In dev mode, running = enabled
+                running: enabled,
                 port: 22,
             });
         }
 
-        // Check if sshd is running (most reliable indicator on LibreELEC)
-        let active_output = AsyncCommand::new("systemctl")
-            .args(["is-active", "sshd"])
-            .output()
-            .await;
+        // Check if sshd process is actually running
+        let running = self.is_sshd_running().await;
 
-        let running = active_output
-            .map(|o| String::from_utf8_lossy(&o.stdout).trim() == "active")
-            .unwrap_or(false);
+        // Check if SSH is enabled in config file (for auto-start at boot)
+        let config_enabled = self.read_sshd_conf().await;
 
-        // Check if sshd is enabled (for auto-start on boot)
-        let enabled_output = AsyncCommand::new("systemctl")
-            .args(["is-enabled", "sshd"])
-            .output()
-            .await;
-
-        let enabled = enabled_output
-            .map(|o| {
-                let status = String::from_utf8_lossy(&o.stdout);
-                let status = status.trim();
-                // "enabled" or "enabled-runtime" both count as enabled
-                status == "enabled" || status == "enabled-runtime" || status == "static"
-            })
-            .unwrap_or(false);
-
-        // If running but shows disabled, consider it enabled (LibreELEC quirk)
-        let enabled = enabled || running;
+        // Consider enabled if config says true OR if it's actually running
+        let enabled = config_enabled || running;
 
         // Get SSH port from sshd config
         let port = self.get_ssh_port().await.unwrap_or(22);
@@ -90,11 +77,101 @@ impl SshService {
         })
     }
 
+    /// Check if sshd is actually running (try multiple methods)
+    async fn is_sshd_running(&self) -> bool {
+        // Method 1: systemctl is-active (try known service names)
+        for name in SSHD_SERVICE_NAMES {
+            let output = AsyncCommand::new("systemctl")
+                .args(["is-active", name])
+                .output()
+                .await;
+
+            if let Ok(o) = output {
+                if String::from_utf8_lossy(&o.stdout).trim() == "active" {
+                    return true;
+                }
+            }
+        }
+
+        // Method 2: check if sshd process exists (fallback)
+        let output = AsyncCommand::new("pgrep")
+            .args(["-x", "sshd"])
+            .output()
+            .await;
+
+        if let Ok(o) = output {
+            if o.status.success() {
+                return true;
+            }
+        }
+
+        false
+    }
+
+    /// Read SSHD_START value from config file
+    async fn read_sshd_conf(&self) -> bool {
+        match tokio::fs::read_to_string(SSHD_CONF_PATH).await {
+            Ok(content) => {
+                for line in content.lines() {
+                    let line = line.trim();
+                    if line.starts_with("SSHD_START=") {
+                        let value = line
+                            .trim_start_matches("SSHD_START=")
+                            .trim_matches('"')
+                            .trim_matches('\'')
+                            .to_lowercase();
+                        return value == "true";
+                    }
+                }
+                // No SSHD_START line found — default behavior depends on LibreELEC version
+                // If the file exists but no SSHD_START, assume enabled
+                true
+            }
+            Err(_) => {
+                // No config file — SSH may still be running (default on fresh install)
+                // Return false so we don't wrongly show enabled when no config exists
+                false
+            }
+        }
+    }
+
+    /// Write SSHD_START value to config file
+    async fn write_sshd_conf(&self, enabled: bool) -> anyhow::Result<()> {
+        // Ensure directory exists
+        if !std::path::Path::new(SSHD_CONF_DIR).exists() {
+            tokio::fs::create_dir_all(SSHD_CONF_DIR).await?;
+        }
+
+        let value = if enabled { "true" } else { "false" };
+        let content = format!("SSHD_START=\"{}\"\n", value);
+
+        tokio::fs::write(SSHD_CONF_PATH, &content).await?;
+        tracing::info!("Wrote sshd.conf: SSHD_START={}", value);
+        Ok(())
+    }
+
+    /// Find the actual sshd service name on this system
+    async fn find_sshd_service(&self) -> Option<&'static str> {
+        for name in SSHD_SERVICE_NAMES {
+            let output = AsyncCommand::new("systemctl")
+                .args(["cat", name])
+                .output()
+                .await;
+
+            if let Ok(o) = output {
+                if o.status.success() {
+                    return Some(name);
+                }
+            }
+        }
+        None
+    }
+
     /// Get SSH port from config
     async fn get_ssh_port(&self) -> anyhow::Result<u16> {
-        // Try to read from sshd_config (LibreELEC paths)
         let config_paths = [
             "/storage/.cache/services/sshd.conf",
+            "/storage/.config/ssh/sshd_config",
             "/etc/ssh/sshd_config",
         ];
 
@@ -102,10 +179,10 @@ impl SshService {
             if let Ok(content) = tokio::fs::read_to_string(path).await {
                 for line in content.lines() {
                     let line = line.trim();
-                    // Skip comments
                     if line.starts_with('#') {
                         continue;
                     }
+                    // Handle both "Port 22" and "SSHD_PORT=22"
                     if line.to_lowercase().starts_with("port ") {
                         if let Some(port_str) = line.split_whitespace().nth(1) {
                             if let Ok(port) = port_str.parse::<u16>() {
@@ -113,139 +190,113 @@ impl SshService {
                             }
                         }
                     }
+                    if line.starts_with("SSHD_PORT=") {
+                        let val = line
+                            .trim_start_matches("SSHD_PORT=")
+                            .trim_matches('"')
+                            .trim_matches('\'');
+                        if let Ok(port) = val.parse::<u16>() {
+                            return Ok(port);
+                        }
+                    }
                 }
             }
         }
 
-        Ok(22) // Default SSH port
-    }
-
-    /// Ensure SSH configuration directory exists
-    async fn ensure_ssh_config_dir(&self) -> anyhow::Result<()> {
-        let config_dir = "/storage/.cache/services";
-        if !std::path::Path::new(config_dir).exists() {
-            tokio::fs::create_dir_all(config_dir).await?;
-        }
-        Ok(())
+        Ok(22)
     }
 
     /// Enable SSH service
     pub async fn enable(&self) -> anyhow::Result<()> {
-        // In dev mode, just update the fake state
         if self.dev_mode {
             tracing::info!("[DEV MODE] Would enable SSH service");
             DEV_SSH_ENABLED.store(true, Ordering::Relaxed);
             return Ok(());
         }
 
-        // Ensure config directory exists
-        self.ensure_ssh_config_dir().await.ok();
+        // 1) Write config file (persists across reboots)
+        self.write_sshd_conf(true).await?;
 
-        // Try to start the service first (it may already be enabled)
-        let start_output = AsyncCommand::new("systemctl")
-            .args(["start", "sshd"])
+        // 2) Start the service
+        let service = self.find_sshd_service().await.unwrap_or("sshd");
+
+        let output = AsyncCommand::new("systemctl")
+            .args(["start", service])
             .output()
             .await?;
 
-        if start_output.status.success() {
-            tracing::info!("SSH service started successfully");
-
-            // Also enable for boot
-            let _ = AsyncCommand::new("systemctl")
-                .args(["enable", "sshd"])
+        if !output.status.success() {
+            // Try restart in case it was in a failed state
+            let output2 = AsyncCommand::new("systemctl")
+                .args(["restart", service])
                 .output()
-                .await;
+                .await?;
 
-            return Ok(());
+            if !output2.status.success() {
+                let stderr = String::from_utf8_lossy(&output2.stderr);
+                tracing::warn!("Failed to start SSH via systemctl: {}", stderr);
+                // Don't fail — config is written, service may start on next boot
+            }
         }
 
-        // If start failed, try enabling first then starting
-        let enable_output = AsyncCommand::new("systemctl")
-            .args(["enable", "sshd"])
-            .output()
-            .await?;
-
-        if !enable_output.status.success() {
-            let stderr = String::from_utf8_lossy(&enable_output.stderr);
-            tracing::warn!("Failed to enable SSH (may already be enabled): {}", stderr);
+        // Verify it's actually running
+        if self.is_sshd_running().await {
+            tracing::info!("SSH service enabled and running");
+        } else {
+            tracing::warn!("SSH config written but service may not be running yet");
         }
 
-        // Try starting again
-        let start_output = AsyncCommand::new("systemctl")
-            .args(["start", "sshd"])
-            .output()
-            .await?;
-
-        if !start_output.status.success() {
-            let stderr = String::from_utf8_lossy(&start_output.stderr);
-            anyhow::bail!("Failed to start SSH: {}", stderr);
-        }
-
-        tracing::info!("SSH service enabled and started");
         Ok(())
     }
 
     /// Disable SSH service
     pub async fn disable(&self) -> anyhow::Result<()> {
-        // In dev mode, just update the fake state
         if self.dev_mode {
             tracing::info!("[DEV MODE] Would disable SSH service");
             DEV_SSH_ENABLED.store(false, Ordering::Relaxed);
             return Ok(());
         }
 
-        // Stop the service
-        let stop_output = AsyncCommand::new("systemctl")
-            .args(["stop", "sshd"])
+        // 1) Write config file (persists across reboots)
+        self.write_sshd_conf(false).await?;
+
+        // 2) Stop the service
+        let service = self.find_sshd_service().await.unwrap_or("sshd");
+
+        let output = AsyncCommand::new("systemctl")
+            .args(["stop", service])
             .output()
             .await?;
 
-        if !stop_output.status.success() {
-            let stderr = String::from_utf8_lossy(&stop_output.stderr);
-            tracing::warn!("Failed to stop SSH (may already be stopped): {}", stderr);
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            tracing::warn!("Failed to stop SSH via systemctl: {} (service may already be stopped)", stderr);
         }
 
-        // Disable the service (prevent auto-start)
-        let disable_output = AsyncCommand::new("systemctl")
-            .args(["disable", "sshd"])
-            .output()
-            .await?;
-
-        if !disable_output.status.success() {
-            let stderr = String::from_utf8_lossy(&disable_output.stderr);
-            // Don't fail if disable doesn't work - the service is stopped
-            tracing::warn!("Failed to disable SSH (service may be static): {}", stderr);
-        }
-
-        tracing::info!("SSH service stopped");
+        tracing::info!("SSH service disabled");
         Ok(())
     }
 
     /// Change SSH password (root password in LibreELEC)
-    ///
-    /// On LibreELEC, there is only one user (root), and the SSH password
-    /// is the root system password. This uses chpasswd to change it.
     pub async fn change_password(&self, new_password: &str) -> anyhow::Result<()> {
-        // Validate password
         if new_password.len() < 4 {
             anyhow::bail!("Password must be at least 4 characters");
         }
 
-        // In dev mode, just log the action
         if self.dev_mode {
-            tracing::info!("[DEV MODE] Would change SSH password (length: {})", new_password.len());
+            tracing::info!(
+                "[DEV MODE] Would change SSH password (length: {})",
+                new_password.len()
+            );
             return Ok(());
         }
 
-        // Use chpasswd to change the root password
-        // This is the standard way to change passwords non-interactively
         let mut child = AsyncCommand::new("chpasswd")
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::piped())
             .spawn()?;
 
-        // Write "root:password" to stdin
         if let Some(stdin) = child.stdin.as_mut() {
             use tokio::io::AsyncWriteExt;
             let input = format!("root:{}\n", new_password);

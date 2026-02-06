@@ -1,4 +1,19 @@
+import { writable } from 'svelte/store';
 import { systemStats } from './system';
+
+export interface TaskProgress {
+	task_id: string;
+	package_id: string;
+	status: string;
+	progress: number;
+	total_steps: number;
+	progress_percent: number;
+	current_step: string | null;
+	error_message: string | null;
+}
+
+/** Store tracking active task progress events keyed by task_id */
+export const taskProgress = writable<Record<string, TaskProgress>>({});
 
 let ws: WebSocket | null = null;
 let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -106,6 +121,25 @@ export function connectWebSocket(): () => void {
 					memoryUsed: data.memory_used,
 					memoryTotal: data.memory_total
 				});
+				break;
+			case 'task.progress':
+				if (data.data) {
+					const progress: TaskProgress = data.data;
+					taskProgress.update((tasks) => {
+						if (progress.status === 'completed' || progress.status === 'failed') {
+							tasks[progress.task_id] = progress;
+							setTimeout(() => {
+								taskProgress.update((t) => {
+									delete t[progress.task_id];
+									return { ...t };
+								});
+							}, 3000);
+						} else {
+							tasks[progress.task_id] = progress;
+						}
+						return { ...tasks };
+					});
+				}
 				break;
 			case 'notification':
 				console.log('[WS] Notification:', data.message || data.data?.message);

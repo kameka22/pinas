@@ -4,6 +4,7 @@
 	import { t, locale, loadAppTranslations } from '$lib/i18n';
 	import { loadInstalledApps } from '$stores/desktop';
 	import { openWindow } from '$stores/windows';
+	import { taskProgress, type TaskProgress } from '$stores/websocket';
 
 	interface AppPackage {
 		id: string;
@@ -56,6 +57,13 @@
 	let selectedCategory = 'all';
 	let selectedPackage: AppPackage | null = null;
 	let installError: string | null = null;
+
+	// Installation progress tracking
+	let activeTaskId: string | null = null;
+	let activePackageId: string | null = null;
+
+	// Reactive: get progress from WebSocket store for the active task
+	$: activeProgress = activeTaskId ? $taskProgress[activeTaskId] ?? null : null;
 
 	// Uninstall modal state
 	let showUninstallModal = false;
@@ -111,35 +119,11 @@
 					};
 				});
 			} else {
-				// Fallback to static Docker entry if catalog unavailable
-				packages = [{
-					id: 'docker',
-					name: 'Docker',
-					description: $t.appCenter.packages.docker.description,
-					icon: 'mdi:docker',
-					iconBg: 'bg-blue-500',
-					version: '24.0.7',
-					size: '~150 MB',
-					status: installedPackages.some((p) => p.id === 'docker' && p.status === 'installed') ? 'installed' : 'not_installed',
-					category: 'containers',
-					dependencies: []
-				}];
+				packages = [];
 			}
 		} catch (error) {
 			console.error('Failed to load packages:', error);
-			// Fallback
-			packages = [{
-				id: 'docker',
-				name: 'Docker',
-				description: $t.appCenter.packages.docker.description,
-				icon: 'mdi:docker',
-				iconBg: 'bg-blue-500',
-				version: '24.0.7',
-				size: '~150 MB',
-				status: 'not_installed',
-				category: 'containers',
-				dependencies: []
-			}];
+			packages = [];
 		}
 		loading = false;
 	}
@@ -224,7 +208,11 @@
 		const matchesSearch =
 			pkg.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
 			pkg.description.toLowerCase().includes(searchQuery.toLowerCase());
-		const matchesCategory = selectedCategory === 'all' || pkg.category === selectedCategory;
+		const matchesCategory =
+			selectedCategory === 'all' ||
+			selectedCategory === 'installed'
+				? (selectedCategory === 'all' || pkg.status === 'installed')
+				: pkg.category === selectedCategory;
 		return matchesSearch && matchesCategory;
 	});
 
@@ -291,10 +279,11 @@
 				throw new Error(error.error || 'Installation failed');
 			}
 
-			// Poll for completion
 			const result = await response.json();
 			if (result.task_id) {
-				await pollTaskStatus(result.task_id, pkg.id);
+				activeTaskId = result.task_id;
+				activePackageId = pkg.id;
+				await waitForTaskCompletion(result.task_id, pkg.id);
 			}
 		} catch (error) {
 			console.error('Installation failed:', error);
@@ -308,34 +297,46 @@
 			if (selectedPackage?.id === pkg.id) {
 				selectedPackage = { ...selectedPackage, status: 'not_installed' };
 			}
+		} finally {
+			activeTaskId = null;
+			activePackageId = null;
 		}
 	}
 
-	async function pollTaskStatus(taskId: string, packageId: string) {
-		const maxAttempts = 60;
+	async function waitForTaskCompletion(taskId: string, packageId: string) {
+		const maxAttempts = 120;
 		let attempts = 0;
 
 		while (attempts < maxAttempts) {
+			// Check WebSocket store first (real-time)
+			const wsProgress = $taskProgress[taskId];
+			if (wsProgress) {
+				if (wsProgress.status === 'completed') {
+					await onInstallComplete(packageId);
+					return;
+				} else if (wsProgress.status === 'failed') {
+					throw new Error(wsProgress.error_message || 'Installation failed');
+				}
+			}
+
+			// Fallback: poll API every 2s
 			try {
 				const response = await fetch(`/api/packages/task/${taskId}`);
 				if (response.ok) {
 					const task = await response.json();
 					if (task.status === 'completed') {
-						// Success! Reload everything
-						await loadPackages();
-						await loadInstalledApps();
-						await loadAppTranslations(packageId);
-
-						if (selectedPackage?.id === packageId) {
-							selectedPackage = packages.find((p) => p.id === packageId) || null;
-						}
+						await onInstallComplete(packageId);
 						return;
 					} else if (task.status === 'failed') {
 						throw new Error(task.error_message || 'Installation failed');
 					}
 				}
 			} catch (error) {
-				console.error('Failed to check task status:', error);
+				if (error instanceof Error && error.message !== 'Installation failed') {
+					console.error('Failed to check task status:', error);
+				} else {
+					throw error;
+				}
 			}
 
 			await new Promise((resolve) => setTimeout(resolve, 2000));
@@ -343,6 +344,16 @@
 		}
 
 		throw new Error('Installation timed out');
+	}
+
+	async function onInstallComplete(packageId: string) {
+		await loadPackages();
+		await loadInstalledApps();
+		await loadAppTranslations(packageId);
+
+		if (selectedPackage?.id === packageId) {
+			selectedPackage = packages.find((p) => p.id === packageId) || null;
+		}
 	}
 
 	function showUninstallConfirmation(pkg: AppPackage | null) {
@@ -460,10 +471,14 @@
 		</nav>
 
 		<div class="sidebar-footer">
-			<div class="stats">
+			<button
+				class="stats-button"
+				class:active={selectedCategory === 'installed'}
+				on:click={() => { selectedCategory = selectedCategory === 'installed' ? 'all' : 'installed'; selectedPackage = null; }}
+			>
 				<span class="stat-value">{packages.filter((p) => p.status === 'installed').length}</span>
 				<span class="stat-label">{$t.appCenter.installedCount}</span>
-			</div>
+			</button>
 		</div>
 	</aside>
 
@@ -536,10 +551,27 @@
 								{$t.appCenter.actions.uninstall}
 							</button>
 						{:else if selectedPackage.status === 'installing'}
-							<button class="btn-primary" disabled>
-								<Icon icon="mdi:loading" class="w-5 h-5 animate-spin" />
-								{$t.appCenter.actions.installing}
-							</button>
+							<div class="install-progress">
+								<div class="progress-header">
+									<Icon icon="mdi:loading" class="w-5 h-5 animate-spin text-blue-500" />
+									<span class="progress-label">
+										{#if activeProgress}
+											{activeProgress.current_step || $t.appCenter.actions.installing}
+										{:else}
+											{$t.appCenter.actions.installing}
+										{/if}
+									</span>
+								</div>
+								<div class="progress-bar-container">
+									<div
+										class="progress-bar-fill"
+										style="width: {activeProgress ? activeProgress.progress_percent : 0}%"
+									></div>
+								</div>
+								<span class="progress-percent">
+									{activeProgress ? activeProgress.progress_percent : 0}%
+								</span>
+							</div>
 						{/if}
 						{#if installError}
 							<p class="error-message">{installError}</p>
@@ -605,8 +637,17 @@
 											<Icon icon="mdi:link-variant-off" class="w-4 h-4 text-amber-500" />
 										</span>
 									{/if}
-									<span class="status-dot {pkg.status === 'installed' ? 'installed' : ''}"></span>
+									{#if pkg.status === 'installing' && activePackageId === pkg.id && activeProgress}
+										<span class="mini-progress">{activeProgress.progress_percent}%</span>
+									{:else}
+										<span class="status-dot {pkg.status === 'installed' ? 'installed' : ''}"></span>
+									{/if}
 								</div>
+								{#if pkg.status === 'installing' && activePackageId === pkg.id && activeProgress}
+									<div class="mini-progress-bar">
+										<div class="mini-progress-fill" style="width: {activeProgress.progress_percent}%"></div>
+									</div>
+								{/if}
 							</div>
 							<Icon icon="mdi:chevron-right" class="chevron" />
 						</button>
@@ -710,10 +751,33 @@
 		border-top: 1px solid #e2e8f0;
 	}
 
-	.stats {
+	.stats-button {
 		display: flex;
 		flex-direction: column;
 		align-items: center;
+		width: 100%;
+		padding: 8px;
+		border: none;
+		background: transparent;
+		border-radius: 8px;
+		cursor: pointer;
+		transition: all 0.15s ease;
+	}
+
+	.stats-button:hover {
+		background: #f1f5f9;
+	}
+
+	.stats-button.active {
+		background: #eff6ff;
+	}
+
+	.stats-button.active .stat-value {
+		color: #2563eb;
+	}
+
+	.stats-button.active .stat-label {
+		color: #2563eb;
 	}
 
 	.stat-value {
@@ -793,6 +857,9 @@
 		cursor: pointer;
 		transition: all 0.15s ease;
 		text-align: left;
+		position: relative;
+		overflow: hidden;
+		flex-shrink: 0;
 	}
 
 	.package-card:hover {
@@ -1131,6 +1198,76 @@
 
 	.btn-disabled:hover {
 		background: #94a3b8 !important;
+	}
+
+	/* Installation progress bar (detail view) */
+	.install-progress {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+		min-width: 200px;
+	}
+
+	.progress-header {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+	}
+
+	.progress-label {
+		font-size: 13px;
+		color: #3b82f6;
+		font-weight: 500;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		max-width: 180px;
+	}
+
+	.progress-bar-container {
+		width: 100%;
+		height: 8px;
+		background: #e2e8f0;
+		border-radius: 4px;
+		overflow: hidden;
+	}
+
+	.progress-bar-fill {
+		height: 100%;
+		background: linear-gradient(90deg, #3b82f6, #2563eb);
+		border-radius: 4px;
+		transition: width 0.3s ease;
+	}
+
+	.progress-percent {
+		font-size: 12px;
+		color: #64748b;
+		text-align: right;
+		font-weight: 600;
+	}
+
+	/* Mini progress bar (grid card view) */
+	.mini-progress {
+		font-size: 11px;
+		color: #3b82f6;
+		font-weight: 600;
+	}
+
+	.mini-progress-bar {
+		position: absolute;
+		bottom: 0;
+		left: 0;
+		right: 0;
+		height: 3px;
+		background: #e2e8f0;
+		border-radius: 0 0 12px 12px;
+		overflow: hidden;
+	}
+
+	.mini-progress-fill {
+		height: 100%;
+		background: linear-gradient(90deg, #3b82f6, #2563eb);
+		transition: width 0.3s ease;
 	}
 
 	.loading-state {

@@ -9,6 +9,7 @@ use axum::{
     Json, Router,
 };
 use serde::Serialize;
+use tokio::sync::broadcast;
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::services::{ServeDir, ServeFile};
 use tower_http::trace::TraceLayer;
@@ -20,6 +21,7 @@ mod db;
 mod models;
 mod services;
 
+use crate::api::ws::TaskProgressEvent;
 use crate::config::AppConfig;
 
 /// Application state shared across handlers
@@ -27,6 +29,7 @@ use crate::config::AppConfig;
 pub struct AppState {
     pub config: Arc<AppConfig>,
     pub db: sqlx::SqlitePool,
+    pub task_tx: broadcast::Sender<TaskProgressEvent>,
 }
 
 #[tokio::main]
@@ -50,10 +53,14 @@ async fn main() -> anyhow::Result<()> {
     // Run migrations
     sqlx::migrate!("./migrations").run(&db).await?;
 
+    // Create broadcast channel for task progress events
+    let (task_tx, _) = broadcast::channel::<TaskProgressEvent>(100);
+
     // Create app state
     let state = AppState {
         config: Arc::new(config),
         db,
+        task_tx,
     };
 
     // Build router

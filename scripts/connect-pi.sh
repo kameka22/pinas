@@ -128,15 +128,25 @@ discover_arp() {
     arp_output=$(arp -a 2>/dev/null)
 
     local found=false
+    local candidates=()
     for prefix in "${PI_MAC_PREFIXES[@]}"; do
         while IFS= read -r line; do
             local ip
             ip=$(echo "$line" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' | head -1)
             if [[ -n "$ip" ]]; then
-                add_host "$ip" "ARP table, MAC ${prefix}:..."
-                found=true
+                candidates+=("$ip|${prefix}")
             fi
         done <<< "$(echo "$arp_output" | grep -i "$prefix")"
+    done
+
+    # Verify candidates are actually reachable
+    for entry in "${candidates[@]}"; do
+        local ip="${entry%%|*}"
+        local prefix="${entry##*|}"
+        if ping -c 1 -W 1 "$ip" &>/dev/null; then
+            add_host "$ip" "ARP table, MAC ${prefix}:..."
+            found=true
+        fi
     done
     $found
 }
