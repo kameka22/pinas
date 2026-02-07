@@ -204,6 +204,17 @@ async fn resolve_location_path(
         }
 
         Ok(PathBuf::from(&perm.path))
+    } else if location_id.starts_with("media-") {
+        // Auto-mounted removable media (USB drives)
+        let media_name = location_id.strip_prefix("media-").unwrap();
+        let mount_point = format!("/var/media/{}", media_name);
+
+        // Verify it's actually mounted
+        if !Path::new(&mount_point).exists() {
+            return Err("Media not mounted".to_string());
+        }
+
+        Ok(PathBuf::from(mount_point))
     } else {
         Err("Invalid location_id format".to_string())
     }

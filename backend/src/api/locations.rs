@@ -41,6 +41,14 @@ pub enum BrowsableLocation {
         usage_percent: f32,
         pool_name: String,
     },
+    Media {
+        id: String,
+        name: String,
+        path: String,
+        icon: String,
+        device: String,
+        fs_type: String,
+    },
 }
 
 /// Get all browsable locations for the current user
@@ -190,7 +198,77 @@ async fn get_locations(
         }
     }
 
+    // 5. Auto-mounted removable media (USB drives, etc.)
+    match get_mounted_media().await {
+        Ok(media) => {
+            for m in media {
+                locations.push(BrowsableLocation::Media {
+                    id: format!("media-{}", m.name),
+                    name: m.name,
+                    path: m.mount_point,
+                    icon: "mdi:usb-flash-drive".to_string(),
+                    device: m.device,
+                    fs_type: m.fs_type,
+                });
+            }
+        }
+        Err(e) => {
+            tracing::warn!("Failed to scan mounted media: {}", e);
+        }
+    }
+
     (StatusCode::OK, Json(locations))
+}
+
+/// Mounted media info
+#[derive(Debug)]
+struct MountedMedia {
+    name: String,
+    mount_point: String,
+    device: String,
+    fs_type: String,
+}
+
+/// Scan /proc/mounts for auto-mounted removable media
+async fn get_mounted_media() -> Result<Vec<MountedMedia>, std::io::Error> {
+    let mounts = tokio::fs::read_to_string("/proc/mounts").await?;
+    let mut media = Vec::new();
+    let mut seen_names: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+    for line in mounts.lines() {
+        let fields: Vec<&str> = line.split_whitespace().collect();
+        if fields.len() < 3 {
+            continue;
+        }
+
+        let device = fields[0];
+        let mount_point = fields[1];
+        let fs_type = fields[2];
+
+        // Only include mounts under /var/media/ (LibreELEC auto-mount)
+        if !mount_point.starts_with("/var/media/") {
+            continue;
+        }
+
+        // Derive display name from mount point
+        let name = mount_point
+            .strip_prefix("/var/media/")
+            .unwrap_or(mount_point)
+            .to_string();
+
+        if name.is_empty() || !seen_names.insert(name.clone()) {
+            continue;
+        }
+
+        media.push(MountedMedia {
+            name,
+            mount_point: mount_point.to_string(),
+            device: device.to_string(),
+            fs_type: fs_type.to_string(),
+        });
+    }
+
+    Ok(media)
 }
 
 /// Share info from database
