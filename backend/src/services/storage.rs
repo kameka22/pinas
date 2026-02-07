@@ -156,6 +156,18 @@ impl StorageService {
             return Ok(self.get_fake_disks());
         }
 
+        // Try lsblk first, fall back to sysfs if not available
+        match self.list_disks_lsblk().await {
+            Ok(disks) => Ok(disks),
+            Err(e) => {
+                tracing::info!("lsblk not available ({}), using sysfs fallback", e);
+                self.list_disks_sysfs().await
+            }
+        }
+    }
+
+    /// List disks using lsblk (standard Linux)
+    async fn list_disks_lsblk(&self) -> Result<Vec<Disk>> {
         let output = Command::new("lsblk")
             .args(["-J", "-b", "-o", "NAME,SIZE,TYPE,MOUNTPOINT,FSTYPE,LABEL,UUID,MODEL,SERIAL,TRAN,RM,HOTPLUG"])
             .output()
@@ -209,6 +221,197 @@ impl StorageService {
         }
 
         Ok(disks)
+    }
+
+    /// List disks using /sys/block + /proc/partitions + blkid (LibreELEC fallback)
+    async fn list_disks_sysfs(&self) -> Result<Vec<Disk>> {
+        // Parse /proc/partitions for size info
+        let partitions_data = tokio::fs::read_to_string("/proc/partitions").await
+            .context("Failed to read /proc/partitions")?;
+        let mut part_sizes: HashMap<String, u64> = HashMap::new();
+        for line in partitions_data.lines().skip(2) {
+            let fields: Vec<&str> = line.split_whitespace().collect();
+            if fields.len() >= 4 {
+                let blocks: u64 = fields[2].parse().unwrap_or(0);
+                let name = fields[3].to_string();
+                part_sizes.insert(name, blocks * 1024); // blocks are 1KB
+            }
+        }
+
+        // Parse blkid for filesystem info
+        let blkid_info = self.parse_blkid().await;
+
+        // Parse /proc/mounts for mount points
+        let mounts_data = tokio::fs::read_to_string("/proc/mounts").await
+            .unwrap_or_default();
+        let mut mount_map: HashMap<String, String> = HashMap::new();
+        for line in mounts_data.lines() {
+            let fields: Vec<&str> = line.split_whitespace().collect();
+            if fields.len() >= 2 {
+                mount_map.insert(fields[0].to_string(), fields[1].to_string());
+            }
+        }
+
+        // Enumerate block devices from /sys/block
+        let mut disks = Vec::new();
+        let mut entries = tokio::fs::read_dir("/sys/block").await
+            .context("Failed to read /sys/block")?;
+
+        while let Some(entry) = entries.next_entry().await? {
+            let name = entry.file_name().to_string_lossy().to_string();
+
+            // Skip loop, ram, dm devices
+            if name.starts_with("loop") || name.starts_with("ram") || name.starts_with("dm-") {
+                continue;
+            }
+
+            let sys_path = format!("/sys/block/{}", name);
+            let device_path = format!("/dev/{}", name);
+
+            // Read device properties from sysfs
+            let size = part_sizes.get(&name).copied().unwrap_or(0);
+            let model = Self::read_sysfs_str(&format!("{}/device/model", sys_path)).await;
+            let serial = Self::read_sysfs_str(&format!("{}/device/serial", sys_path)).await;
+            let removable = Self::read_sysfs_u8(&format!("{}/removable", sys_path)).await == 1;
+
+            // Determine disk type from name
+            let disk_type = if name.starts_with("nvme") {
+                DiskType::Nvme
+            } else if name.starts_with("mmcblk") {
+                DiskType::Sd
+            } else if removable {
+                DiskType::Usb
+            } else if model.as_ref().map(|m| m.to_uppercase().contains("SSD")).unwrap_or(false) {
+                DiskType::Ssd
+            } else {
+                DiskType::Hdd
+            };
+
+            // Enumerate partitions from /sys/block/{name}/{name}*
+            let mut partitions = Vec::new();
+            let mut child_devices: Vec<LsblkDevice> = Vec::new();
+            if let Ok(mut part_entries) = tokio::fs::read_dir(&sys_path).await {
+                let mut part_num: u32 = 0;
+                while let Some(pentry) = part_entries.next_entry().await? {
+                    let pname = pentry.file_name().to_string_lossy().to_string();
+                    // Partitions are named like sda1, mmcblk0p1, nvme0n1p1
+                    if !pname.starts_with(&name) || pname == name {
+                        continue;
+                    }
+                    // Verify it's actually a partition (has a 'partition' file)
+                    let partition_file = format!("{}/{}/partition", sys_path, pname);
+                    if !Path::new(&partition_file).exists() {
+                        continue;
+                    }
+
+                    part_num += 1;
+                    let pdev_path = format!("/dev/{}", pname);
+                    let psize = part_sizes.get(&pname).copied().unwrap_or(0);
+                    let bi = blkid_info.get(&pdev_path);
+                    let pmount = mount_map.get(&pdev_path).cloned();
+
+                    let is_system_part = pmount.as_ref()
+                        .map(|m| PROTECTED_MOUNTS.contains(&m.as_str()))
+                        .unwrap_or(false);
+
+                    partitions.push(Partition {
+                        device_path: pdev_path.clone(),
+                        number: part_num,
+                        size: psize,
+                        fs_type: bi.and_then(|b| b.fs_type.clone()),
+                        label: bi.and_then(|b| b.label.clone()),
+                        uuid: bi.and_then(|b| b.uuid.clone()),
+                        mount_point: pmount.clone(),
+                        is_system: is_system_part,
+                    });
+
+                    // Also build LsblkDevice for is_system_device check
+                    child_devices.push(LsblkDevice {
+                        name: pname,
+                        size: Some(psize),
+                        device_type: "part".to_string(),
+                        mountpoint: pmount,
+                        fstype: bi.and_then(|b| b.fs_type.clone()),
+                        label: bi.and_then(|b| b.label.clone()),
+                        uuid: bi.and_then(|b| b.uuid.clone()),
+                        model: None,
+                        serial: None,
+                        tran: None,
+                        rm: None,
+                        hotplug: None,
+                        children: None,
+                    });
+                }
+            }
+
+            let children = if child_devices.is_empty() { None } else { Some(child_devices) };
+            let is_system = self.is_system_device(&device_path, &children);
+            let device_by_id = self.get_device_by_id(&name).await;
+            let (temperature, health_status) = self.get_basic_smart_info(&device_path).await;
+
+            disks.push(Disk {
+                device_name: name,
+                device_path,
+                device_by_id,
+                model: model.unwrap_or_else(|| "Unknown".to_string()),
+                serial,
+                size,
+                disk_type,
+                temperature,
+                health_status,
+                is_system,
+                is_removable: removable,
+                partitions,
+            });
+        }
+
+        Ok(disks)
+    }
+
+    /// Parse blkid output into a map of device -> BlkidInfo
+    async fn parse_blkid(&self) -> HashMap<String, BlkidInfo> {
+        let mut info = HashMap::new();
+
+        let output = Command::new("blkid")
+            .output()
+            .await;
+
+        if let Ok(output) = output {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            for line in stdout.lines() {
+                // Format: /dev/mmcblk0p1: LABEL="LIBREELEC" UUID="..." TYPE="vfat" ...
+                let Some((dev, attrs)) = line.split_once(':') else { continue };
+                let dev = dev.trim().to_string();
+
+                let mut bi = BlkidInfo { fs_type: None, label: None, uuid: None };
+
+                for part in attrs.split_whitespace() {
+                    if let Some(val) = part.strip_prefix("TYPE=") {
+                        bi.fs_type = Some(val.trim_matches('"').to_string());
+                    } else if let Some(val) = part.strip_prefix("LABEL=") {
+                        bi.label = Some(val.trim_matches('"').to_string());
+                    } else if let Some(val) = part.strip_prefix("UUID=") {
+                        bi.uuid = Some(val.trim_matches('"').to_string());
+                    }
+                }
+
+                info.insert(dev, bi);
+            }
+        }
+
+        info
+    }
+
+    /// Read a sysfs file as trimmed string
+    async fn read_sysfs_str(path: &str) -> Option<String> {
+        tokio::fs::read_to_string(path).await.ok().map(|s| s.trim().to_string()).filter(|s| !s.is_empty())
+    }
+
+    /// Read a sysfs file as u8
+    async fn read_sysfs_u8(path: &str) -> u8 {
+        tokio::fs::read_to_string(path).await.ok()
+            .and_then(|s| s.trim().parse().ok())
+            .unwrap_or(0)
     }
 
     /// Get detailed S.M.A.R.T. information for a disk
@@ -1180,6 +1383,15 @@ struct LsblkDevice {
     rm: Option<bool>,
     hotplug: Option<bool>,
     children: Option<Vec<LsblkDevice>>,
+}
+
+// ============ BLKID PARSED INFO ============
+
+/// Parsed blkid info for a single device
+struct BlkidInfo {
+    fs_type: Option<String>,
+    label: Option<String>,
+    uuid: Option<String>,
 }
 
 // ============ SMARTCTL JSON STRUCTURES ============
