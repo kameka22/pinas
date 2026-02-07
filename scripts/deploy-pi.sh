@@ -394,19 +394,50 @@ pi_run_tty() {
     ssh -t -o ControlPath="$PI_SSH_SOCKET" -p "$PI_PORT" "${PI_USER}@${PI_HOST}" "$1"
 }
 
-# SCP from VM to Pi (via VM's ssh to Pi)
+# Transfer mode: "direct" (VM→Pi via sshpass) or "relay" (VM→Mac→Pi)
+TRANSFER_MODE=""
+
+detect_transfer_mode() {
+    if vm_run "command -v sshpass" &>/dev/null; then
+        TRANSFER_MODE="direct"
+        echo -e "  ${CHECK} VM has sshpass → direct VM→Pi transfer"
+    else
+        TRANSFER_MODE="relay"
+        echo -e "  ${DIM}No sshpass on VM → relay via Mac (VM→Mac→Pi)${NC}"
+    fi
+}
+
+# SCP from VM to Pi
 vm_to_pi() {
     local remote_path="$1"
     local pi_path="$2"
-    # VM sends files directly to Pi
-    vm_run "sshpass -p '${PI_PASS}' scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -P ${PI_PORT} ${remote_path} ${PI_USER}@${PI_HOST}:${pi_path}"
+
+    if [[ "$TRANSFER_MODE" == "direct" ]]; then
+        vm_run "sshpass -p '${PI_PASS}' scp -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -P ${PI_PORT} ${remote_path} ${PI_USER}@${PI_HOST}:${pi_path}"
+    else
+        # Relay: VM → local temp → Pi
+        local tmp_file="${SSH_CONTROL_DIR}/transfer_$(basename "$remote_path")"
+        scp -o ControlPath="$VM_SSH_SOCKET" "$VM_USER@$VM_IP:${remote_path}" "$tmp_file"
+        scp -o ControlPath="$PI_SSH_SOCKET" -P "$PI_PORT" "$tmp_file" "${PI_USER}@${PI_HOST}:${pi_path}"
+        rm -f "$tmp_file"
+    fi
 }
 
 vm_to_pi_dir() {
     local remote_path="$1"
     local pi_path="$2"
-    # VM sends directory directly to Pi
-    vm_run "sshpass -p '${PI_PASS}' scp -r -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -P ${PI_PORT} ${remote_path} ${PI_USER}@${PI_HOST}:${pi_path}"
+
+    if [[ "$TRANSFER_MODE" == "direct" ]]; then
+        vm_run "sshpass -p '${PI_PASS}' scp -r -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -P ${PI_PORT} ${remote_path} ${PI_USER}@${PI_HOST}:${pi_path}"
+    else
+        # Relay: VM → local temp dir → Pi
+        local tmp_dir="${SSH_CONTROL_DIR}/transfer_dir"
+        rm -rf "$tmp_dir"
+        mkdir -p "$tmp_dir"
+        scp -r -o ControlPath="$VM_SSH_SOCKET" "$VM_USER@$VM_IP:${remote_path}" "$tmp_dir/"
+        scp -r -o ControlPath="$PI_SSH_SOCKET" -P "$PI_PORT" "$tmp_dir/." "${PI_USER}@${PI_HOST}:${pi_path}"
+        rm -rf "$tmp_dir"
+    fi
 }
 
 # ── Build on VM ──────────────────────────────────────────────────
@@ -676,16 +707,9 @@ main() {
                 ;;
         esac
 
-        # Ensure sshpass is available on VM for VM→Pi transfers
+        # Detect transfer mode (direct VM→Pi or relay via Mac)
         echo ""
-        echo -ne "  Checking VM has sshpass... "
-        if vm_run "command -v sshpass" &>/dev/null; then
-            echo -e "${CHECK}"
-        else
-            echo -e "${YELLOW}installing...${NC}"
-            vm_run "sudo apt-get install -y sshpass >/dev/null 2>&1"
-            echo -e "  ${CHECK} sshpass installed"
-        fi
+        detect_transfer_mode
     fi
 
     # Connect to Pi
