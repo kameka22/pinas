@@ -260,8 +260,9 @@ impl StorageService {
         while let Some(entry) = entries.next_entry().await? {
             let name = entry.file_name().to_string_lossy().to_string();
 
-            // Skip loop, ram, dm devices
-            if name.starts_with("loop") || name.starts_with("ram") || name.starts_with("dm-") {
+            // Skip virtual/pseudo block devices
+            if name.starts_with("loop") || name.starts_with("ram") || name.starts_with("dm-")
+                || name.starts_with("nbd") || name.starts_with("zram") {
                 continue;
             }
 
@@ -270,6 +271,11 @@ impl StorageService {
 
             // Read device properties from sysfs
             let size = part_sizes.get(&name).copied().unwrap_or(0);
+
+            // Skip devices with zero size (not connected)
+            if size == 0 {
+                continue;
+            }
             let model = Self::read_sysfs_str(&format!("{}/device/model", sys_path)).await;
             let serial = Self::read_sysfs_str(&format!("{}/device/serial", sys_path)).await;
             let removable = Self::read_sysfs_u8(&format!("{}/removable", sys_path)).await == 1;

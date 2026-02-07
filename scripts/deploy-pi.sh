@@ -471,8 +471,14 @@ build_frontend() {
 
 # ── Deploy to Pi ─────────────────────────────────────────────────
 deploy_backend() {
+    echo -ne "    Stopping pinas service ... "
+    pi_run "systemctl stop pinas 2>/dev/null || true"
+    echo -e "${CHECK}"
+
     echo -ne "    Binary → ${PI_BIN_DIR}/pinas ... "
     pi_run "mkdir -p ${PI_BIN_DIR}"
+    # Remove old binary first (can't overwrite a running binary)
+    pi_run "rm -f ${PI_BIN_DIR}/pinas"
     vm_to_pi "${REMOTE_PROJECT_DIR}/backend/target/aarch64-unknown-linux-musl/release/pinas" "${PI_BIN_DIR}/pinas"
     pi_run "chmod 755 ${PI_BIN_DIR}/pinas"
     echo -e "${CHECK}"
