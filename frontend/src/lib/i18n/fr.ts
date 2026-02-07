@@ -352,7 +352,8 @@ export default {
 		sections: {
 			personal: 'Personnel',
 			shares: 'Dossiers partagés',
-			volumes: 'Volumes'
+			volumes: 'Volumes',
+			media: 'Périphériques amovibles'
 		},
 		statuses: {
 			mounted: 'Monté',

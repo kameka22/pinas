@@ -474,7 +474,7 @@ export interface FileItem {
 }
 
 // Browsable location types for File Manager sidebar
-export type BrowsableLocationType = 'home' | 'share' | 'volume';
+export type BrowsableLocationType = 'home' | 'share' | 'volume' | 'media';
 
 export interface BrowsableLocation {
 	type: BrowsableLocationType;
@@ -490,6 +490,8 @@ export interface BrowsableLocation {
 	fs_type?: string;
 	usage_percent?: number;
 	pool_name?: string;
+	// Media-specific fields
+	device?: string;
 }
 
 // Storage types

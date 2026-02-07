@@ -41,12 +41,14 @@
 	$: homeLocations = locations.filter(l => l.type === 'home');
 	$: shareLocations = locations.filter(l => l.type === 'share');
 	$: volumeLocations = locations.filter(l => l.type === 'volume');
+	$: mediaLocations = locations.filter(l => l.type === 'media');
 
 	// Sidebar section expansion state
 	let expandedSections = {
 		personal: true,
 		shares: true,
-		volumes: false
+		volumes: false,
+		media: true
 	};
 
 	// Get icon for file type
@@ -472,6 +474,34 @@
 					</div>
 				{/if}
 
+				<!-- Removable Media section -->
+				{#if mediaLocations.length > 0}
+					<div class="sidebar-section">
+						<button
+							class="section-header"
+							on:click={() => expandedSections.media = !expandedSections.media}
+						>
+							<Icon
+								icon={expandedSections.media ? 'mdi:chevron-down' : 'mdi:chevron-right'}
+								class="w-4 h-4"
+							/>
+							<span>{$t.fileManager.sections?.media || 'Removable Media'}</span>
+						</button>
+						{#if expandedSections.media}
+							{#each mediaLocations as loc}
+								<button
+									class="sidebar-item"
+									class:active={selectedLocationId === loc.id}
+									on:click={() => selectLocation(loc)}
+								>
+									<Icon icon={loc.icon} class="w-4 h-4 location-icon media-icon" />
+									<span>{loc.name}</span>
+								</button>
+							{/each}
+						{/if}
+					</div>
+				{/if}
+
 				<!-- Empty state -->
 				{#if locations.length === 0}
 					<div class="sidebar-empty">
@@ -857,6 +887,10 @@
 
 	.volume-icon {
 		color: #8b5cf6;
+	}
+
+	.media-icon {
+		color: #f59e0b;
 	}
 
 	.location-info {
