@@ -469,6 +469,11 @@ deploy_scripts() {
     pi_run "chmod 755 ${PI_BIN_DIR}/pinas-resize-storage.sh"
     echo -e "${CHECK}"
 
+    echo -ne "    pinas-kodi-config.sh → ${PI_BIN_DIR}/ ... "
+    vm_to_pi "${src}/bin/pinas-kodi-config.sh" "${PI_BIN_DIR}/pinas-kodi-config.sh"
+    pi_run "chmod 755 ${PI_BIN_DIR}/pinas-kodi-config.sh"
+    echo -e "${CHECK}"
+
     # Deploy service files with paths pointing to /storage/.pinas/bin/
     echo -ne "    pinas.service → ${PI_SYSTEMD_DIR}/ ... "
     pi_run "mkdir -p ${PI_SYSTEMD_DIR}"
@@ -488,6 +493,8 @@ Environment=PINAS_DATABASE_URL=sqlite:/storage/.pinas/data/pinas.db?mode=rwc
 Environment=PINAS_BIND_ADDRESS=0.0.0.0:3000
 Environment=PINAS_LOG_LEVEL=info
 Environment=PINAS_STATIC_DIR=/storage/.pinas/www
+Environment=PINAS_KODI_USERNAME=kodi
+Environment=PINAS_KODI_PASSWORD=pinas
 ExecStartPre=/storage/.pinas/bin/pinas-init.sh
 ExecStart=/storage/.pinas/bin/pinas
 Restart=on-failure
@@ -519,6 +526,27 @@ StandardError=journal
 [Install]
 WantedBy=local-fs-pre.target
 SVCEOF"
+    echo -e "${CHECK}"
+
+    echo -ne "    pinas-kodi-config.service → ${PI_SYSTEMD_DIR}/ ... "
+    pi_run "cat > ${PI_SYSTEMD_DIR}/pinas-kodi-config.service << 'SVCEOF'
+[Unit]
+Description=PiNAS - Configure Kodi webserver
+DefaultDependencies=no
+Before=kodi.service
+After=systemd-remount-fs.service
+
+[Service]
+Type=oneshot
+ExecStart=/storage/.pinas/bin/pinas-kodi-config.sh
+RemainAfterExit=yes
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target
+SVCEOF"
+    pi_run "systemctl enable ${PI_SYSTEMD_DIR}/pinas-kodi-config.service 2>/dev/null || true"
     echo -e "${CHECK}"
 }
 
@@ -557,7 +585,7 @@ do_revert() {
     echo ""
 
     echo -ne "    Remove service overrides... "
-    pi_run "rm -f ${PI_SYSTEMD_DIR}/pinas.service ${PI_SYSTEMD_DIR}/pinas-resize-storage.service"
+    pi_run "rm -f ${PI_SYSTEMD_DIR}/pinas.service ${PI_SYSTEMD_DIR}/pinas-resize-storage.service ${PI_SYSTEMD_DIR}/pinas-kodi-config.service"
     echo -e "${CHECK}"
 
     echo -ne "    Remove deployed binary... "
@@ -565,7 +593,7 @@ do_revert() {
     echo -e "${CHECK}"
 
     echo -ne "    Remove deployed scripts... "
-    pi_run "rm -f ${PI_BIN_DIR}/pinas-init.sh ${PI_BIN_DIR}/pinas-resize-storage.sh"
+    pi_run "rm -f ${PI_BIN_DIR}/pinas-init.sh ${PI_BIN_DIR}/pinas-resize-storage.sh ${PI_BIN_DIR}/pinas-kodi-config.sh"
     echo -e "${CHECK}"
 
     echo -ne "    Restore frontend from image... "

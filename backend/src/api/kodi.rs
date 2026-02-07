@@ -47,7 +47,7 @@ async fn get_status(
     State(state): State<AppState>,
     _user: AuthUser,
 ) -> impl IntoResponse {
-    let kodi = KodiService::new(state.config.dev_mode);
+    let kodi = KodiService::new(state.config.dev_mode, state.config.kodi_username.clone(), state.config.kodi_password.clone());
 
     match kodi.get_status().await {
         Ok(status) => (StatusCode::OK, Json(status)).into_response(),
@@ -63,7 +63,7 @@ async fn get_info(
     State(state): State<AppState>,
     _user: AuthUser,
 ) -> impl IntoResponse {
-    let kodi = KodiService::new(state.config.dev_mode);
+    let kodi = KodiService::new(state.config.dev_mode, state.config.kodi_username.clone(), state.config.kodi_password.clone());
 
     match kodi.get_info().await {
         Ok(info) => (StatusCode::OK, Json(info)).into_response(),
@@ -81,7 +81,7 @@ async fn play_pause(
     State(state): State<AppState>,
     _user: AuthUser,
 ) -> impl IntoResponse {
-    let kodi = KodiService::new(state.config.dev_mode);
+    let kodi = KodiService::new(state.config.dev_mode, state.config.kodi_username.clone(), state.config.kodi_password.clone());
 
     match kodi.play_pause().await {
         Ok(_) => (StatusCode::OK, Json(serde_json::json!({ "success": true }))).into_response(),
@@ -97,7 +97,7 @@ async fn stop(
     State(state): State<AppState>,
     _user: AuthUser,
 ) -> impl IntoResponse {
-    let kodi = KodiService::new(state.config.dev_mode);
+    let kodi = KodiService::new(state.config.dev_mode, state.config.kodi_username.clone(), state.config.kodi_password.clone());
 
     match kodi.stop().await {
         Ok(_) => (StatusCode::OK, Json(serde_json::json!({ "success": true }))).into_response(),
@@ -113,7 +113,7 @@ async fn get_volume(
     State(state): State<AppState>,
     _user: AuthUser,
 ) -> impl IntoResponse {
-    let kodi = KodiService::new(state.config.dev_mode);
+    let kodi = KodiService::new(state.config.dev_mode, state.config.kodi_username.clone(), state.config.kodi_password.clone());
 
     match kodi.get_volume().await {
         Ok(volume) => (StatusCode::OK, Json(serde_json::json!({ "volume": volume }))).into_response(),
@@ -135,7 +135,7 @@ async fn set_volume(
     _user: AuthUser,
     Json(body): Json<SetVolumeRequest>,
 ) -> impl IntoResponse {
-    let kodi = KodiService::new(state.config.dev_mode);
+    let kodi = KodiService::new(state.config.dev_mode, state.config.kodi_username.clone(), state.config.kodi_password.clone());
 
     match kodi.set_volume(body.volume).await {
         Ok(_) => (StatusCode::OK, Json(serde_json::json!({ "success": true, "volume": body.volume }))).into_response(),
@@ -154,7 +154,7 @@ async fn input_action(
     _user: AuthUser,
     Path(action): Path<String>,
 ) -> impl IntoResponse {
-    let kodi = KodiService::new(state.config.dev_mode);
+    let kodi = KodiService::new(state.config.dev_mode, state.config.kodi_username.clone(), state.config.kodi_password.clone());
 
     match kodi.input_action(&action).await {
         Ok(_) => (StatusCode::OK, Json(serde_json::json!({ "success": true }))).into_response(),
@@ -179,7 +179,7 @@ async fn get_sources(
     _user: AuthUser,
     Query(query): Query<SourcesQuery>,
 ) -> impl IntoResponse {
-    let kodi = KodiService::new(state.config.dev_mode);
+    let kodi = KodiService::new(state.config.dev_mode, state.config.kodi_username.clone(), state.config.kodi_password.clone());
 
     match kodi.get_sources(query.source_type.as_deref()).await {
         Ok(sources) => (StatusCode::OK, Json(sources)).into_response(),
@@ -203,7 +203,7 @@ async fn add_source(
     _user: AuthUser,
     Json(body): Json<AddSourceRequest>,
 ) -> impl IntoResponse {
-    let kodi = KodiService::new(state.config.dev_mode);
+    let kodi = KodiService::new(state.config.dev_mode, state.config.kodi_username.clone(), state.config.kodi_password.clone());
 
     // Detect protocol from path
     let protocol = if body.path.starts_with("smb://") {
@@ -237,7 +237,7 @@ async fn remove_source(
     _user: AuthUser,
     Path(source_id): Path<String>,
 ) -> impl IntoResponse {
-    let kodi = KodiService::new(state.config.dev_mode);
+    let kodi = KodiService::new(state.config.dev_mode, state.config.kodi_username.clone(), state.config.kodi_password.clone());
 
     match kodi.remove_source(&source_id).await {
         Ok(_) => (StatusCode::OK, Json(serde_json::json!({ "success": true }))).into_response(),
@@ -261,7 +261,7 @@ async fn get_settings(
     _user: AuthUser,
     Query(query): Query<SettingsQuery>,
 ) -> impl IntoResponse {
-    let kodi = KodiService::new(state.config.dev_mode);
+    let kodi = KodiService::new(state.config.dev_mode, state.config.kodi_username.clone(), state.config.kodi_password.clone());
 
     match kodi.get_settings(query.category.as_deref()).await {
         Ok(settings) => (StatusCode::OK, Json(settings)).into_response(),
@@ -284,7 +284,7 @@ async fn set_setting(
     Path(setting_id): Path<String>,
     Json(body): Json<SetSettingRequest>,
 ) -> impl IntoResponse {
-    let kodi = KodiService::new(state.config.dev_mode);
+    let kodi = KodiService::new(state.config.dev_mode, state.config.kodi_username.clone(), state.config.kodi_password.clone());
 
     match kodi.set_setting(&setting_id, body.value).await {
         Ok(_) => (StatusCode::OK, Json(serde_json::json!({ "success": true }))).into_response(),
@@ -302,7 +302,7 @@ async fn get_addons(
     State(state): State<AppState>,
     _user: AuthUser,
 ) -> impl IntoResponse {
-    let kodi = KodiService::new(state.config.dev_mode);
+    let kodi = KodiService::new(state.config.dev_mode, state.config.kodi_username.clone(), state.config.kodi_password.clone());
 
     match kodi.get_addons().await {
         Ok(addons) => (StatusCode::OK, Json(addons)).into_response(),
@@ -319,7 +319,7 @@ async fn enable_addon(
     _user: AuthUser,
     Path(addon_id): Path<String>,
 ) -> impl IntoResponse {
-    let kodi = KodiService::new(state.config.dev_mode);
+    let kodi = KodiService::new(state.config.dev_mode, state.config.kodi_username.clone(), state.config.kodi_password.clone());
 
     match kodi.set_addon_enabled(&addon_id, true).await {
         Ok(_) => (StatusCode::OK, Json(serde_json::json!({ "success": true }))).into_response(),
@@ -336,7 +336,7 @@ async fn disable_addon(
     _user: AuthUser,
     Path(addon_id): Path<String>,
 ) -> impl IntoResponse {
-    let kodi = KodiService::new(state.config.dev_mode);
+    let kodi = KodiService::new(state.config.dev_mode, state.config.kodi_username.clone(), state.config.kodi_password.clone());
 
     match kodi.set_addon_enabled(&addon_id, false).await {
         Ok(_) => (StatusCode::OK, Json(serde_json::json!({ "success": true }))).into_response(),
@@ -355,7 +355,7 @@ async fn scan_library(
     _user: AuthUser,
     Path(library_type): Path<String>,
 ) -> impl IntoResponse {
-    let kodi = KodiService::new(state.config.dev_mode);
+    let kodi = KodiService::new(state.config.dev_mode, state.config.kodi_username.clone(), state.config.kodi_password.clone());
 
     match kodi.scan_library(&library_type).await {
         Ok(_) => (StatusCode::OK, Json(serde_json::json!({ "success": true, "message": "Library scan started" }))).into_response(),
@@ -372,7 +372,7 @@ async fn clean_library(
     _user: AuthUser,
     Path(library_type): Path<String>,
 ) -> impl IntoResponse {
-    let kodi = KodiService::new(state.config.dev_mode);
+    let kodi = KodiService::new(state.config.dev_mode, state.config.kodi_username.clone(), state.config.kodi_password.clone());
 
     match kodi.clean_library(&library_type).await {
         Ok(_) => (StatusCode::OK, Json(serde_json::json!({ "success": true, "message": "Library clean started" }))).into_response(),
@@ -397,7 +397,7 @@ async fn send_notification(
     _user: AuthUser,
     Json(body): Json<NotificationRequest>,
 ) -> impl IntoResponse {
-    let kodi = KodiService::new(state.config.dev_mode);
+    let kodi = KodiService::new(state.config.dev_mode, state.config.kodi_username.clone(), state.config.kodi_password.clone());
 
     match kodi.send_notification(&body.title, &body.message).await {
         Ok(_) => (StatusCode::OK, Json(serde_json::json!({ "success": true }))).into_response(),
@@ -422,7 +422,7 @@ async fn reboot(
             .into_response();
     }
 
-    let kodi = KodiService::new(state.config.dev_mode);
+    let kodi = KodiService::new(state.config.dev_mode, state.config.kodi_username.clone(), state.config.kodi_password.clone());
 
     match kodi.reboot().await {
         Ok(_) => (StatusCode::OK, Json(serde_json::json!({ "success": true, "message": "Reboot initiated" }))).into_response(),
@@ -447,7 +447,7 @@ async fn shutdown(
             .into_response();
     }
 
-    let kodi = KodiService::new(state.config.dev_mode);
+    let kodi = KodiService::new(state.config.dev_mode, state.config.kodi_username.clone(), state.config.kodi_password.clone());
 
     match kodi.shutdown().await {
         Ok(_) => (StatusCode::OK, Json(serde_json::json!({ "success": true, "message": "Shutdown initiated" }))).into_response(),

@@ -38,6 +38,14 @@ pub struct AppConfig {
     /// Development mode - skip actual installations (Docker, downloads, etc.)
     #[serde(default = "default_dev_mode")]
     pub dev_mode: bool,
+
+    /// Kodi JSON-RPC username
+    #[serde(default = "default_kodi_username")]
+    pub kodi_username: String,
+
+    /// Kodi JSON-RPC password
+    #[serde(default = "default_kodi_password")]
+    pub kodi_password: String,
 }
 
 fn default_bind_address() -> String {
@@ -72,6 +80,14 @@ fn default_dev_mode() -> bool {
     false
 }
 
+fn default_kodi_username() -> String {
+    "kodi".to_string()
+}
+
+fn default_kodi_password() -> String {
+    "pinas".to_string()
+}
+
 impl AppConfig {
     /// Load configuration from environment variables
     pub fn load() -> anyhow::Result<Self> {
@@ -92,6 +108,8 @@ impl AppConfig {
             home_on_delete: default_home_on_delete(),
             static_dir: None,
             dev_mode: default_dev_mode(),
+            kodi_username: default_kodi_username(),
+            kodi_password: default_kodi_password(),
         });
 
         Ok(app_config)

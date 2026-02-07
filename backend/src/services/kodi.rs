@@ -12,6 +12,8 @@ const SOURCES_XML_PATH: &str = "/storage/.kodi/userdata/sources.xml";
 pub struct KodiService {
     dev_mode: bool,
     client: Client,
+    username: String,
+    password: String,
     // Fake state for dev mode
     fake_volume: AtomicU8,
     fake_playing: AtomicBool,
@@ -81,7 +83,7 @@ pub struct SettingOption {
 }
 
 impl KodiService {
-    pub fn new(dev_mode: bool) -> Self {
+    pub fn new(dev_mode: bool, username: String, password: String) -> Self {
         let client = Client::builder()
             .timeout(KODI_TIMEOUT)
             .build()
@@ -90,6 +92,8 @@ impl KodiService {
         Self {
             dev_mode,
             client,
+            username,
+            password,
             fake_volume: AtomicU8::new(75),
             fake_playing: AtomicBool::new(false),
             fake_current_title: Mutex::new(None),
@@ -692,6 +696,7 @@ impl KodiService {
         let response = self
             .client
             .post(KODI_JSONRPC_URL)
+            .basic_auth(&self.username, Some(&self.password))
             .header("Content-Type", "application/json")
             .json(&body)
             .send()
