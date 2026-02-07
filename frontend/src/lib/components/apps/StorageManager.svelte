@@ -629,64 +629,117 @@
 			{/if}
 
 		{:else if sidebarSection === 'harddisk'}
-			<h2 class="section-title">{$t.storageManager.disks.title}</h2>
 			{#if loading}
 				<div class="loading-state">
 					<Icon icon="mdi:loading" class="w-8 h-8 animate-spin text-blue-500" />
 				</div>
 			{:else}
-				<div class="disk-list">
-					{#each disks as disk}
-						<div class="disk-card" class:system={disk.is_system}>
-							<div class="disk-icon-large">
-								<Icon icon={getDiskTypeIcon(disk.disk_type)} class="w-10 h-10" />
-							</div>
-							<div class="disk-details">
-								<div class="disk-header">
-									<span class="disk-model">{disk.model}</span>
-									{#if disk.is_system}
+				<!-- System Disk -->
+				{#if disks.some(d => d.is_system)}
+					<h2 class="section-title">
+						<Icon icon="mdi:lock" class="w-4 h-4" style="display:inline;vertical-align:middle;margin-right:4px;opacity:0.5" />
+						{$t.storageManager.disks.systemDisk}
+					</h2>
+					<div class="disk-list">
+						{#each disks.filter(d => d.is_system) as disk}
+							<div class="disk-card system">
+								<div class="disk-icon-large">
+									<Icon icon={getDiskTypeIcon(disk.disk_type)} class="w-10 h-10" />
+								</div>
+								<div class="disk-details">
+									<div class="disk-header">
+										<span class="disk-model">{disk.model}</span>
 										<span class="system-badge">{$t.storageManager.disks.system}</span>
-									{/if}
+									</div>
+									<div class="disk-meta">
+										<span>{disk.device_path}</span>
+										<span>{formatBytes(disk.size)}</span>
+										{#if disk.serial}
+											<span>SN: {disk.serial}</span>
+										{/if}
+									</div>
+									<div class="disk-health">
+										{#if disk.health_status}
+											<span class="health-badge {disk.health_status === 'PASSED' ? 'healthy' : 'warning'}">
+												{disk.health_status}
+											</span>
+										{/if}
+										{#if disk.temperature}
+											<span class="temp {disk.temperature > 50 ? 'hot' : disk.temperature > 40 ? 'warm' : 'cool'}">
+												{disk.temperature}°C
+											</span>
+										{/if}
+									</div>
 								</div>
-								<div class="disk-meta">
-									<span>{disk.device_path}</span>
-									<span>{formatBytes(disk.size)}</span>
-									{#if disk.serial}
-										<span>SN: {disk.serial}</span>
-									{/if}
-								</div>
-								<div class="disk-health">
-									{#if disk.health_status}
-										<span class="health-badge {disk.health_status === 'PASSED' ? 'healthy' : 'warning'}">
-											{disk.health_status}
-										</span>
-									{/if}
-									{#if disk.temperature}
-										<span class="temp {disk.temperature > 50 ? 'hot' : disk.temperature > 40 ? 'warm' : 'cool'}">
-											{disk.temperature}°C
-										</span>
-									{/if}
+								<div class="disk-actions">
+									<button class="btn-secondary" onclick={() => showDiskDetails(disk)}>
+										<Icon icon="mdi:information-outline" class="w-4 h-4" />
+										{$t.storageManager.disks.details}
+									</button>
 								</div>
 							</div>
-							<div class="disk-actions">
-								<button class="btn-secondary" onclick={() => showDiskDetails(disk)}>
-									<Icon icon="mdi:information-outline" class="w-4 h-4" />
-									{$t.storageManager.disks.details}
-								</button>
-								<button class="btn-secondary" onclick={() => showDiskSmart(disk)}>
-									<Icon icon="mdi:chart-line" class="w-4 h-4" />
-									{$t.storageManager.disks.smart}
-								</button>
-								{#if !disk.is_system}
+						{/each}
+					</div>
+				{/if}
+
+				<!-- Storage Disks -->
+				<h2 class="section-title" style="margin-top: {disks.some(d => d.is_system) ? '24px' : '0'}">
+					{$t.storageManager.disks.title}
+				</h2>
+				{#if disks.filter(d => !d.is_system).length === 0}
+					<div class="empty-state">
+						<Icon icon="mdi:harddisk-remove" class="w-12 h-12 text-slate-300" />
+						<p>{$t.storageManager.disks.noExternalDevices}</p>
+					</div>
+				{:else}
+					<div class="disk-list">
+						{#each disks.filter(d => !d.is_system) as disk}
+							<div class="disk-card">
+								<div class="disk-icon-large">
+									<Icon icon={getDiskTypeIcon(disk.disk_type)} class="w-10 h-10" />
+								</div>
+								<div class="disk-details">
+									<div class="disk-header">
+										<span class="disk-model">{disk.model}</span>
+									</div>
+									<div class="disk-meta">
+										<span>{disk.device_path}</span>
+										<span>{formatBytes(disk.size)}</span>
+										{#if disk.serial}
+											<span>SN: {disk.serial}</span>
+										{/if}
+									</div>
+									<div class="disk-health">
+										{#if disk.health_status}
+											<span class="health-badge {disk.health_status === 'PASSED' ? 'healthy' : 'warning'}">
+												{disk.health_status}
+											</span>
+										{/if}
+										{#if disk.temperature}
+											<span class="temp {disk.temperature > 50 ? 'hot' : disk.temperature > 40 ? 'warm' : 'cool'}">
+												{disk.temperature}°C
+											</span>
+										{/if}
+									</div>
+								</div>
+								<div class="disk-actions">
+									<button class="btn-secondary" onclick={() => showDiskDetails(disk)}>
+										<Icon icon="mdi:information-outline" class="w-4 h-4" />
+										{$t.storageManager.disks.details}
+									</button>
+									<button class="btn-secondary" onclick={() => showDiskSmart(disk)}>
+										<Icon icon="mdi:chart-line" class="w-4 h-4" />
+										{$t.storageManager.disks.smart}
+									</button>
 									<button class="btn-secondary btn-warning" onclick={() => confirmWipeDisk(disk)}>
 										<Icon icon="mdi:eraser" class="w-4 h-4" />
 										{$t.storageManager.disks.wipe}
 									</button>
-								{/if}
+								</div>
 							</div>
-						</div>
-					{/each}
-				</div>
+						{/each}
+					</div>
+				{/if}
 			{/if}
 
 		{:else if sidebarSection === 'overview'}

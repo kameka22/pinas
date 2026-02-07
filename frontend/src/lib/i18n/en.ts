@@ -526,7 +526,8 @@ export default {
 			unmount: 'Unmount'
 		},
 		disks: {
-			title: 'Hard Disks',
+			title: 'Storage Disks',
+			systemDisk: 'System Disk',
 			system: 'System',
 			smart: 'S.M.A.R.T.',
 			details: 'Details',

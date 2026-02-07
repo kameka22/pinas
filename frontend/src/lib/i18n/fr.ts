@@ -526,7 +526,8 @@ export default {
 			unmount: 'Démonter'
 		},
 		disks: {
-			title: 'Disques durs',
+			title: 'Disques de stockage',
+			systemDisk: 'Disque système',
 			system: 'Système',
 			smart: 'S.M.A.R.T.',
 			details: 'Détails',
