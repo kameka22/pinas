@@ -1,6 +1,6 @@
 <script lang="ts">
 	import Icon from '@iconify/svelte';
-	import { systemStats } from '$stores/system';
+	import { systemStats, systemInfo } from '$stores/system';
 	import { auth, api } from '$stores/api';
 	import { createEventDispatcher, onMount, onDestroy } from 'svelte';
 	import { t, locale } from '$lib/i18n';
@@ -65,8 +65,24 @@
 		}
 	}
 
-	onMount(() => {
+	onMount(async () => {
 		document.addEventListener('click', handleClickOutside);
+		try {
+			const info = await api.getSystemInfo();
+			systemInfo.set({
+				version: info.version,
+				hostname: info.hostname,
+				osName: info.os_name,
+				osVersion: info.os_version,
+				kernelVersion: info.kernel_version,
+				uptime: info.uptime,
+				cpu: info.cpu,
+				memory: info.memory,
+				loadAverage: info.load_average,
+			});
+		} catch (e) {
+			// Ignore - version just won't show
+		}
 	});
 
 	onDestroy(() => {
@@ -79,11 +95,14 @@
 </script>
 
 <header class="topbar">
-	<!-- Left: App launcher -->
-	<div class="flex items-center gap-4">
+	<!-- Left: App launcher + version -->
+	<div class="flex items-center gap-2">
 		<button class="topbar-btn" on:click={toggleAppLauncher} title={$t.desktop.appLauncher.title}>
 			<Icon icon="mdi:apps" class="w-5 h-5" />
 		</button>
+		{#if $systemInfo?.version}
+			<span class="version-label">PiNAS v{$systemInfo.version}</span>
+		{/if}
 	</div>
 
 	<!-- Right: System indicators -->
@@ -187,6 +206,13 @@
 		padding: 0 12px;
 		z-index: 100;
 		border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+	}
+
+	.version-label {
+		font-size: 12px;
+		color: rgba(255, 255, 255, 0.5);
+		font-weight: 500;
+		letter-spacing: 0.02em;
 	}
 
 	.topbar-btn {

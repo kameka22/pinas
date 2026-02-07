@@ -22,6 +22,7 @@ pub fn router() -> Router<AppState> {
 
 #[derive(Debug, Serialize)]
 pub struct SystemInfo {
+    pub version: String,
     pub hostname: String,
     pub os_name: String,
     pub os_version: String,
@@ -103,6 +104,7 @@ async fn get_info(State(_state): State<AppState>) -> impl IntoResponse {
     let load_avg = System::load_average();
 
     let info = SystemInfo {
+        version: include_str!("../../../VERSION").trim().to_string(),
         hostname: System::host_name().unwrap_or_else(|| "unknown".to_string()),
         os_name: System::name().unwrap_or_else(|| "unknown".to_string()),
         os_version: System::os_version().unwrap_or_else(|| "unknown".to_string()),

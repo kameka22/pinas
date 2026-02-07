@@ -164,6 +164,7 @@ class ApiClient {
 	// System endpoints
 	async getSystemInfo() {
 		return this.get<{
+			version: string;
 			hostname: string;
 			os_name: string;
 			os_version: string;

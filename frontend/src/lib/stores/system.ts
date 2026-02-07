@@ -8,6 +8,7 @@ export interface SystemStats {
 }
 
 export interface SystemInfo {
+	version: string;
 	hostname: string;
 	osName: string;
 	osVersion: string;

@@ -4,6 +4,7 @@
 	import TimeLanguage from './TimeLanguage.svelte';
 	import FileService from './FileService.svelte';
 	import { t } from '$lib/i18n';
+	import { systemInfo as systemInfoStore } from '$stores/system';
 
 	type ViewMode = 'grid' | 'detail';
 	let viewMode: ViewMode = 'grid';
@@ -101,7 +102,7 @@
 	// Mock system data
 	const systemInfo = {
 		deviceName: 'PiNAS-001',
-		systemVersion: '1.0.0',
+		systemVersion: $systemInfoStore?.version || '0.01',
 		deviceOwner: 'admin',
 		model: 'Raspberry Pi 5',
 		serialNumber: 'RPI5-XXXX-XXXX',
