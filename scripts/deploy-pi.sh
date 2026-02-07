@@ -416,7 +416,7 @@ build_backend() {
     echo ""
     echo -e "  ${BOLD}Building backend (aarch64-musl)...${NC}"
 
-    vm_run_tty "cd ${REMOTE_PROJECT_DIR}/backend && cargo build --release --target aarch64-unknown-linux-musl"
+    vm_run_tty "source \$HOME/.cargo/env 2>/dev/null; cd ${REMOTE_PROJECT_DIR}/backend && cargo build --release --target aarch64-unknown-linux-musl"
 
     # Verify static binary
     local file_info
@@ -433,7 +433,7 @@ build_frontend() {
     echo ""
     echo -e "  ${BOLD}Building frontend (SSG)...${NC}"
 
-    vm_run_tty "cd ${REMOTE_PROJECT_DIR}/frontend && npm install --no-audit --no-fund && npm run build"
+    vm_run_tty "export PATH=\$HOME/.cargo/bin:/usr/local/bin:\$PATH; cd ${REMOTE_PROJECT_DIR}/frontend && npm install --no-audit --no-fund && npm run build"
 
     echo -e "  ${CHECK} Frontend built"
 }
