@@ -23,6 +23,8 @@ pub enum WsEvent {
     Notification(Notification),
     #[serde(rename = "task.progress")]
     TaskProgress(TaskProgressEvent),
+    #[serde(rename = "file.task")]
+    FileTask(FileTaskEvent),
 }
 
 #[derive(Debug, Serialize)]
@@ -53,20 +55,36 @@ pub struct TaskProgressEvent {
     pub error_message: Option<String>,
 }
 
+/// File operation task event sent via WebSocket broadcast
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FileTaskEvent {
+    pub task_id: String,
+    pub task_type: String,    // "upload", "copy", "move", "delete", "create_folder", "create_file"
+    pub file_name: String,
+    pub status: String,       // "in_progress", "completed", "error"
+    pub progress: i32,        // 0-100
+    pub error_message: Option<String>,
+}
+
 /// WebSocket handler
 pub async fn ws_handler(
     ws: WebSocketUpgrade,
     State(state): State<AppState>,
 ) -> impl IntoResponse {
     let task_rx = state.task_tx.subscribe();
-    ws.on_upgrade(move |socket| handle_socket(socket, task_rx))
+    let file_task_rx = state.file_task_tx.subscribe();
+    ws.on_upgrade(move |socket| handle_socket(socket, task_rx, file_task_rx))
 }
 
 /// Handle individual WebSocket connection
-async fn handle_socket(socket: WebSocket, mut task_rx: broadcast::Receiver<TaskProgressEvent>) {
+async fn handle_socket(
+    socket: WebSocket,
+    mut task_rx: broadcast::Receiver<TaskProgressEvent>,
+    mut file_task_rx: broadcast::Receiver<FileTaskEvent>,
+) {
     let (mut sender, mut receiver) = socket.split();
 
-    // Spawn task to send periodic system stats AND task progress events
+    // Spawn task to send periodic system stats, task progress, and file task events
     let send_task = tokio::spawn(async move {
         let mut stats_interval = interval(Duration::from_secs(2));
         let mut sys = System::new_all();
@@ -104,6 +122,23 @@ async fn handle_socket(socket: WebSocket, mut task_rx: broadcast::Receiver<TaskP
                         }
                         Err(broadcast::error::RecvError::Lagged(n)) => {
                             tracing::warn!("WebSocket task receiver lagged by {} messages", n);
+                        }
+                        Err(broadcast::error::RecvError::Closed) => {
+                            break;
+                        }
+                    }
+                }
+                result = file_task_rx.recv() => {
+                    match result {
+                        Ok(file_event) => {
+                            let event = WsEvent::FileTask(file_event);
+                            let msg = serde_json::to_string(&event).unwrap();
+                            if sender.send(Message::Text(msg)).await.is_err() {
+                                break;
+                            }
+                        }
+                        Err(broadcast::error::RecvError::Lagged(n)) => {
+                            tracing::warn!("WebSocket file task receiver lagged by {} messages", n);
                         }
                         Err(broadcast::error::RecvError::Closed) => {
                             break;

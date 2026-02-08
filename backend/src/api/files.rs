@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Query, State},
+    extract::{Multipart, Query, State},
     http::StatusCode,
     response::IntoResponse,
     routing::{delete, get, patch, post},
@@ -9,8 +9,10 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
+use tokio::io::AsyncWriteExt;
 
 use crate::api::middleware::AuthUser;
+use crate::api::ws::FileTaskEvent;
 use crate::services::home::HomeService;
 use crate::services::permission::PermissionService;
 use crate::services::user::get_user_by_id;
@@ -60,6 +62,28 @@ pub struct RenameRequest {
     pub location_id: Option<String>,
 }
 
+/// Request to create an empty file
+#[derive(Debug, Deserialize)]
+pub struct CreateFileRequest {
+    pub path: String,
+    pub name: String,
+    pub location_id: Option<String>,
+}
+
+/// Request to copy or move files
+#[derive(Debug, Deserialize)]
+pub struct CopyMoveRequest {
+    pub sources: Vec<String>,
+    pub destination: String,
+    pub location_id: Option<String>,
+}
+
+/// Response for background task operations
+#[derive(Debug, Serialize)]
+pub struct TaskResponse {
+    pub task_id: String,
+}
+
 /// Error response
 #[derive(Debug, Serialize)]
 pub struct ErrorResponse {
@@ -71,8 +95,12 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/", get(list_files))
         .route("/folder", post(create_folder))
+        .route("/file", post(create_file))
         .route("/", delete(delete_file))
         .route("/rename", patch(rename_file))
+        .route("/copy", post(copy_files))
+        .route("/move", post(move_files))
+        .route("/upload", post(upload_file))
 }
 
 /// Validate that a path stays within the base directory (prevent path traversal)
@@ -702,4 +730,532 @@ async fn rename_file(
         modified,
         mime_type: if is_dir { None } else { get_mime_type(&new_path) },
     }).into_response()
+}
+
+/// Create an empty file
+async fn create_file(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Json(payload): Json<CreateFileRequest>,
+) -> impl IntoResponse {
+    // Determine base path based on location_id
+    let base_path = if let Some(ref loc_id) = payload.location_id {
+        match resolve_location_path(&state, &user, loc_id).await {
+            Ok(path) => path,
+            Err(e) => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(ErrorResponse { error: e }),
+                ).into_response();
+            }
+        }
+    } else {
+        let home_service = HomeService::new(&state.config);
+        home_service.get_home_path(&user.username)
+    };
+
+    // Validate parent path
+    let parent_path = match validate_path(&base_path, &payload.path) {
+        Ok(p) => p,
+        Err(e) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse { error: e }),
+            ).into_response();
+        }
+    };
+
+    // Validate file name (no path separators)
+    if payload.name.contains('/') || payload.name.contains('\\') || payload.name.starts_with('.') {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse { error: "Invalid file name".to_string() }),
+        ).into_response();
+    }
+
+    let new_file_path = parent_path.join(&payload.name);
+
+    // Check if already exists
+    if new_file_path.exists() {
+        return (
+            StatusCode::CONFLICT,
+            Json(ErrorResponse { error: "A file or folder with this name already exists".to_string() }),
+        ).into_response();
+    }
+
+    // Create the empty file
+    if let Err(e) = fs::File::create(&new_file_path) {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse { error: format!("Failed to create file: {}", e) }),
+        ).into_response();
+    }
+
+    // Build relative path
+    let rel_path = if payload.path.is_empty() {
+        payload.name.clone()
+    } else {
+        format!("{}/{}", payload.path.trim_end_matches('/'), payload.name)
+    };
+
+    let modified = SystemTime::now();
+
+    (
+        StatusCode::CREATED,
+        Json(FileItem {
+            name: payload.name.clone(),
+            path: rel_path,
+            file_type: "file".to_string(),
+            size: Some(0),
+            modified: format_time(modified),
+            mime_type: get_mime_type(&new_file_path),
+        }),
+    ).into_response()
+}
+
+/// Upload a file via multipart form data
+async fn upload_file(
+    State(state): State<AppState>,
+    user: AuthUser,
+    mut multipart: Multipart,
+) -> impl IntoResponse {
+    let mut location_id: Option<String> = None;
+    let mut dest_path: Option<String> = None;
+    let mut file_name: Option<String> = None;
+    let mut file_data: Option<Vec<u8>> = None;
+
+    // Parse multipart fields
+    while let Ok(Some(field)) = multipart.next_field().await {
+        let name = field.name().unwrap_or("").to_string();
+        match name.as_str() {
+            "location_id" => {
+                location_id = field.text().await.ok();
+            }
+            "path" => {
+                dest_path = field.text().await.ok();
+            }
+            "file" => {
+                file_name = field.file_name().map(|s| s.to_string());
+                file_data = field.bytes().await.ok().map(|b| b.to_vec());
+            }
+            _ => {}
+        }
+    }
+
+    // Validate that we received a file
+    let file_name = match file_name {
+        Some(name) if !name.is_empty() => name,
+        _ => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse { error: "No file provided".to_string() }),
+            ).into_response();
+        }
+    };
+
+    let file_data = match file_data {
+        Some(data) => data,
+        None => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse { error: "No file data received".to_string() }),
+            ).into_response();
+        }
+    };
+
+    let dest_path = dest_path.unwrap_or_default();
+
+    // Determine base path based on location_id
+    let base_path = if let Some(ref loc_id) = location_id {
+        match resolve_location_path(&state, &user, loc_id).await {
+            Ok(path) => path,
+            Err(e) => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(ErrorResponse { error: e }),
+                ).into_response();
+            }
+        }
+    } else {
+        let home_service = HomeService::new(&state.config);
+        home_service.get_home_path(&user.username)
+    };
+
+    // Validate destination directory
+    let dir_path = match validate_path(&base_path, &dest_path) {
+        Ok(p) => p,
+        Err(e) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse { error: e }),
+            ).into_response();
+        }
+    };
+
+    if !dir_path.exists() {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse { error: "Destination directory not found".to_string() }),
+        ).into_response();
+    }
+
+    let target_path = dir_path.join(&file_name);
+
+    let task_id = uuid::Uuid::new_v4().to_string();
+    let tx = state.file_task_tx.clone();
+
+    // Send in_progress event
+    let _ = tx.send(FileTaskEvent {
+        task_id: task_id.clone(),
+        task_type: "upload".to_string(),
+        file_name: file_name.clone(),
+        status: "in_progress".to_string(),
+        progress: 0,
+        error_message: None,
+    });
+
+    // Write the file
+    match tokio::fs::File::create(&target_path).await {
+        Ok(mut file) => {
+            if let Err(e) = file.write_all(&file_data).await {
+                let _ = tx.send(FileTaskEvent {
+                    task_id: task_id.clone(),
+                    task_type: "upload".to_string(),
+                    file_name: file_name.clone(),
+                    status: "error".to_string(),
+                    progress: 0,
+                    error_message: Some(format!("Failed to write file: {}", e)),
+                });
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(ErrorResponse { error: format!("Failed to write file: {}", e) }),
+                ).into_response();
+            }
+        }
+        Err(e) => {
+            let _ = tx.send(FileTaskEvent {
+                task_id: task_id.clone(),
+                task_type: "upload".to_string(),
+                file_name: file_name.clone(),
+                status: "error".to_string(),
+                progress: 0,
+                error_message: Some(format!("Failed to create file: {}", e)),
+            });
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse { error: format!("Failed to create file: {}", e) }),
+            ).into_response();
+        }
+    }
+
+    // Send completed event
+    let _ = tx.send(FileTaskEvent {
+        task_id: task_id.clone(),
+        task_type: "upload".to_string(),
+        file_name: file_name.clone(),
+        status: "completed".to_string(),
+        progress: 100,
+        error_message: None,
+    });
+
+    // Build relative path
+    let rel_path = if dest_path.is_empty() {
+        file_name.clone()
+    } else {
+        format!("{}/{}", dest_path.trim_end_matches('/'), file_name)
+    };
+
+    let modified = SystemTime::now();
+    let size = file_data.len() as u64;
+
+    (
+        StatusCode::CREATED,
+        Json(FileItem {
+            name: file_name.clone(),
+            path: rel_path,
+            file_type: "file".to_string(),
+            size: Some(size),
+            modified: format_time(modified),
+            mime_type: get_mime_type(&target_path),
+        }),
+    ).into_response()
+}
+
+/// Copy files/folders to a destination
+async fn copy_files(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Json(payload): Json<CopyMoveRequest>,
+) -> impl IntoResponse {
+    // Determine base path based on location_id
+    let base_path = if let Some(ref loc_id) = payload.location_id {
+        match resolve_location_path(&state, &user, loc_id).await {
+            Ok(path) => path,
+            Err(e) => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(ErrorResponse { error: e }),
+                ).into_response();
+            }
+        }
+    } else {
+        let home_service = HomeService::new(&state.config);
+        home_service.get_home_path(&user.username)
+    };
+
+    // Validate destination
+    let dest_path = match validate_path(&base_path, &payload.destination) {
+        Ok(p) => p,
+        Err(e) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse { error: e }),
+            ).into_response();
+        }
+    };
+
+    if !dest_path.exists() || !dest_path.is_dir() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse { error: "Destination directory not found".to_string() }),
+        ).into_response();
+    }
+
+    // Validate all source paths upfront
+    let mut resolved_sources: Vec<(PathBuf, String)> = Vec::new();
+    for source in &payload.sources {
+        let source_path = match validate_path(&base_path, source) {
+            Ok(p) => p,
+            Err(e) => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(ErrorResponse { error: format!("Invalid source path '{}': {}", source, e) }),
+                ).into_response();
+            }
+        };
+        if !source_path.exists() {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse { error: format!("Source not found: {}", source) }),
+            ).into_response();
+        }
+        let name = source_path
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
+        resolved_sources.push((source_path, name));
+    }
+
+    let task_id = uuid::Uuid::new_v4().to_string();
+    let tx = state.file_task_tx.clone();
+    let task_id_clone = task_id.clone();
+
+    // Spawn background task for the copy operation
+    tokio::spawn(async move {
+        let total = resolved_sources.len();
+        for (i, (source_path, name)) in resolved_sources.iter().enumerate() {
+            let progress = ((i as f64 / total as f64) * 100.0) as i32;
+
+            let _ = tx.send(FileTaskEvent {
+                task_id: task_id_clone.clone(),
+                task_type: "copy".to_string(),
+                file_name: name.clone(),
+                status: "in_progress".to_string(),
+                progress,
+                error_message: None,
+            });
+
+            let dest_item = dest_path.join(name);
+
+            let result = if source_path.is_dir() {
+                copy_dir_recursive(source_path, &dest_item)
+            } else {
+                fs::copy(source_path, &dest_item).map(|_| ())
+            };
+
+            if let Err(e) = result {
+                let _ = tx.send(FileTaskEvent {
+                    task_id: task_id_clone.clone(),
+                    task_type: "copy".to_string(),
+                    file_name: name.clone(),
+                    status: "error".to_string(),
+                    progress,
+                    error_message: Some(format!("Failed to copy '{}': {}", name, e)),
+                });
+                return;
+            }
+        }
+
+        let _ = tx.send(FileTaskEvent {
+            task_id: task_id_clone.clone(),
+            task_type: "copy".to_string(),
+            file_name: String::new(),
+            status: "completed".to_string(),
+            progress: 100,
+            error_message: None,
+        });
+    });
+
+    (
+        StatusCode::ACCEPTED,
+        Json(TaskResponse { task_id }),
+    ).into_response()
+}
+
+/// Move files/folders to a destination
+async fn move_files(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Json(payload): Json<CopyMoveRequest>,
+) -> impl IntoResponse {
+    // Determine base path based on location_id
+    let base_path = if let Some(ref loc_id) = payload.location_id {
+        match resolve_location_path(&state, &user, loc_id).await {
+            Ok(path) => path,
+            Err(e) => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(ErrorResponse { error: e }),
+                ).into_response();
+            }
+        }
+    } else {
+        let home_service = HomeService::new(&state.config);
+        home_service.get_home_path(&user.username)
+    };
+
+    // Validate destination
+    let dest_path = match validate_path(&base_path, &payload.destination) {
+        Ok(p) => p,
+        Err(e) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse { error: e }),
+            ).into_response();
+        }
+    };
+
+    if !dest_path.exists() || !dest_path.is_dir() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse { error: "Destination directory not found".to_string() }),
+        ).into_response();
+    }
+
+    // Validate all source paths upfront
+    let mut resolved_sources: Vec<(PathBuf, String)> = Vec::new();
+    for source in &payload.sources {
+        let source_path = match validate_path(&base_path, source) {
+            Ok(p) => p,
+            Err(e) => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(ErrorResponse { error: format!("Invalid source path '{}': {}", source, e) }),
+                ).into_response();
+            }
+        };
+        if !source_path.exists() {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse { error: format!("Source not found: {}", source) }),
+            ).into_response();
+        }
+        let name = source_path
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
+        resolved_sources.push((source_path, name));
+    }
+
+    let task_id = uuid::Uuid::new_v4().to_string();
+    let tx = state.file_task_tx.clone();
+    let task_id_clone = task_id.clone();
+
+    // Spawn background task for the move operation
+    tokio::spawn(async move {
+        let total = resolved_sources.len();
+        for (i, (source_path, name)) in resolved_sources.iter().enumerate() {
+            let progress = ((i as f64 / total as f64) * 100.0) as i32;
+
+            let _ = tx.send(FileTaskEvent {
+                task_id: task_id_clone.clone(),
+                task_type: "move".to_string(),
+                file_name: name.clone(),
+                status: "in_progress".to_string(),
+                progress,
+                error_message: None,
+            });
+
+            let dest_item = dest_path.join(name);
+
+            // Try rename first (fast for same filesystem)
+            let result = match fs::rename(source_path, &dest_item) {
+                Ok(()) => Ok(()),
+                Err(_rename_err) => {
+                    // Rename failed (likely cross-filesystem), fall back to copy + delete
+                    let copy_result = if source_path.is_dir() {
+                        copy_dir_recursive(source_path, &dest_item)
+                    } else {
+                        fs::copy(source_path, &dest_item).map(|_| ())
+                    };
+
+                    match copy_result {
+                        Ok(()) => {
+                            // Delete the source after successful copy
+                            if source_path.is_dir() {
+                                fs::remove_dir_all(source_path)
+                            } else {
+                                fs::remove_file(source_path)
+                            }
+                        }
+                        Err(e) => Err(e),
+                    }
+                }
+            };
+
+            if let Err(e) = result {
+                let _ = tx.send(FileTaskEvent {
+                    task_id: task_id_clone.clone(),
+                    task_type: "move".to_string(),
+                    file_name: name.clone(),
+                    status: "error".to_string(),
+                    progress,
+                    error_message: Some(format!("Failed to move '{}': {}", name, e)),
+                });
+                return;
+            }
+        }
+
+        let _ = tx.send(FileTaskEvent {
+            task_id: task_id_clone.clone(),
+            task_type: "move".to_string(),
+            file_name: String::new(),
+            status: "completed".to_string(),
+            progress: 100,
+            error_message: None,
+        });
+    });
+
+    (
+        StatusCode::ACCEPTED,
+        Json(TaskResponse { task_id }),
+    ).into_response()
+}
+
+/// Recursively copy a directory and its contents
+fn copy_dir_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {
+    fs::create_dir_all(dst)?;
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
+        let entry_path = entry.path();
+        let dest_path = dst.join(entry.file_name());
+        if entry_path.is_dir() {
+            copy_dir_recursive(&entry_path, &dest_path)?;
+        } else {
+            fs::copy(&entry_path, &dest_path)?;
+        }
+    }
+    Ok(())
 }

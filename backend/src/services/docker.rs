@@ -422,10 +422,18 @@ impl DockerService {
             .map(|e| format!("{}={}", e.name, e.value))
             .collect();
 
+        // Build tmpfs map
+        let tmpfs_map: Option<HashMap<String, String>> = if config.tmpfs.is_empty() {
+            None
+        } else {
+            Some(config.tmpfs.iter().map(|t| (t.clone(), String::new())).collect())
+        };
+
         // Build host config
         let host_config = HostConfig {
             port_bindings: Some(port_bindings),
             binds: Some(binds),
+            network_mode: config.network.clone(),
             devices: if config.devices.is_empty() {
                 None
             } else {
@@ -454,6 +462,11 @@ impl DockerService {
                 maximum_retry_count: None,
             }),
             privileged: Some(config.privileged),
+            cap_add: if config.cap_add.is_empty() { None } else { Some(config.cap_add.clone()) },
+            cap_drop: if config.cap_drop.is_empty() { None } else { Some(config.cap_drop.clone()) },
+            dns: if config.dns.is_empty() { None } else { Some(config.dns.clone()) },
+            extra_hosts: if config.extra_hosts.is_empty() { None } else { Some(config.extra_hosts.clone()) },
+            tmpfs: tmpfs_map,
             ..Default::default()
         };
 
@@ -462,6 +475,9 @@ impl DockerService {
             image: Some(image.clone()),
             hostname: config.hostname.clone(),
             env: Some(env),
+            user: config.user.clone(),
+            cmd: config.command.clone(),
+            entrypoint: config.entrypoint.clone(),
             host_config: Some(host_config),
             labels: Some(config.labels.clone()),
             ..Default::default()

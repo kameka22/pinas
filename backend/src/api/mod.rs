@@ -5,6 +5,7 @@ pub mod files;
 pub mod groups;
 pub mod kodi;
 pub mod locations;
+pub mod network;
 pub mod middleware;
 pub mod packages;
 pub mod permissions;

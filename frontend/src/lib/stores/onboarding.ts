@@ -5,6 +5,8 @@ export interface SetupConfig {
 	machineName: string;
 	adminUsername: string;
 	adminPassword: string;
+	enableSsh: boolean;
+	sshPassword: string;
 }
 
 interface OnboardingStore {
@@ -37,7 +39,9 @@ function createOnboardingStore() {
 		config: {
 			machineName: '',
 			adminUsername: '',
-			adminPassword: ''
+			adminPassword: '',
+			enableSsh: false,
+			sshPassword: ''
 		},
 		error: null
 	});
@@ -106,7 +110,7 @@ function createOnboardingStore() {
 			update((state) => ({ ...state, isTransitioning: true, error: null }));
 
 			try {
-				// Call backend API to complete setup
+				// Call backend API to complete setup (create admin account)
 				const response = await api.completeSetup({
 					machine_name: config.machineName,
 					admin_username: config.adminUsername,
@@ -124,7 +128,7 @@ function createOnboardingStore() {
 					})
 				);
 
-				// Update auth store
+				// Update auth store (this also updates the API client token)
 				auth.set({
 					isAuthenticated: true,
 					token: response.token,
@@ -134,6 +138,19 @@ function createOnboardingStore() {
 						role: response.user.is_admin ? 'admin' : 'user'
 					}
 				});
+
+				// Configure SSH if enabled
+				if (config.enableSsh) {
+					try {
+						await api.enableSsh();
+						if (config.sshPassword) {
+							await api.changeSshPassword(config.sshPassword);
+						}
+						console.log('[Onboarding] SSH enabled successfully');
+					} catch (sshError) {
+						console.warn('[Onboarding] SSH configuration failed (non-blocking):', sshError);
+					}
+				}
 
 				// Mark setup as complete
 				saveSetupState(true);
@@ -182,7 +199,9 @@ function createOnboardingStore() {
 				config: {
 					machineName: '',
 					adminUsername: '',
-					adminPassword: ''
+					adminPassword: '',
+					enableSsh: false,
+					sshPassword: ''
 				},
 				error: null
 			});

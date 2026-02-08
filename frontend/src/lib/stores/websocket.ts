@@ -1,5 +1,7 @@
 import { writable } from 'svelte/store';
 import { systemStats } from './system';
+import { fileTasks } from './taskManager';
+import type { FileTaskType, FileTaskStatus } from './taskManager';
 
 export interface TaskProgress {
 	task_id: string;
@@ -125,6 +127,7 @@ export function connectWebSocket(): () => void {
 			case 'task.progress':
 				if (data.data) {
 					const progress: TaskProgress = data.data;
+					console.log('[WS] Task progress:', progress.task_id, progress.progress_percent + '%', progress.status, progress.current_step);
 					taskProgress.update((tasks) => {
 						if (progress.status === 'completed' || progress.status === 'failed') {
 							tasks[progress.task_id] = progress;
@@ -138,6 +141,24 @@ export function connectWebSocket(): () => void {
 							tasks[progress.task_id] = progress;
 						}
 						return { ...tasks };
+					});
+				}
+				break;
+			case 'file.task':
+				if (data.data) {
+					const ft = data.data as {
+						task_id: string;
+						task_type: string;
+						file_name: string;
+						status: string;
+						progress: number;
+						error_message: string | null;
+					};
+					// Upsert: create task if it doesn't exist, otherwise update
+					fileTasks.upsertTask(ft.task_id, ft.task_type as FileTaskType, ft.file_name, {
+						status: ft.status as FileTaskStatus,
+						progress: ft.progress,
+						error: ft.error_message || undefined
 					});
 				}
 				break;

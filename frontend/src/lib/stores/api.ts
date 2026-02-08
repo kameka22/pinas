@@ -417,6 +417,80 @@ class ApiClient {
 		return this.patch<FileItem>('/files/rename', { path, new_name: newName, location_id: locationId });
 	}
 
+	async createFile(parentPath: string, name: string, locationId?: string): Promise<FileItem> {
+		return this.post<FileItem>('/files/file', { path: parentPath, name, location_id: locationId });
+	}
+
+	async copyFiles(sources: string[], destination: string, locationId?: string): Promise<{ task_id: string }> {
+		return this.post<{ task_id: string }>('/files/copy', { sources, destination, location_id: locationId });
+	}
+
+	async moveFiles(sources: string[], destination: string, locationId?: string): Promise<{ task_id: string }> {
+		return this.post<{ task_id: string }>('/files/move', { sources, destination, location_id: locationId });
+	}
+
+	async uploadFile(file: File, path: string, locationId?: string): Promise<void> {
+		const formData = new FormData();
+		formData.append('file', file);
+		formData.append('path', path);
+		if (locationId) {
+			formData.append('location_id', locationId);
+		}
+
+		const headers: HeadersInit = {};
+		if (this.token) {
+			headers['Authorization'] = `Bearer ${this.token}`;
+		}
+
+		const response = await fetch(`${this.baseUrl}/files/upload`, {
+			method: 'POST',
+			headers,
+			credentials: 'include',
+			body: formData
+		});
+
+		if (!response.ok) {
+			if (response.status === 401) {
+				this.logout();
+			}
+			const error = await response.json().catch(() => ({ message: 'Upload failed' }));
+			throw new Error(error.message || `HTTP ${response.status}`);
+		}
+	}
+
+	async downloadFile(path: string, locationId?: string): Promise<void> {
+		const params = new URLSearchParams();
+		params.set('path', path);
+		if (locationId) {
+			params.set('location_id', locationId);
+		}
+
+		const headers: HeadersInit = {};
+		if (this.token) {
+			headers['Authorization'] = `Bearer ${this.token}`;
+		}
+
+		const response = await fetch(`${this.baseUrl}/files/download?${params.toString()}`, {
+			method: 'GET',
+			headers,
+			credentials: 'include'
+		});
+
+		if (!response.ok) {
+			throw new Error('Download failed');
+		}
+
+		const blob = await response.blob();
+		const url = URL.createObjectURL(blob);
+		const a = document.createElement('a');
+		a.href = url;
+		a.download = path.split('/').pop() || 'download';
+		document.body.appendChild(a);
+		a.click();
+		document.body.removeChild(a);
+		URL.revokeObjectURL(url);
+	}
+
 	// Permissions endpoints
 	async getPermissions(): Promise<FolderPermissions[]> {
 		return this.get<FolderPermissions[]>('/permissions');
@@ -461,6 +535,23 @@ class ApiClient {
 
 	async changeSshPassword(password: string): Promise<void> {
 		return this.post<void>('/ssh/password', { password });
+	}
+
+	// Network endpoints
+	async getNetworkStatus(): Promise<NetworkStatus> {
+		return this.get<NetworkStatus>('/network/status');
+	}
+
+	async updateNetworkInterface(config: UpdateInterfaceConfig): Promise<void> {
+		return this.put<void>('/network/interface', config);
+	}
+
+	async updateNetworkDns(config: DnsConfig): Promise<void> {
+		return this.put<void>('/network/dns', config);
+	}
+
+	async updateNetworkHostname(hostname: string): Promise<void> {
+		return this.put<void>('/network/hostname', { hostname });
 	}
 }
 
@@ -658,6 +749,42 @@ export interface CreatePermissionRequest {
 	user_id?: string;
 	group_id?: string;
 	permission: PermissionLevel;
+}
+
+// Network types
+export interface NetworkStatus {
+	hostname: string;
+	interfaces: NetworkInterface[];
+	dns: DnsConfig;
+	default_gateway: string;
+}
+
+export interface NetworkInterface {
+	name: string;
+	display_name: string;
+	status: string;
+	ip_address: string;
+	subnet_mask: string;
+	mac_address: string;
+	speed: string;
+	method: string;
+	gateway: string;
+	dns: string;
+}
+
+export interface DnsConfig {
+	manual: boolean;
+	primary: string;
+	secondary: string;
+}
+
+export interface UpdateInterfaceConfig {
+	name: string;
+	method: string;
+	ip_address?: string;
+	subnet_mask?: string;
+	gateway?: string;
+	dns?: string;
 }
 
 // SSH types

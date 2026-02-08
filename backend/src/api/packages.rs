@@ -186,19 +186,33 @@ async fn install_package(
         }))).into_response();
     };
 
-    // Install package
-    match service.install(&manifest, manifest_url.as_deref()).await {
-        Ok(task_id) => Json(InstallResponse {
-            task_id,
-            package_id: manifest.id,
-        }).into_response(),
+    // Start installation (creates DB records, returns task_id immediately)
+    let task_id = match service.install_start(&manifest, manifest_url.as_deref()).await {
+        Ok(task_id) => task_id,
         Err(e) => {
-            tracing::error!("Failed to install package: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({
+            tracing::error!("Failed to start package installation: {}", e);
+            return (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({
                 "error": e.to_string()
-            }))).into_response()
+            }))).into_response();
         }
-    }
+    };
+
+    let package_id = manifest.id.clone();
+
+    // Spawn background task for actual installation steps
+    let db = state.db.clone();
+    let task_tx = state.task_tx.clone();
+    let bg_task_id = task_id.clone();
+    tokio::spawn(async move {
+        let service = PackageService::new(db, task_tx).await;
+        service.install_execute(&manifest, &bg_task_id).await;
+    });
+
+    // Return task_id immediately so frontend can track progress via WebSocket
+    Json(InstallResponse {
+        task_id,
+        package_id,
+    }).into_response()
 }
 
 /// Resolve package manifest from package ID

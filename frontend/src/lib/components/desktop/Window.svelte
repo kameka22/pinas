@@ -107,13 +107,24 @@
 		position: absolute;
 		display: flex;
 		flex-direction: column;
-		background: rgba(255, 255, 255, 0.95);
-		backdrop-filter: blur(20px);
 		border-radius: 12px;
 		overflow: hidden;
 		box-shadow:
 			0 25px 50px -12px rgba(0, 0, 0, 0.25),
 			0 0 0 1px rgba(0, 0, 0, 0.05);
+	}
+
+	/* backdrop-filter on a pseudo-element so .window does not become
+	   a containing block for position:fixed children (modals, menus). */
+	.window::before {
+		content: '';
+		position: absolute;
+		inset: 0;
+		background: rgba(255, 255, 255, 0.95);
+		backdrop-filter: blur(20px);
+		border-radius: 12px;
+		z-index: -1;
+		pointer-events: none;
 	}
 
 	.window-header {

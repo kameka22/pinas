@@ -196,6 +196,25 @@ pub enum InstallStep {
     DockerRm {
         container: String,
     },
+    ComposeUp {
+        /// Path where the docker-compose.yml will be written
+        dest: String,
+        /// YAML content of the docker-compose file
+        content: String,
+        /// Project name (defaults to app ID if not specified)
+        #[serde(default)]
+        project_name: Option<String>,
+    },
+    ComposeDown {
+        /// Path to the docker-compose.yml file
+        compose_file: String,
+        /// Whether to remove volumes
+        #[serde(default)]
+        remove_volumes: bool,
+        /// Project name
+        #[serde(default)]
+        project_name: Option<String>,
+    },
 }
 
 /// Uninstall configuration
@@ -215,7 +234,7 @@ pub struct ContainerConfig {
     #[serde(default)]
     pub restart: Option<String>, // "no", "always", "unless-stopped", "on-failure"
     #[serde(default)]
-    pub network: Option<String>,
+    pub network: Option<String>, // "host", "bridge", "none", or custom network name
     #[serde(default)]
     pub ports: Vec<PortMapping>,
     #[serde(default)]
@@ -228,6 +247,22 @@ pub struct ContainerConfig {
     pub labels: HashMap<String, String>,
     #[serde(default)]
     pub privileged: bool,
+    #[serde(default)]
+    pub cap_add: Vec<String>,
+    #[serde(default)]
+    pub cap_drop: Vec<String>,
+    #[serde(default)]
+    pub user: Option<String>,
+    #[serde(default)]
+    pub command: Option<Vec<String>>,
+    #[serde(default)]
+    pub entrypoint: Option<Vec<String>>,
+    #[serde(default)]
+    pub dns: Vec<String>,
+    #[serde(default)]
+    pub extra_hosts: Vec<String>,
+    #[serde(default)]
+    pub tmpfs: Vec<String>,
 }
 
 /// Port mapping

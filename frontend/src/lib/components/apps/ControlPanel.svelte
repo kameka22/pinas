@@ -3,6 +3,8 @@
 	import UserManager from './UserManager.svelte';
 	import TimeLanguage from './TimeLanguage.svelte';
 	import FileService from './FileService.svelte';
+	import TerminalSettings from './TerminalSettings.svelte';
+	import NetworkSettings from './NetworkSettings.svelte';
 	import { t } from '$lib/i18n';
 	import { systemInfo as systemInfoStore } from '$stores/system';
 
@@ -32,7 +34,7 @@
 				{ id: 'files', icon: 'mdi:folder', labelKey: 'controlPanel.items.fileService', iconColor: 'text-orange-500', component: 'FileService' },
 				{ id: 'device', icon: 'mdi:monitor-screenshot', labelKey: 'controlPanel.items.deviceConnection', iconColor: 'text-slate-500' },
 				{ id: 'domain', icon: 'mdi:domain', labelKey: 'controlPanel.items.domainLdap', iconColor: 'text-blue-600' },
-				{ id: 'terminal', icon: 'mdi:console-line', labelKey: 'controlPanel.items.terminal', iconColor: 'text-purple-500' }
+				{ id: 'terminal', icon: 'mdi:console-line', labelKey: 'controlPanel.items.terminal', iconColor: 'text-purple-500', component: 'TerminalSettings' }
 			]
 		},
 		{
@@ -40,7 +42,7 @@
 			items: [
 				{ id: 'hardware', icon: 'mdi:chip', labelKey: 'controlPanel.items.hardwarePower', iconColor: 'text-emerald-500' },
 				{ id: 'time', icon: 'mdi:earth', labelKey: 'controlPanel.items.timeLanguage', iconColor: 'text-cyan-500', component: 'TimeLanguage' },
-				{ id: 'network', icon: 'mdi:wifi', labelKey: 'controlPanel.items.network', iconColor: 'text-blue-500' },
+				{ id: 'network', icon: 'mdi:wifi', labelKey: 'controlPanel.items.network', iconColor: 'text-blue-500', component: 'NetworkSettings' },
 				{ id: 'security', icon: 'mdi:shield-check', labelKey: 'controlPanel.items.security', iconColor: 'text-green-500' },
 				{ id: 'indexing', icon: 'mdi:database-search', labelKey: 'controlPanel.items.indexingService', iconColor: 'text-slate-500' }
 			]
@@ -227,6 +229,12 @@
 			{:else if selectedItem === 'files'}
 				<!-- File Services -->
 				<FileService />
+			{:else if selectedItem === 'terminal'}
+				<!-- Terminal / SSH Settings -->
+				<TerminalSettings />
+			{:else if selectedItem === 'network'}
+				<!-- Network Settings -->
+				<NetworkSettings />
 			{:else if selectedItem === 'time'}
 				<!-- Time & Language -->
 				<TimeLanguage />

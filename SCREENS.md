@@ -391,4 +391,4 @@ PUT    /api/settings/password        - Modifier paramètres mot de passe
 
 ---
 
-*Dernière mise à jour : Janvier 2025*
+*Dernière mise à jour : Février 2026*

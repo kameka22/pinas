@@ -293,10 +293,19 @@ export default {
 		welcome: 'Bienvenue !',
 		subtitle: 'Configurons votre NAS.',
 		steps: {
+			welcome: 'Bienvenue',
 			language: 'Langue',
 			device: 'Appareil',
 			account: 'Compte',
-			password: 'Mot de passe'
+			password: 'Mot de passe',
+			ssh: 'SSH',
+			features: 'Découvrir'
+		},
+		welcomeScreen: {
+			title: 'Bienvenue sur PiNAS !',
+			thankYou: 'Merci d\'avoir installé PiNAS sur votre Raspberry Pi.',
+			description: 'En quelques étapes, nous allons configurer votre NAS personnel et vous serez prêt à stocker, partager et gérer vos fichiers.',
+			letsGo: 'C\'est parti !'
 		},
 		language: {
 			title: 'Choisissez votre langue',
@@ -323,10 +332,54 @@ export default {
 			placeholder: 'Entrez le mot de passe',
 			confirmPlaceholder: 'Confirmez le mot de passe'
 		},
+		ssh: {
+			title: 'Accès à distance (SSH)',
+			description: 'SSH vous permet de vous connecter à votre NAS à distance via un terminal.',
+			enableSsh: 'Activer SSH',
+			enableHint: 'Autoriser l\'accès terminal à distance à votre appareil',
+			port: 'Port',
+			passwordLabel: 'Mot de passe SSH',
+			passwordPlaceholder: 'Entrez le mot de passe SSH',
+			confirmPasswordLabel: 'Confirmer le mot de passe',
+			confirmPasswordPlaceholder: 'Confirmez le mot de passe SSH',
+			passwordHint: 'Ce mot de passe sera utilisé pour se connecter en tant que root via SSH.',
+			skipHint: 'Vous pourrez toujours activer SSH plus tard dans les Paramètres.'
+		},
+		features: {
+			title: 'Votre NAS est prêt !',
+			subtitle: 'Voici ce que vous pouvez faire avec PiNAS :',
+			items: {
+				files: {
+					title: 'Gestionnaire de fichiers',
+					description: 'Parcourez, téléversez et organisez tous vos fichiers.'
+				},
+				storage: {
+					title: 'Stockage',
+					description: 'Gérez vos disques, créez des pools RAID et des volumes.'
+				},
+				shares: {
+					title: 'Partage de fichiers',
+					description: 'Partagez des dossiers sur votre réseau via SMB.'
+				},
+				docker: {
+					title: 'Docker & Apps',
+					description: 'Installez des apps comme Plex, Pi-hole et bien plus.'
+				},
+				kodi: {
+					title: 'Media Center',
+					description: 'Kodi est intégré pour vos films et votre musique.'
+				},
+				terminal: {
+					title: 'Terminal',
+					description: 'Accès shell complet directement depuis votre navigateur.'
+				}
+			}
+		},
 		buttons: {
 			back: 'Retour',
 			next: 'Suivant',
-			complete: 'Terminer la configuration'
+			complete: 'Commencer à utiliser PiNAS',
+			getStarted: 'C\'est parti !'
 		},
 		validation: {
 			machineNameRequired: "Le nom de l'appareil est requis",
@@ -337,7 +390,9 @@ export default {
 			usernameInvalid: 'Seuls les lettres, chiffres et underscores sont autorisés',
 			passwordRequired: 'Le mot de passe est requis',
 			passwordMinLength: 'Le mot de passe doit contenir au moins 6 caractères',
-			passwordMismatch: 'Les mots de passe ne correspondent pas'
+			passwordMismatch: 'Les mots de passe ne correspondent pas',
+			sshPasswordMinLength: 'Le mot de passe SSH doit contenir au moins 4 caractères',
+			sshPasswordMismatch: 'Les mots de passe SSH ne correspondent pas'
 		}
 	},
 
@@ -365,7 +420,9 @@ export default {
 			refresh: 'Actualiser',
 			search: 'Rechercher...',
 			newFolder: 'Nouveau dossier',
+			newFile: 'Nouveau fichier',
 			upload: 'Téléverser',
+			download: 'Télécharger',
 			copy: 'Copier',
 			paste: 'Coller',
 			cut: 'Couper',
@@ -395,10 +452,35 @@ export default {
 			rename: 'Renommer',
 			properties: 'Propriétés'
 		},
+		modals: {
+			newFolderTitle: 'Nouveau dossier',
+			newFileTitle: 'Nouveau fichier',
+			folderNamePlaceholder: 'Nom du dossier',
+			fileNamePlaceholder: 'Nom du fichier',
+			deleteTitle: 'Supprimer',
+			deleteFolderMessage: 'Supprimer ce dossier et tout son contenu ?',
+			deleteFileMessage: 'Supprimer ce fichier ?',
+			emptyFolder: 'Ce dossier est vide'
+		},
 		statusBar: {
 			item: 'élément au total',
 			items: 'éléments au total',
 			selected: 'sélectionné(s)'
+		}
+	},
+
+	// Task Manager
+	taskManager: {
+		title: 'Tâches',
+		clear: 'Effacer les terminées',
+		empty: 'Aucune tâche',
+		types: {
+			upload: 'Téléversement',
+			copy: 'Copie',
+			move: 'Déplacement',
+			delete: 'Suppression',
+			createFolder: 'Création dossier',
+			createFile: 'Création fichier'
 		}
 	},
 
@@ -825,6 +907,35 @@ export default {
 			toggleAddonFailed: 'Échec de l\'activation/désactivation de l\'addon',
 			scanFailed: 'Échec de l\'analyse de la médiathèque'
 		}
+	},
+
+	// Network Settings
+	networkSettings: {
+		title: 'Réseau',
+		description: 'Configurer les interfaces réseau et le DNS',
+		tabs: {
+			general: 'Général',
+			interfaces: 'Interface réseau'
+		},
+		hostname: "Nom d'hôte",
+		hostnameHint: 'Nom de votre appareil sur le réseau',
+		defaultGateway: 'Passerelle par défaut',
+		dnsServer: 'Serveur DNS',
+		configureDnsManually: 'Configurer le serveur DNS manuellement',
+		primaryDns: 'DNS primaire',
+		secondaryDns: 'DNS secondaire',
+		dnsAuto: 'DNS fourni par DHCP',
+		ipAddress: 'Adresse IP',
+		subnetMask: 'Masque de sous-réseau',
+		gateway: 'Passerelle',
+		macAddress: 'Adresse MAC',
+		speed: 'Vitesse',
+		method: 'Méthode',
+		manual: 'Manuel',
+		connected: 'Connecté',
+		disconnected: 'Déconnecté',
+		editInterface: "Modifier l'interface",
+		noInterfaces: 'Aucune interface réseau détectée'
 	},
 
 	// File Service

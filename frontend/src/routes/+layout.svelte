@@ -10,12 +10,15 @@
 	import Login from '$components/auth/Login.svelte';
 	import ProfileModal from '$components/modals/ProfileModal.svelte';
 	import ChangePasswordModal from '$components/modals/ChangePasswordModal.svelte';
+	import TaskManager from '$components/desktop/TaskManager.svelte';
 	import { connectWebSocket } from '$stores/websocket';
 	import { isSetupComplete, isLoading, initOnboarding } from '$stores/onboarding';
 	import { auth } from '$stores/api';
+	import { systemInfo } from '$stores/system';
 
 	let showNotifications = false;
 	let showAppLauncher = false;
+	let showTaskManager = false;
 	let showProfileModal = false;
 	let showChangePasswordModal = false;
 
@@ -28,6 +31,15 @@
 
 	function closeAppLauncher() {
 		showAppLauncher = false;
+	}
+
+	function toggleTaskManager() {
+		showTaskManager = !showTaskManager;
+		if (showTaskManager) showAppLauncher = false;
+	}
+
+	function closeTaskManager() {
+		showTaskManager = false;
 	}
 
 	function openProfile() {
@@ -81,12 +93,16 @@
 	<!-- Top Bar -->
 	<TopBar
 		on:toggleLauncher={toggleAppLauncher}
+		on:toggleTaskManager={toggleTaskManager}
 		on:openProfile={openProfile}
 		on:openChangePassword={openChangePassword}
 	/>
 
 	<!-- App Launcher -->
 	<AppLauncher visible={showAppLauncher} on:close={closeAppLauncher} />
+
+	<!-- Task Manager -->
+	<TaskManager visible={showTaskManager} on:close={closeTaskManager} />
 
 	<!-- Bottom Dock -->
 	<Dock />
@@ -105,6 +121,11 @@
 	<!-- User Modals -->
 	<ProfileModal bind:show={showProfileModal} />
 	<ChangePasswordModal bind:show={showChangePasswordModal} />
+
+	<!-- Version label -->
+	{#if $systemInfo?.version}
+		<span class="version-label">PiNAS v{$systemInfo.version}</span>
+	{/if}
 </div>
 {/if}
 
@@ -139,6 +160,18 @@
 		right: 0;
 		bottom: 0;
 		z-index: 1;
+	}
+
+	.version-label {
+		position: absolute;
+		bottom: 72px;
+		left: 12px;
+		font-size: 11px;
+		color: rgba(255, 255, 255, 0.35);
+		font-weight: 500;
+		z-index: 2;
+		pointer-events: none;
+		user-select: none;
 	}
 
 	.loading-screen {

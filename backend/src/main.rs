@@ -21,7 +21,7 @@ mod db;
 mod models;
 mod services;
 
-use crate::api::ws::TaskProgressEvent;
+use crate::api::ws::{FileTaskEvent, TaskProgressEvent};
 use crate::config::AppConfig;
 
 /// Application state shared across handlers
@@ -30,6 +30,7 @@ pub struct AppState {
     pub config: Arc<AppConfig>,
     pub db: sqlx::SqlitePool,
     pub task_tx: broadcast::Sender<TaskProgressEvent>,
+    pub file_task_tx: broadcast::Sender<FileTaskEvent>,
 }
 
 #[tokio::main]
@@ -56,11 +57,15 @@ async fn main() -> anyhow::Result<()> {
     // Create broadcast channel for task progress events
     let (task_tx, _) = broadcast::channel::<TaskProgressEvent>(100);
 
+    // Create broadcast channel for file task events
+    let (file_task_tx, _) = broadcast::channel::<FileTaskEvent>(100);
+
     // Create app state
     let state = AppState {
         config: Arc::new(config),
         db,
         task_tx,
+        file_task_tx,
     };
 
     // Build router
@@ -105,6 +110,7 @@ fn create_router(state: AppState) -> Router {
         .nest("/api/terminal", api::terminal::router())
         .nest("/api/locations", api::locations::router())
         .nest("/api/kodi", api::kodi::router())
+        .nest("/api/network", api::network::router())
         .nest("/api/permissions", api::permissions::router())
         .nest("/api/ssh", api::ssh::router())
         // WebSocket

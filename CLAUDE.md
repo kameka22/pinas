@@ -85,6 +85,9 @@ PiNAS est un système d'exploitation NAS moderne et performant, inspiré des int
 │   │   │   ├── services.rs   # Services systemd
 │   │   │   ├── terminal.rs   # Exécution commandes shell
 │   │   │   ├── locations.rs  # Emplacements navigables (home, shares, volumes)
+│   │   │   ├── network.rs   # Configuration réseau
+│   │   │   ├── ssh.rs        # SSH enable/disable/password
+│   │   │   ├── permissions.rs # Permissions par dossier
 │   │   │   ├── ws.rs         # WebSocket handler
 │   │   │   └── middleware.rs # Auth middleware, CORS
 │   │   ├── services/         # Logique métier
@@ -93,11 +96,13 @@ PiNAS est un système d'exploitation NAS moderne et performant, inspiré des int
 │   │   │   ├── group.rs      # Gestion groupes
 │   │   │   ├── home.rs       # Gestion répertoires home utilisateurs
 │   │   │   ├── session.rs    # Sessions
+│   │   │   ├── network.rs    # Configuration réseau (connman)
 │   │   │   ├── package.rs    # Installation packages
 │   │   │   ├── docker.rs     # Client Docker (bollard)
 │   │   │   ├── service.rs    # Contrôle systemd
 │   │   │   ├── storage.rs    # Opérations stockage
 │   │   │   ├── share.rs      # Gestion partages
+│   │   │   ├── ssh.rs        # Service SSH (enable/disable/password)
 │   │   │   └── system.rs     # Métriques système
 │   │   ├── models/           # Structs DB
 │   │   │   ├── user.rs       # Modèle utilisateur
@@ -122,7 +127,7 @@ PiNAS est un système d'exploitation NAS moderne et performant, inspiré des int
 │   │   └── lib/
 │   │       ├── components/   # Composants Svelte
 │   │       │   ├── desktop/      # TopBar, Dock, WindowManager, Window
-│   │       │   ├── apps/         # Applications (16 composants)
+│   │       │   ├── apps/         # Applications + sous-composants Control Panel
 │   │       │   ├── ui/           # Composants UI (ContextMenu)
 │   │       │   ├── auth/         # Login
 │   │       │   ├── modals/       # ProfileModal, ChangePasswordModal
@@ -382,6 +387,27 @@ GET    /api/services/:name/logs   # Logs service
 # Terminal
 POST   /api/terminal/exec         # Exécuter commande shell
 
+# Network
+GET    /api/network/status         # Interfaces, DNS, gateway, hostname
+PUT    /api/network/interface      # Configure une interface (DHCP/static)
+PUT    /api/network/dns            # Configure les DNS
+PUT    /api/network/hostname       # Change le hostname
+
+# SSH
+GET    /api/ssh/status             # État du service SSH
+POST   /api/ssh/enable             # Activer SSH
+POST   /api/ssh/disable            # Désactiver SSH
+POST   /api/ssh/password           # Changer mot de passe root
+
+# Permissions
+GET    /api/permissions            # Liste permissions par dossier
+GET    /api/permissions/folders    # Liste dossiers avec permissions
+GET    /api/permissions/folder     # Permissions d'un dossier (query: path)
+GET    /api/permissions/user/:id   # Permissions d'un utilisateur
+POST   /api/permissions            # Créer permission
+PUT    /api/permissions/:id        # Modifier permission
+DELETE /api/permissions/:id        # Supprimer permission
+
 # WebSocket
 WS     /api/ws                    # Events temps réel
 ```
@@ -438,17 +464,25 @@ Frontend (Svelte)              Backend (Rust)
 
 | App | Composant | Description |
 |-----|-----------|-------------|
-| Control Panel | `ControlPanel.svelte` | Hub de paramètres |
+| Control Panel | `ControlPanel.svelte` | Hub de paramètres (FileService, TerminalSettings, etc.) |
 | File Manager | `FileManager.svelte` | Gestionnaire fichiers |
 | Storage Manager | `StorageManager.svelte` | Gestion disques/FS |
 | Share Manager | `ShareManager.svelte` | Partages SMB/NFS |
 | User Manager | `UserManager.svelte` | Utilisateurs et groupes |
-| Docker | `DockerApp.svelte` | Gestion containers |
 | App Center | `AppCenter.svelte` | Installation d'apps |
 | Terminal | `TerminalApp.svelte` | Terminal web |
 | Process Manager | `ProcessManager.svelte` | Gestionnaire processus |
 | Dashboard | `Dashboard.svelte` | Vue d'ensemble système |
 | Settings | `Settings.svelte` | Paramètres système |
+| Kodi | `KodiApp.svelte` | Configuration Kodi (sources media) |
+
+### Composants Control Panel
+
+| Composant | Catégorie | Description |
+|-----------|-----------|-------------|
+| `FileService.svelte` | File Service | Onglets SMB/NFS/FTP (placeholders) |
+| `NetworkSettings.svelte` | Network | Configuration réseau (interfaces, DNS, hostname) |
+| `TerminalSettings.svelte` | Terminal | Configuration SSH (enable/disable, port, password) |
 
 ### Composants génériques pour apps installées
 
@@ -580,8 +614,8 @@ CREATE TABLE storage_volumes (
 | Service | Status | Notes |
 |---------|--------|-------|
 | Samba | Disponible | Configurable via PiNAS |
-| SSH | Intégré | Activable dans Kodi |
-| Docker | Optionnel | Via package ou binaires statiques |
+| SSH | Intégré | Configurable via PiNAS (Control Panel > Terminal) |
+| Docker | Optionnel | Via package App Center (binaires statiques) |
 | Avahi/mDNS | Intégré | Actif par défaut |
 
 ### Contraintes techniques
@@ -802,12 +836,12 @@ Le dossier `extra/openmediavault/` contient les sources du projet OpenMediaVault
 |-------------|--------|-------------|
 | System | ✅ Partiel | Infos système (manque reboot/shutdown) |
 | UserMgmt | ✅ Complet | Utilisateurs et groupes |
-| DiskMgmt | ⏳ UI seule | Gestion des disques |
-| FileSystemMgmt | ⏳ UI seule | Montage/démontage FS |
+| DiskMgmt | ✅ Complet | Gestion des disques (pools, volumes, RAID) |
+| FileSystemMgmt | ✅ Complet | Montage/démontage volumes |
 | ShareMgmt | ⏳ UI seule | Dossiers partagés |
 | Smb | ⏳ Partiel | Partages Samba |
 | Nfs | ❌ | Partages NFS |
-| Smart | ❌ | Monitoring S.M.A.R.T. |
+| Smart | ✅ Complet | Monitoring S.M.A.R.T. (intégré au Storage Manager) |
 
 ---
 
@@ -830,6 +864,25 @@ Les containers créés par un package sont liés dans la table `docker_container
 ### Reconnexion Docker
 
 Après l'installation de Docker, le service backend se reconnecte automatiquement au daemon Docker pour permettre l'installation immédiate de packages Docker sans redémarrage.
+
+### Installation en background (pattern important)
+
+L'installation de packages utilise un pattern de tâche asynchrone pour permettre le suivi en temps réel :
+
+```rust
+// 1. install_start() - Crée les enregistrements DB, retourne task_id immédiatement
+let task_id = service.install_start(&manifest, manifest_url).await?;
+
+// 2. install_execute() - Exécute les steps en tâche de fond
+tokio::spawn(async move {
+    service.install_execute(&manifest, &task_id).await;
+});
+
+// 3. Retourne task_id au frontend AVANT le début de l'installation
+// Le frontend peut ainsi s'abonner aux events WebSocket task.progress
+```
+
+**Pourquoi** : Si l'API attend la fin de l'installation avant de répondre, le frontend ne reçoit jamais les events de progression car il n'a pas encore le `task_id` pour les filtrer.
 
 ---
 
@@ -877,6 +930,8 @@ PINAS_PACKAGES_DIR=/storage/.pinas/packages
 PINAS_DATA_DIR=/storage/.pinas/data
 PINAS_HOMES_ROOT=/storage/homes        # Répertoires home utilisateurs
 PINAS_HOME_ON_DELETE=archive           # archive, delete, ou keep
+
+PINAS_DEV_MODE=false                  # true pour simuler les opérations (dev local)
 
 # Frontend (build-time)
 PUBLIC_API_URL=/api

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import Icon from '@iconify/svelte';
 	import { systemStats, systemInfo } from '$stores/system';
+	import { hasActiveTask, activeTaskCount } from '$stores/taskManager';
 	import { auth, api } from '$stores/api';
 	import { createEventDispatcher, onMount, onDestroy } from 'svelte';
 	import { t, locale } from '$lib/i18n';
@@ -37,6 +38,10 @@
 
 	function toggleAppLauncher() {
 		dispatch('toggleLauncher');
+	}
+
+	function toggleTaskManager() {
+		dispatch('toggleTaskManager');
 	}
 
 	function toggleUserMenu() {
@@ -95,14 +100,19 @@
 </script>
 
 <header class="topbar">
-	<!-- Left: App launcher + version -->
-	<div class="flex items-center gap-2">
+	<!-- Left: App launcher + task manager -->
+	<div class="flex items-center gap-1">
 		<button class="topbar-btn" on:click={toggleAppLauncher} title={$t.desktop.appLauncher.title}>
 			<Icon icon="mdi:apps" class="w-5 h-5" />
 		</button>
-		{#if $systemInfo?.version}
-			<span class="version-label">PiNAS v{$systemInfo.version}</span>
-		{/if}
+		<button class="topbar-btn relative" on:click={toggleTaskManager} title={$t.taskManager?.title || 'Tasks'}>
+			{#if $hasActiveTask}
+				<Icon icon="mdi:tray-arrow-down" class="w-5 h-5 task-icon-active" />
+				<span class="task-badge">{$activeTaskCount}</span>
+			{:else}
+				<Icon icon="mdi:tray-arrow-down" class="w-5 h-5" />
+			{/if}
+		</button>
 	</div>
 
 	<!-- Right: System indicators -->
@@ -208,11 +218,30 @@
 		border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 	}
 
-	.version-label {
-		font-size: 12px;
-		color: rgba(255, 255, 255, 0.5);
-		font-weight: 500;
-		letter-spacing: 0.02em;
+	.task-icon-active {
+		animation: task-pulse 1.5s ease-in-out infinite;
+	}
+
+	@keyframes task-pulse {
+		0%, 100% { opacity: 0.8; }
+		50% { opacity: 1; color: #3b82f6; }
+	}
+
+	.task-badge {
+		position: absolute;
+		top: 2px;
+		right: 2px;
+		min-width: 16px;
+		height: 16px;
+		background: #3b82f6;
+		border-radius: 50%;
+		font-size: 10px;
+		font-weight: 600;
+		color: white;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding: 0 3px;
 	}
 
 	.topbar-btn {

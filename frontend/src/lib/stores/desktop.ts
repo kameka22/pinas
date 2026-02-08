@@ -76,14 +76,6 @@ export const builtInApps: DesktopApp[] = [
 		gradient: 'from-blue-400 to-blue-500'
 	},
 	{
-		id: 'docker',
-		label: 'Docker',
-		labelKey: 'docker',
-		icon: 'mdi:docker',
-		component: 'DockerApp',
-		gradient: 'from-blue-500 to-blue-600'
-	},
-	{
 		id: 'terminal',
 		label: 'Terminal',
 		labelKey: 'terminal',

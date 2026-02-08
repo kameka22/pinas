@@ -17,6 +17,8 @@
 		status: 'not_installed' | 'installed' | 'installing' | 'update_available';
 		category: string;
 		dependencies: string[];
+		author?: string;
+		website?: string;
 	}
 
 	interface CatalogApp {
@@ -27,6 +29,8 @@
 		icon?: string;
 		description?: { en?: string; fr?: string } | string;
 		dependencies?: string[];
+		author?: string;
+		website?: string;
 	}
 
 	interface InstalledPackage {
@@ -86,6 +90,24 @@
 		utilities: 'bg-slate-500'
 	};
 
+	// Count apps per category (reactive)
+	$: categoryCounts = packages.reduce((acc, pkg) => {
+		acc[pkg.category] = (acc[pkg.category] || 0) + 1;
+		return acc;
+	}, {} as Record<string, number>);
+
+	// Get category label for display
+	function getCategoryLabel(categoryId: string): string {
+		return $t.appCenter.categories[categoryId] || categoryId;
+	}
+
+	// Navigate to a category (close detail view)
+	function selectCategory(categoryId: string) {
+		selectedCategory = categoryId;
+		selectedPackage = null;
+		installError = null;
+	}
+
 	onMount(async () => {
 		await loadPackages();
 	});
@@ -115,7 +137,9 @@
 						size: '~150 MB',
 						status: installed ? (installed.status === 'installed' ? 'installed' : 'installing') : 'not_installed',
 						category: app.category,
-						dependencies: app.dependencies || []
+						dependencies: app.dependencies || [],
+						author: app.author,
+						website: app.website
 					};
 				});
 			} else {
@@ -461,11 +485,14 @@
 			{#each categories as category}
 				<button
 					class="nav-item"
-					class:active={selectedCategory === category.id}
-					on:click={() => (selectedCategory = category.id)}
+					class:active={selectedCategory === category.id && !selectedPackage}
+					on:click={() => selectCategory(category.id)}
 				>
 					<Icon icon={category.icon} class="w-5 h-5" />
 					<span>{$t.appCenter.categories[category.labelKey]}</span>
+					{#if category.id !== 'all'}
+						<span class="nav-count">{categoryCounts[category.id] || 0}</span>
+					{/if}
 				</button>
 			{/each}
 		</nav>
@@ -474,7 +501,7 @@
 			<button
 				class="stats-button"
 				class:active={selectedCategory === 'installed'}
-				on:click={() => { selectedCategory = selectedCategory === 'installed' ? 'all' : 'installed'; selectedPackage = null; }}
+				on:click={() => { selectCategory(selectedCategory === 'installed' ? 'all' : 'installed'); }}
 			>
 				<span class="stat-value">{packages.filter((p) => p.status === 'installed').length}</span>
 				<span class="stat-label">{$t.appCenter.installedCount}</span>
@@ -484,18 +511,6 @@
 
 	<!-- Main Content -->
 	<main class="main-content">
-		<!-- Header -->
-		<header class="content-header">
-			<div class="search-box">
-				<Icon icon="mdi:magnify" class="search-icon" />
-				<input
-					type="text"
-					placeholder={$t.appCenter.searchPlaceholder}
-					bind:value={searchQuery}
-				/>
-			</div>
-		</header>
-
 		<!-- Package Grid or Detail View -->
 		{#if loading}
 			<div class="loading-state">
@@ -505,10 +520,14 @@
 		{:else if selectedPackage}
 			<!-- Detail View -->
 			<div class="package-detail">
-				<button class="back-button" on:click={closeDetail}>
-					<Icon icon="mdi:arrow-left" class="w-5 h-5" />
-					<span>{$t.common.back}</span>
-				</button>
+				<!-- Breadcrumb -->
+				<div class="breadcrumb">
+					<button class="breadcrumb-link" on:click={() => selectCategory(selectedPackage?.category || 'all')}>
+						{getCategoryLabel(selectedPackage.category)}
+					</button>
+					<Icon icon="mdi:chevron-right" class="breadcrumb-sep" />
+					<span class="breadcrumb-current">{selectedPackage.name}</span>
+				</div>
 
 				<div class="detail-header">
 					<div class="detail-icon {selectedPackage.iconBg}">
@@ -517,11 +536,19 @@
 					<div class="detail-info">
 						<h1>{selectedPackage.name}</h1>
 						<p class="detail-meta">
-							{$t.appCenter.version}: {selectedPackage.version} · {selectedPackage.size}
+							{$t.appCenter.version}: {selectedPackage.version}
+							{#if selectedPackage.author}
+								· {selectedPackage.author}
+							{/if}
 						</p>
-						<span class="status-badge {getStatusColor(selectedPackage.status)}">
-							{getStatusLabel(selectedPackage.status)}
-						</span>
+						<div class="detail-badges">
+							<span class="status-badge {getStatusColor(selectedPackage.status)}">
+								{getStatusLabel(selectedPackage.status)}
+							</span>
+							<span class="category-badge">
+								{getCategoryLabel(selectedPackage.category)}
+							</span>
+						</div>
 					</div>
 					<div class="detail-actions">
 						{#if selectedPackage.status === 'not_installed'}
@@ -582,6 +609,12 @@
 				<div class="detail-description">
 					<h2>{$t.appCenter.description}</h2>
 					<p>{selectedPackage.description}</p>
+					{#if selectedPackage.website}
+						<a href={selectedPackage.website} target="_blank" rel="noopener noreferrer" class="website-link">
+							<Icon icon="mdi:open-in-new" class="w-4 h-4" />
+							{selectedPackage.website}
+						</a>
+					{/if}
 				</div>
 
 				{#if selectedPackage.dependencies && selectedPackage.dependencies.length > 0}
@@ -613,7 +646,35 @@
 				{/if}
 			</div>
 		{:else}
-			<!-- Grid View -->
+			<!-- List View -->
+			<header class="content-header">
+				<div class="content-header-left">
+					<h2 class="grid-title">
+						{#if selectedCategory === 'installed'}
+							{$t.appCenter.installedCount}
+						{:else if selectedCategory === 'all'}
+							{$t.appCenter.title}
+						{:else}
+							{getCategoryLabel(selectedCategory)}
+						{/if}
+					</h2>
+					<span class="grid-count">{filteredPackages.length} {filteredPackages.length === 1 ? 'app' : 'apps'}</span>
+				</div>
+				<div class="search-box">
+					<Icon icon="mdi:magnify" class="search-icon" />
+					<input
+						type="text"
+						placeholder={$t.appCenter.searchPlaceholder}
+						bind:value={searchQuery}
+					/>
+					{#if searchQuery}
+						<button class="search-clear" on:click={() => searchQuery = ''}>
+							<Icon icon="mdi:close" class="w-4 h-4" />
+						</button>
+					{/if}
+				</div>
+			</header>
+
 			<div class="package-grid">
 				{#if filteredPackages.length === 0}
 					<div class="empty-state">
@@ -649,6 +710,15 @@
 									</div>
 								{/if}
 							</div>
+							{#if pkg.status === 'installed'}
+								<button
+									class="card-open-btn"
+									on:click|stopPropagation={() => handleOpenApp(pkg)}
+									title={$t.appCenter.actions.open}
+								>
+									<Icon icon="mdi:open-in-new" class="w-4 h-4" />
+								</button>
+							{/if}
 							<Icon icon="mdi:chevron-right" class="chevron" />
 						</button>
 					{/each}
@@ -746,6 +816,21 @@
 		color: #2563eb;
 	}
 
+	.nav-count {
+		margin-left: auto;
+		font-size: 11px;
+		font-weight: 500;
+		color: #94a3b8;
+		background: #f1f5f9;
+		padding: 1px 7px;
+		border-radius: 10px;
+	}
+
+	.nav-item.active .nav-count {
+		color: #3b82f6;
+		background: #dbeafe;
+	}
+
 	.sidebar-footer {
 		padding: 16px 20px;
 		border-top: 1px solid #e2e8f0;
@@ -800,9 +885,31 @@
 	}
 
 	.content-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 16px;
 		padding: 16px 24px;
 		background: white;
 		border-bottom: 1px solid #e2e8f0;
+	}
+
+	.content-header-left {
+		display: flex;
+		align-items: baseline;
+		gap: 10px;
+	}
+
+	.grid-title {
+		font-size: 18px;
+		font-weight: 600;
+		color: #1e293b;
+		margin: 0;
+	}
+
+	.grid-count {
+		font-size: 13px;
+		color: #94a3b8;
 	}
 
 	.search-box {
@@ -812,7 +919,7 @@
 
 	.search-box input {
 		width: 100%;
-		padding: 10px 10px 10px 40px;
+		padding: 10px 36px 10px 40px;
 		border: 1px solid #e2e8f0;
 		border-radius: 8px;
 		font-size: 14px;
@@ -834,6 +941,26 @@
 		width: 20px;
 		height: 20px;
 		color: #94a3b8;
+	}
+
+	.search-clear {
+		position: absolute;
+		right: 8px;
+		top: 50%;
+		transform: translateY(-50%);
+		background: none;
+		border: none;
+		color: #94a3b8;
+		cursor: pointer;
+		padding: 4px;
+		display: flex;
+		align-items: center;
+		border-radius: 4px;
+	}
+
+	.search-clear:hover {
+		color: #64748b;
+		background: #f1f5f9;
 	}
 
 	/* Package Grid */
@@ -920,6 +1047,27 @@
 		background: #22c55e;
 	}
 
+	.card-open-btn {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 32px;
+		height: 32px;
+		border-radius: 8px;
+		border: 1px solid #e2e8f0;
+		background: white;
+		color: #64748b;
+		cursor: pointer;
+		transition: all 0.15s ease;
+		flex-shrink: 0;
+	}
+
+	.card-open-btn:hover {
+		background: #eff6ff;
+		color: #3b82f6;
+		border-color: #3b82f6;
+	}
+
 	.chevron {
 		width: 20px;
 		height: 20px;
@@ -948,23 +1096,37 @@
 		overflow-y: auto;
 	}
 
-	.back-button {
-		display: inline-flex;
+	/* Breadcrumb */
+	.breadcrumb {
+		display: flex;
 		align-items: center;
 		gap: 6px;
-		padding: 8px 12px;
-		background: white;
-		border: 1px solid #e2e8f0;
-		border-radius: 8px;
-		color: #64748b;
+		margin-bottom: 16px;
 		font-size: 14px;
-		cursor: pointer;
-		margin-bottom: 20px;
 	}
 
-	.back-button:hover {
-		background: #f8fafc;
-		color: #334155;
+	.breadcrumb-link {
+		background: none;
+		border: none;
+		color: #3b82f6;
+		cursor: pointer;
+		font-size: 14px;
+		padding: 0;
+	}
+
+	.breadcrumb-link:hover {
+		color: #2563eb;
+		text-decoration: underline;
+	}
+
+	:global(.breadcrumb-sep) {
+		width: 16px;
+		height: 16px;
+		color: #94a3b8;
+	}
+
+	.breadcrumb-current {
+		color: #64748b;
 	}
 
 	.detail-header {
@@ -1003,12 +1165,28 @@
 		margin-bottom: 12px;
 	}
 
+	.detail-badges {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+	}
+
 	.status-badge {
 		display: inline-block;
 		padding: 4px 10px;
 		border-radius: 20px;
 		font-size: 12px;
 		font-weight: 500;
+	}
+
+	.category-badge {
+		display: inline-block;
+		padding: 4px 10px;
+		border-radius: 20px;
+		font-size: 12px;
+		font-weight: 500;
+		color: #64748b;
+		background: #f1f5f9;
 	}
 
 	.detail-actions {
@@ -1075,7 +1253,8 @@
 	}
 
 	.detail-description h2,
-	.detail-features h2 {
+	.detail-features h2,
+	.detail-dependencies h2 {
 		font-size: 16px;
 		font-weight: 600;
 		color: #1e293b;
@@ -1086,6 +1265,21 @@
 		font-size: 14px;
 		color: #64748b;
 		line-height: 1.6;
+	}
+
+	.website-link {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		color: #3b82f6;
+		font-size: 13px;
+		text-decoration: none;
+		margin-top: 10px;
+	}
+
+	.website-link:hover {
+		color: #2563eb;
+		text-decoration: underline;
 	}
 
 	.detail-features ul {

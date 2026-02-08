@@ -3,6 +3,7 @@
 	import { t, locale } from '$lib/i18n';
 	import { onMount } from 'svelte';
 	import { api, type FileItem as ApiFileItem, type BrowsableLocation } from '$lib/stores/api';
+	import { fileTasks } from '$stores/taskManager';
 
 	// Types for display (extends API type with icon)
 	interface FileItem {
@@ -28,8 +29,33 @@
 	let showActionMenu: string | null = null;
 	let viewMode: 'list' | 'grid' | 'compact' = 'list';
 	let showViewDropdown = false;
+	let actionMenuPos = { x: 0, y: 0 };
+
+	// Modal states
+	let showCreateFolderModal = false;
+	let showCreateFileModal = false;
+	let showDeleteModal = false;
+	let showRenameModal = false;
+	let modalInputValue = '';
+	let deleteTarget: FileItem | null = null;
 	let renameTarget: FileItem | null = null;
-	let renameValue = '';
+
+	// Clipboard state
+	let clipboard: { files: FileItem[]; mode: 'copy' | 'cut' } | null = null;
+
+	// Upload state
+	let fileInput: HTMLInputElement;
+
+	function toggleActionMenu(fileId: string, e: MouseEvent) {
+		if (showActionMenu === fileId) {
+			showActionMenu = null;
+		} else {
+			const btn = e.currentTarget as HTMLElement;
+			const rect = btn.getBoundingClientRect();
+			actionMenuPos = { x: rect.right - 160, y: rect.bottom + 4 };
+			showActionMenu = fileId;
+		}
+	}
 
 	// Locations state
 	let locations: BrowsableLocation[] = [];
@@ -42,6 +68,9 @@
 	$: shareLocations = locations.filter(l => l.type === 'share');
 	$: volumeLocations = locations.filter(l => l.type === 'volume');
 	$: mediaLocations = locations.filter(l => l.type === 'media');
+	$: actionMenuFile = showActionMenu ? sortedFiles.find(f => f.id === showActionMenu) || null : null;
+	$: hasClipboard = clipboard !== null && clipboard.files.length > 0;
+	$: hasSelection = selectedFiles.length > 0;
 
 	// Sidebar section expansion state
 	let expandedSections = {
@@ -56,7 +85,6 @@
 		if (item.type === 'folder') {
 			return 'mdi:folder';
 		}
-		// Determine icon based on mime type
 		const mime = item.mime_type || '';
 		if (mime.startsWith('image/')) return 'mdi:file-image';
 		if (mime.startsWith('video/')) return 'mdi:file-video';
@@ -89,7 +117,6 @@
 		locationsError = null;
 		try {
 			locations = await api.getLocations();
-			// Auto-select home if available and nothing selected
 			if (!selectedLocationId && homeLocations.length > 0) {
 				selectLocation(homeLocations[0]);
 			} else if (!selectedLocationId && locations.length > 0) {
@@ -134,7 +161,7 @@
 
 	// Navigation history
 	let historyIndex = 0;
-	let history: string[] = ['personal'];
+	let history: string[] = [''];
 
 	// Computed
 	$: filteredFiles = files.filter(f =>
@@ -167,16 +194,11 @@
 
 	// Functions
 	function selectFolder(path: string) {
-		// Update history
 		if (history[historyIndex] !== path) {
 			history = [...history.slice(0, historyIndex + 1), path];
 			historyIndex = history.length - 1;
 		}
 		loadFiles(path);
-	}
-
-	function toggleSection(section: 'personal' | 'shares' | 'volumes') {
-		expandedSections[section] = !expandedSections[section];
 	}
 
 	function goBack() {
@@ -197,60 +219,191 @@
 		loadFiles(currentPath);
 	}
 
-	// Create new folder
-	async function handleCreateFolder() {
-		const name = prompt($t.fileManager.toolbar.newFolderPrompt || 'Nom du dossier:');
-		if (name && name.trim()) {
-			try {
-				await api.createFolder(currentPath, name.trim(), selectedLocationId || undefined);
-				await loadFiles(currentPath);
-			} catch (e) {
-				alert(e instanceof Error ? e.message : 'Error creating folder');
-			}
-		}
+	// --- Modal-based operations ---
+
+	// Create folder
+	function openCreateFolderModal() {
+		modalInputValue = '';
+		showCreateFolderModal = true;
 	}
 
-	// Delete file/folder
-	async function handleDelete(file: FileItem) {
-		const confirmMsg = file.type === 'folder'
-			? `Supprimer le dossier "${file.name}" et tout son contenu ?`
-			: `Supprimer "${file.name}" ?`;
-
-		if (confirm(confirmMsg)) {
+	async function confirmCreateFolder() {
+		if (modalInputValue.trim()) {
 			try {
-				await api.deleteFile(file.path, selectedLocationId || undefined);
+				const taskId = fileTasks.addTask('create_folder', modalInputValue.trim());
+				await api.createFolder(currentPath, modalInputValue.trim(), selectedLocationId || undefined);
+				fileTasks.updateTask(taskId, { status: 'completed', progress: 100 });
 				await loadFiles(currentPath);
 			} catch (e) {
-				alert(e instanceof Error ? e.message : 'Error deleting file');
+				const msg = e instanceof Error ? e.message : 'Error';
+				fileTasks.updateTask(fileTasks.addTask('create_folder', modalInputValue.trim()), { status: 'error', error: msg });
 			}
 		}
+		showCreateFolderModal = false;
+		modalInputValue = '';
 	}
 
-	// Start rename
-	function startRename(file: FileItem) {
-		renameTarget = file;
-		renameValue = file.name;
+	// Create file
+	function openCreateFileModal() {
+		modalInputValue = '';
+		showCreateFileModal = true;
+	}
+
+	async function confirmCreateFile() {
+		if (modalInputValue.trim()) {
+			try {
+				const taskId = fileTasks.addTask('create_file', modalInputValue.trim());
+				await api.createFile(currentPath, modalInputValue.trim(), selectedLocationId || undefined);
+				fileTasks.updateTask(taskId, { status: 'completed', progress: 100 });
+				await loadFiles(currentPath);
+			} catch (e) {
+				const msg = e instanceof Error ? e.message : 'Error';
+				fileTasks.updateTask(fileTasks.addTask('create_file', modalInputValue.trim()), { status: 'error', error: msg });
+			}
+		}
+		showCreateFileModal = false;
+		modalInputValue = '';
+	}
+
+	// Delete
+	function openDeleteModal(file: FileItem) {
+		deleteTarget = file;
+		showDeleteModal = true;
 		showActionMenu = null;
 	}
 
-	// Confirm rename
-	async function confirmRename() {
-		if (renameTarget && renameValue.trim() && renameValue !== renameTarget.name) {
+	async function confirmDelete() {
+		if (deleteTarget) {
 			try {
-				await api.renameFile(renameTarget.path, renameValue.trim(), selectedLocationId || undefined);
+				const taskId = fileTasks.addTask('delete', deleteTarget.name);
+				await api.deleteFile(deleteTarget.path, selectedLocationId || undefined);
+				fileTasks.updateTask(taskId, { status: 'completed', progress: 100 });
 				await loadFiles(currentPath);
 			} catch (e) {
-				alert(e instanceof Error ? e.message : 'Error renaming file');
+				const msg = e instanceof Error ? e.message : 'Error';
+				fileTasks.updateTask(fileTasks.addTask('delete', deleteTarget?.name || ''), { status: 'error', error: msg });
 			}
 		}
-		renameTarget = null;
-		renameValue = '';
+		showDeleteModal = false;
+		deleteTarget = null;
 	}
 
-	// Cancel rename
-	function cancelRename() {
+	// Rename
+	function openRenameModal(file: FileItem) {
+		renameTarget = file;
+		modalInputValue = file.name;
+		showRenameModal = true;
+		showActionMenu = null;
+	}
+
+	async function confirmRename() {
+		if (renameTarget && modalInputValue.trim() && modalInputValue !== renameTarget.name) {
+			try {
+				await api.renameFile(renameTarget.path, modalInputValue.trim(), selectedLocationId || undefined);
+				await loadFiles(currentPath);
+			} catch (e) {
+				// silently fail - could add notification
+			}
+		}
+		showRenameModal = false;
 		renameTarget = null;
-		renameValue = '';
+		modalInputValue = '';
+	}
+
+	// Upload
+	function triggerUpload() {
+		fileInput?.click();
+	}
+
+	async function handleFileUpload(event: Event) {
+		const input = event.target as HTMLInputElement;
+		const uploadFiles = input.files;
+		if (!uploadFiles || uploadFiles.length === 0) return;
+
+		for (const file of Array.from(uploadFiles)) {
+			const taskId = fileTasks.addTask('upload', file.name);
+			try {
+				await api.uploadFile(file, currentPath, selectedLocationId || undefined);
+				fileTasks.updateTask(taskId, { status: 'completed', progress: 100 });
+			} catch (e) {
+				const msg = e instanceof Error ? e.message : 'Upload failed';
+				fileTasks.updateTask(taskId, { status: 'error', error: msg });
+			}
+		}
+		// Reset input
+		input.value = '';
+		await loadFiles(currentPath);
+	}
+
+	// Download
+	async function handleDownload(file: FileItem) {
+		showActionMenu = null;
+		try {
+			await api.downloadFile(file.path, selectedLocationId || undefined);
+		} catch (e) {
+			// silently fail
+		}
+	}
+
+	// Clipboard operations
+	function handleCopy() {
+		const selected = sortedFiles.filter(f => selectedFiles.includes(f.id));
+		if (selected.length > 0) {
+			clipboard = { files: selected, mode: 'copy' };
+		}
+	}
+
+	function handleCut() {
+		const selected = sortedFiles.filter(f => selectedFiles.includes(f.id));
+		if (selected.length > 0) {
+			clipboard = { files: selected, mode: 'cut' };
+		}
+	}
+
+	async function handlePaste() {
+		if (!clipboard) return;
+
+		const sources = clipboard.files.map(f => f.path);
+		const destination = currentPath || '.';
+
+		try {
+			if (clipboard.mode === 'copy') {
+				await api.copyFiles(sources, destination, selectedLocationId || undefined);
+			} else {
+				await api.moveFiles(sources, destination, selectedLocationId || undefined);
+			}
+			// WebSocket will create and update task status
+			if (clipboard.mode === 'cut') {
+				clipboard = null;
+			}
+			// Refresh after a short delay to let background ops complete
+			setTimeout(() => loadFiles(currentPath), 500);
+		} catch (e) {
+			// Error handling via WebSocket task updates
+		}
+	}
+
+	async function handleDuplicate() {
+		const selected = sortedFiles.filter(f => selectedFiles.includes(f.id));
+		if (selected.length === 0) return;
+
+		const sources = selected.map(f => f.path);
+		const destination = currentPath || '.';
+
+		try {
+			await api.copyFiles(sources, destination, selectedLocationId || undefined);
+			setTimeout(() => loadFiles(currentPath), 500);
+		} catch (e) {
+			// Error handling via WebSocket
+		}
+	}
+
+	// Delete selected files
+	function handleDeleteSelected() {
+		if (selectedFiles.length === 1) {
+			const file = sortedFiles.find(f => f.id === selectedFiles[0]);
+			if (file) openDeleteModal(file);
+		}
 	}
 
 	function toggleSort(column: typeof sortColumn) {
@@ -278,10 +431,8 @@
 
 	function handleDoubleClick(file: FileItem) {
 		if (file.type === 'folder') {
-			// Navigate into folder
 			selectFolder(file.path);
 		} else {
-			// Open file (not implemented yet)
 			console.log('Open file:', file.name);
 		}
 	}
@@ -311,14 +462,13 @@
 		return file.mimeType || $t.fileManager.types.file;
 	}
 
-	function getCurrentFolderName(): string {
+	$: currentFolderDisplay = (() => {
 		const location = locations.find(l => l.id === selectedLocationId);
 		const locationName = location?.name || '';
 		if (!currentPath) return locationName ? `/${locationName}` : '/';
 		return `/${locationName}/${currentPath}`;
-	}
+	})();
 
-	// Go to parent folder
 	function goToParent() {
 		if (currentPath) {
 			const parts = currentPath.split('/');
@@ -331,27 +481,113 @@
 		showActionMenu = null;
 		showViewDropdown = false;
 	}
+
+	function closeModal() {
+		showCreateFolderModal = false;
+		showCreateFileModal = false;
+		showDeleteModal = false;
+		showRenameModal = false;
+		modalInputValue = '';
+		deleteTarget = null;
+		renameTarget = null;
+	}
+
+	function handleModalKeydown(e: KeyboardEvent, confirmFn: () => void) {
+		if (e.key === 'Enter') confirmFn();
+		if (e.key === 'Escape') closeModal();
+	}
 </script>
 
 <svelte:window on:click={closeMenus} />
 
-<!-- Rename dialog -->
-{#if renameTarget}
-	<div class="rename-overlay" on:click={cancelRename}>
-		<div class="rename-dialog" on:click|stopPropagation>
-			<h3>Renommer</h3>
+<!-- Hidden file input for uploads -->
+<input
+	type="file"
+	bind:this={fileInput}
+	on:change={handleFileUpload}
+	multiple
+	style="display: none;"
+/>
+
+<!-- Modals -->
+{#if showCreateFolderModal}
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<div class="modal-overlay" on:click={closeModal}>
+		<div class="modal-dialog" on:click|stopPropagation>
+			<h3>{$t.fileManager.modals?.newFolderTitle || 'New Folder'}</h3>
 			<input
 				type="text"
-				bind:value={renameValue}
-				on:keydown={(e) => {
-					if (e.key === 'Enter') confirmRename();
-					if (e.key === 'Escape') cancelRename();
-				}}
+				bind:value={modalInputValue}
+				placeholder={$t.fileManager.modals?.folderNamePlaceholder || 'Folder name'}
+				on:keydown={(e) => handleModalKeydown(e, confirmCreateFolder)}
 				autofocus
 			/>
-			<div class="rename-actions">
-				<button class="btn-cancel" on:click={cancelRename}>Annuler</button>
-				<button class="btn-confirm" on:click={confirmRename}>Renommer</button>
+			<div class="modal-actions">
+				<button class="btn-cancel" on:click={closeModal}>{$t.common.cancel}</button>
+				<button class="btn-confirm" on:click={confirmCreateFolder} disabled={!modalInputValue.trim()}>{$t.common.create}</button>
+			</div>
+		</div>
+	</div>
+{/if}
+
+{#if showCreateFileModal}
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<div class="modal-overlay" on:click={closeModal}>
+		<div class="modal-dialog" on:click|stopPropagation>
+			<h3>{$t.fileManager.modals?.newFileTitle || 'New File'}</h3>
+			<input
+				type="text"
+				bind:value={modalInputValue}
+				placeholder={$t.fileManager.modals?.fileNamePlaceholder || 'File name'}
+				on:keydown={(e) => handleModalKeydown(e, confirmCreateFile)}
+				autofocus
+			/>
+			<div class="modal-actions">
+				<button class="btn-cancel" on:click={closeModal}>{$t.common.cancel}</button>
+				<button class="btn-confirm" on:click={confirmCreateFile} disabled={!modalInputValue.trim()}>{$t.common.create}</button>
+			</div>
+		</div>
+	</div>
+{/if}
+
+{#if showRenameModal && renameTarget}
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<div class="modal-overlay" on:click={closeModal}>
+		<div class="modal-dialog" on:click|stopPropagation>
+			<h3>{$t.fileManager.contextMenu.rename}</h3>
+			<input
+				type="text"
+				bind:value={modalInputValue}
+				on:keydown={(e) => handleModalKeydown(e, confirmRename)}
+				autofocus
+			/>
+			<div class="modal-actions">
+				<button class="btn-cancel" on:click={closeModal}>{$t.common.cancel}</button>
+				<button class="btn-confirm" on:click={confirmRename} disabled={!modalInputValue.trim() || modalInputValue === renameTarget.name}>{$t.common.confirm}</button>
+			</div>
+		</div>
+	</div>
+{/if}
+
+{#if showDeleteModal && deleteTarget}
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<div class="modal-overlay" on:click={closeModal}>
+		<div class="modal-dialog" on:click|stopPropagation>
+			<div class="delete-modal-icon">
+				<Icon icon="mdi:alert-circle" class="w-10 h-10" />
+			</div>
+			<h3>{$t.fileManager.modals?.deleteTitle || 'Delete'}</h3>
+			<p class="modal-message">
+				{#if deleteTarget.type === 'folder'}
+					{$t.fileManager.modals?.deleteFolderMessage || 'Delete folder "{name}" and all its contents?'}
+				{:else}
+					{$t.fileManager.modals?.deleteFileMessage || 'Delete "{name}"?'}
+				{/if}
+			</p>
+			<p class="modal-filename">"{deleteTarget.name}"</p>
+			<div class="modal-actions">
+				<button class="btn-cancel" on:click={closeModal}>{$t.common.cancel}</button>
+				<button class="btn-danger" on:click={confirmDelete}>{$t.common.delete}</button>
 			</div>
 		</div>
 	</div>
@@ -539,7 +775,7 @@
 				<Icon icon="mdi:refresh" class="w-5 h-5" />
 			</button>
 			<div class="path-input">
-				<span>{getCurrentFolderName()}</span>
+				<span>{currentFolderDisplay}</span>
 			</div>
 			<div class="search-input">
 				<Icon icon="mdi:magnify" class="w-4 h-4 search-icon" />
@@ -554,32 +790,30 @@
 		<!-- Action toolbar -->
 		<div class="action-toolbar">
 			<div class="action-left">
-				<button class="action-btn" title={$t.fileManager.toolbar.newFolder} on:click={handleCreateFolder}>
+				<button class="action-btn" title={$t.fileManager.toolbar.newFolder} on:click={openCreateFolderModal}>
 					<Icon icon="mdi:folder-plus" class="w-5 h-5" />
 				</button>
-				<button class="action-btn" title={$t.fileManager.toolbar.upload}>
+				<button class="action-btn" title={$t.fileManager.modals?.newFileTitle || 'New file'} on:click={openCreateFileModal}>
+					<Icon icon="mdi:file-plus" class="w-5 h-5" />
+				</button>
+				<button class="action-btn" title={$t.fileManager.toolbar.upload} on:click={triggerUpload}>
 					<Icon icon="mdi:upload" class="w-5 h-5" />
 				</button>
-				<button class="action-btn" title={$t.fileManager.toolbar.copy}>
+				<div class="toolbar-divider"></div>
+				<button class="action-btn" title={$t.fileManager.toolbar.copy} disabled={!hasSelection} on:click={handleCopy}>
 					<Icon icon="mdi:content-copy" class="w-5 h-5" />
 				</button>
-				<button class="action-btn" title={$t.fileManager.toolbar.paste}>
-					<Icon icon="mdi:content-paste" class="w-5 h-5" />
-				</button>
-				<button class="action-btn" title={$t.fileManager.toolbar.cut}>
+				<button class="action-btn" title={$t.fileManager.toolbar.cut} disabled={!hasSelection} on:click={handleCut}>
 					<Icon icon="mdi:content-cut" class="w-5 h-5" />
 				</button>
-				<button class="action-btn" title={$t.fileManager.toolbar.duplicate}>
+				<button class="action-btn" class:clipboard-active={hasClipboard} title={$t.fileManager.toolbar.paste} disabled={!hasClipboard} on:click={handlePaste}>
+					<Icon icon="mdi:content-paste" class="w-5 h-5" />
+				</button>
+				<button class="action-btn" title={$t.fileManager.toolbar.duplicate} disabled={!hasSelection} on:click={handleDuplicate}>
 					<Icon icon="mdi:file-multiple-outline" class="w-5 h-5" />
 				</button>
 			</div>
 			<div class="action-right">
-				<button class="action-btn" title={$t.fileManager.toolbar.archive}>
-					<Icon icon="mdi:archive-outline" class="w-5 h-5" />
-				</button>
-				<button class="action-btn" title={$t.fileManager.toolbar.settings}>
-					<Icon icon="mdi:cog-outline" class="w-5 h-5" />
-				</button>
 				<button class="action-btn" title={$t.fileManager.toolbar.sort}>
 					<Icon icon="mdi:sort-variant" class="w-5 h-5" />
 				</button>
@@ -623,18 +857,31 @@
 			</div>
 		</div>
 
+		<!-- Clipboard indicator -->
+		{#if hasClipboard}
+			<div class="clipboard-bar">
+				<Icon icon={clipboard?.mode === 'cut' ? 'mdi:content-cut' : 'mdi:content-copy'} class="w-4 h-4" />
+				<span>
+					{clipboard?.files.length} {$t.fileManager.statusBar?.selected || 'selected'} — {clipboard?.mode === 'cut' ? ($t.fileManager.toolbar.cut || 'Cut') : ($t.fileManager.toolbar.copy || 'Copy')}
+				</span>
+				<button class="clipboard-clear" on:click={() => clipboard = null}>
+					<Icon icon="mdi:close" class="w-3 h-3" />
+				</button>
+			</div>
+		{/if}
+
 		<!-- File list -->
 		<div class="file-list-container">
 			{#if loading}
 				<div class="loading-state">
 					<Icon icon="mdi:loading" class="w-8 h-8 animate-spin" />
-					<span>Chargement...</span>
+					<span>{$t.common.loading}</span>
 				</div>
 			{:else if error}
 				<div class="error-state">
 					<Icon icon="mdi:alert-circle" class="w-8 h-8" />
 					<span>{error}</span>
-					<button class="retry-btn" on:click={refresh}>Réessayer</button>
+					<button class="retry-btn" on:click={refresh}>{$t.common.retry}</button>
 				</div>
 			{:else if viewMode === 'list'}
 				<table class="file-table">
@@ -696,6 +943,7 @@
 							<tr
 								class="file-row"
 								class:selected={selectedFiles.includes(file.id)}
+								class:cut={clipboard?.mode === 'cut' && clipboard.files.some(f => f.id === file.id)}
 								on:click={(e) => toggleSelect(file.id, e)}
 								on:dblclick={() => handleDoubleClick(file)}
 							>
@@ -712,29 +960,10 @@
 								<td class="cell-actions">
 									<button
 										class="action-menu-btn"
-										on:click|stopPropagation={() => showActionMenu = showActionMenu === file.id ? null : file.id}
+										on:click|stopPropagation={(e) => toggleActionMenu(file.id, e)}
 									>
 										<Icon icon="mdi:dots-vertical" class="w-5 h-5" />
 									</button>
-									{#if showActionMenu === file.id}
-										<div class="action-menu">
-											{#if file.type === 'folder'}
-												<button class="menu-item" on:click={() => { handleDoubleClick(file); showActionMenu = null; }}>
-													<Icon icon="mdi:folder-open" class="w-4 h-4" />
-													{$t.common.open}
-												</button>
-											{/if}
-											<button class="menu-item" on:click={() => startRename(file)}>
-												<Icon icon="mdi:pencil" class="w-4 h-4" />
-												{$t.fileManager.contextMenu.rename}
-											</button>
-											<div class="menu-divider"></div>
-											<button class="menu-item danger" on:click={() => { handleDelete(file); showActionMenu = null; }}>
-												<Icon icon="mdi:delete" class="w-4 h-4" />
-												{$t.common.delete}
-											</button>
-										</div>
-									{/if}
 								</td>
 							</tr>
 						{/each}
@@ -746,6 +975,7 @@
 						<button
 							class="file-card"
 							class:selected={selectedFiles.includes(file.id)}
+							class:cut={clipboard?.mode === 'cut' && clipboard.files.some(f => f.id === file.id)}
 							on:click={(e) => toggleSelect(file.id, e)}
 							on:dblclick={() => handleDoubleClick(file)}
 						>
@@ -760,12 +990,12 @@
 					{/each}
 				</div>
 			{:else if viewMode === 'compact'}
-				<!-- Compact view -->
 				<div class="file-compact">
 					{#each sortedFiles as file}
 						<button
 							class="file-compact-item"
 							class:selected={selectedFiles.includes(file.id)}
+							class:cut={clipboard?.mode === 'cut' && clipboard.files.some(f => f.id === file.id)}
 							on:click={(e) => toggleSelect(file.id, e)}
 							on:dblclick={() => handleDoubleClick(file)}
 						>
@@ -782,7 +1012,7 @@
 			{#if !loading && !error && sortedFiles.length === 0}
 				<div class="empty-state">
 					<Icon icon="mdi:folder-open-outline" class="w-16 h-16 text-gray-300" />
-					<span>Ce dossier est vide</span>
+					<span>{$t.fileManager.modals?.emptyFolder || 'This folder is empty'}</span>
 				</div>
 			{/if}
 		</div>
@@ -800,6 +1030,43 @@
 		</footer>
 	</div>
 </div>
+
+<!-- Floating action menu (rendered outside scroll containers to avoid clipping) -->
+{#if actionMenuFile}
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<div class="action-menu-backdrop" on:click={() => showActionMenu = null}></div>
+	<div class="action-menu" style="left: {actionMenuPos.x}px; top: {actionMenuPos.y}px;">
+		{#if actionMenuFile.type === 'folder'}
+			<button class="menu-item" on:click={() => { handleDoubleClick(actionMenuFile); showActionMenu = null; }}>
+				<Icon icon="mdi:folder-open" class="w-4 h-4" />
+				{$t.common.open}
+			</button>
+		{/if}
+		{#if actionMenuFile.type === 'file'}
+			<button class="menu-item" on:click={() => handleDownload(actionMenuFile)}>
+				<Icon icon="mdi:download" class="w-4 h-4" />
+				{$t.fileManager.contextMenu.download}
+			</button>
+		{/if}
+		<button class="menu-item" on:click={() => openRenameModal(actionMenuFile)}>
+			<Icon icon="mdi:pencil" class="w-4 h-4" />
+			{$t.fileManager.contextMenu.rename}
+		</button>
+		<button class="menu-item" on:click={() => { clipboard = { files: [actionMenuFile], mode: 'copy' }; showActionMenu = null; }}>
+			<Icon icon="mdi:content-copy" class="w-4 h-4" />
+			{$t.fileManager.toolbar.copy}
+		</button>
+		<button class="menu-item" on:click={() => { clipboard = { files: [actionMenuFile], mode: 'cut' }; showActionMenu = null; }}>
+			<Icon icon="mdi:content-cut" class="w-4 h-4" />
+			{$t.fileManager.toolbar.cut}
+		</button>
+		<div class="menu-divider"></div>
+		<button class="menu-item danger" on:click={() => openDeleteModal(actionMenuFile)}>
+			<Icon icon="mdi:delete" class="w-4 h-4" />
+			{$t.common.delete}
+		</button>
+	</div>
+{/if}
 
 <style>
 	.file-manager {
@@ -877,21 +1144,10 @@
 		flex-shrink: 0;
 	}
 
-	.home-icon {
-		color: #3b82f6;
-	}
-
-	.share-icon {
-		color: #10b981;
-	}
-
-	.volume-icon {
-		color: #8b5cf6;
-	}
-
-	.media-icon {
-		color: #f59e0b;
-	}
+	.home-icon { color: #3b82f6; }
+	.share-icon { color: #10b981; }
+	.volume-icon { color: #8b5cf6; }
+	.media-icon { color: #f59e0b; }
 
 	.location-info {
 		display: flex;
@@ -918,15 +1174,8 @@
 		font-weight: 500;
 	}
 
-	.status-badge.disabled {
-		background: #fef3c7;
-		color: #92400e;
-	}
-
-	.status-badge.unmounted {
-		background: #f3f4f6;
-		color: #6b7280;
-	}
+	.status-badge.disabled { background: #fef3c7; color: #92400e; }
+	.status-badge.unmounted { background: #f3f4f6; color: #6b7280; }
 
 	.usage-bar {
 		width: 40px;
@@ -958,9 +1207,7 @@
 		text-align: center;
 	}
 
-	.sidebar-error {
-		color: #ef4444;
-	}
+	.sidebar-error { color: #ef4444; }
 
 	/* Main content */
 	.main-content {
@@ -1055,9 +1302,7 @@
 		box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 	}
 
-	.search-input input::placeholder {
-		color: #9ca3af;
-	}
+	.search-input input::placeholder { color: #9ca3af; }
 
 	/* Action toolbar */
 	.action-toolbar {
@@ -1075,6 +1320,13 @@
 		gap: 4px;
 	}
 
+	.toolbar-divider {
+		width: 1px;
+		height: 24px;
+		background: #e5e7eb;
+		margin: 0 4px;
+	}
+
 	.action-btn {
 		width: 36px;
 		height: 36px;
@@ -1088,9 +1340,20 @@
 		transition: all 0.15s ease;
 	}
 
-	.action-btn:hover {
+	.action-btn:hover:not(:disabled) {
 		background: #f3f4f6;
 		color: #374151;
+	}
+
+	.action-btn:disabled {
+		opacity: 0.35;
+		cursor: not-allowed;
+	}
+
+	.action-btn.clipboard-active {
+		border-color: #3b82f6;
+		color: #3b82f6;
+		background: #eff6ff;
 	}
 
 	.view-btn {
@@ -1128,13 +1391,35 @@
 		text-align: left;
 	}
 
-	.view-option:hover {
-		background: #f3f4f6;
+	.view-option:hover { background: #f3f4f6; }
+	.view-option.active { background: #eef2ff; color: #3b82f6; }
+
+	/* Clipboard indicator bar */
+	.clipboard-bar {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 6px 16px;
+		background: #eff6ff;
+		border-bottom: 1px solid #bfdbfe;
+		font-size: 12px;
+		color: #2563eb;
 	}
 
-	.view-option.active {
-		background: #eef2ff;
-		color: #3b82f6;
+	.clipboard-clear {
+		margin-left: auto;
+		width: 20px;
+		height: 20px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		border-radius: 4px;
+		color: #2563eb;
+		transition: background 0.15s;
+	}
+
+	.clipboard-clear:hover {
+		background: rgba(37, 99, 235, 0.1);
 	}
 
 	/* File list */
@@ -1166,30 +1451,17 @@
 		user-select: none;
 	}
 
-	.file-table th.sortable:hover {
-		color: #374151;
-	}
+	.file-table th.sortable:hover { color: #374151; }
 
 	.sort-icon {
 		margin-left: 4px;
 		color: #3b82f6;
 	}
 
-	.col-size {
-		width: 100px;
-	}
-
-	.col-type {
-		width: 120px;
-	}
-
-	.col-modified {
-		width: 160px;
-	}
-
-	.col-actions {
-		width: 48px;
-	}
+	.col-size { width: 100px; }
+	.col-type { width: 120px; }
+	.col-modified { width: 160px; }
+	.col-actions { width: 48px; }
 
 	.file-table td {
 		padding: 12px 16px;
@@ -1203,13 +1475,9 @@
 		transition: background 0.1s ease;
 	}
 
-	.file-row:hover {
-		background: #f9fafb;
-	}
-
-	.file-row.selected {
-		background: #eef2ff;
-	}
+	.file-row:hover { background: #f9fafb; }
+	.file-row.selected { background: #eef2ff; }
+	.file-row.cut { opacity: 0.5; }
 
 	.cell-name {
 		display: flex;
@@ -1217,21 +1485,10 @@
 		gap: 12px;
 	}
 
-	.file-icon {
-		flex-shrink: 0;
-	}
-
-	.folder-icon {
-		color: #f59e0b;
-	}
-
-	.trash-icon {
-		color: #9ca3af;
-	}
-
-	.file-icon-default {
-		color: #6b7280;
-	}
+	.file-icon { flex-shrink: 0; }
+	.folder-icon { color: #f59e0b; }
+	.trash-icon { color: #9ca3af; }
+	.file-icon-default { color: #6b7280; }
 
 	.cell-size,
 	.cell-type,
@@ -1255,26 +1512,27 @@
 		transition: all 0.15s ease;
 	}
 
-	.file-row:hover .action-menu-btn {
-		opacity: 1;
-	}
+	.file-row:hover .action-menu-btn { opacity: 1; }
 
 	.action-menu-btn:hover {
 		background: #e5e7eb;
 		color: #374151;
 	}
 
+	.action-menu-backdrop {
+		position: fixed;
+		inset: 0;
+		z-index: 9998;
+	}
+
 	.action-menu {
-		position: absolute;
-		top: 100%;
-		right: 0;
-		margin-top: 4px;
+		position: fixed;
 		background: white;
 		border: 1px solid #e5e7eb;
 		border-radius: 8px;
 		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 		min-width: 160px;
-		z-index: 50;
+		z-index: 9999;
 		overflow: hidden;
 	}
 
@@ -1289,17 +1547,9 @@
 		text-align: left;
 	}
 
-	.menu-item:hover {
-		background: #f3f4f6;
-	}
-
-	.menu-item.danger {
-		color: #ef4444;
-	}
-
-	.menu-item.danger:hover {
-		background: #fef2f2;
-	}
+	.menu-item:hover { background: #f3f4f6; }
+	.menu-item.danger { color: #ef4444; }
+	.menu-item.danger:hover { background: #fef2f2; }
 
 	.menu-divider {
 		height: 1px;
@@ -1326,13 +1576,9 @@
 		transition: all 0.15s ease;
 	}
 
-	.file-card:hover {
-		background: #f3f4f6;
-	}
-
-	.file-card.selected {
-		background: #eef2ff;
-	}
+	.file-card:hover { background: #f3f4f6; }
+	.file-card.selected { background: #eef2ff; }
+	.file-card.cut { opacity: 0.5; }
 
 	.file-card-icon {
 		width: 64px;
@@ -1370,13 +1616,9 @@
 		transition: all 0.15s ease;
 	}
 
-	.file-compact-item:hover {
-		background: #f3f4f6;
-	}
-
-	.file-compact-item.selected {
-		background: #eef2ff;
-	}
+	.file-compact-item:hover { background: #f3f4f6; }
+	.file-compact-item.selected { background: #eef2ff; }
+	.file-compact-item.cut { opacity: 0.5; }
 
 	/* Status bar */
 	.status-bar {
@@ -1390,9 +1632,7 @@
 		color: #6b7280;
 	}
 
-	.selected-info {
-		color: #3b82f6;
-	}
+	.selected-info { color: #3b82f6; }
 
 	/* Loading, error, empty states */
 	.loading-state,
@@ -1408,9 +1648,7 @@
 		color: #6b7280;
 	}
 
-	.error-state {
-		color: #ef4444;
-	}
+	.error-state { color: #ef4444; }
 
 	.retry-btn {
 		margin-top: 8px;
@@ -1421,9 +1659,7 @@
 		font-size: 14px;
 	}
 
-	.retry-btn:hover {
-		background: #2563eb;
-	}
+	.retry-btn:hover { background: #2563eb; }
 
 	.animate-spin {
 		animation: spin 1s linear infinite;
@@ -1434,47 +1670,76 @@
 		to { transform: rotate(360deg); }
 	}
 
-	/* Rename dialog */
-	.rename-overlay {
+	/* Modal styles */
+	.modal-overlay {
 		position: fixed;
 		inset: 0;
 		background: rgba(0, 0, 0, 0.5);
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		z-index: 1000;
+		z-index: 10000;
 	}
 
-	.rename-dialog {
+	.modal-dialog {
 		background: white;
+		color: #1f2937;
 		padding: 24px;
 		border-radius: 12px;
 		box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
-		min-width: 300px;
+		min-width: 340px;
+		max-width: 420px;
+		animation: modal-in 0.15s ease-out;
 	}
 
-	.rename-dialog h3 {
+	@keyframes modal-in {
+		from { opacity: 0; transform: scale(0.95); }
+		to { opacity: 1; transform: scale(1); }
+	}
+
+	.modal-dialog h3 {
 		margin: 0 0 16px 0;
 		font-size: 18px;
 		font-weight: 600;
 		color: #1f2937;
 	}
 
-	.rename-dialog input {
+	.modal-dialog input {
 		width: 100%;
 		padding: 10px 12px;
 		border: 1px solid #d1d5db;
 		border-radius: 8px;
 		font-size: 14px;
 		outline: none;
+		box-sizing: border-box;
 	}
 
-	.rename-dialog input:focus {
+	.modal-dialog input:focus {
 		border-color: #3b82f6;
 		box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 	}
 
-	.rename-actions {
+	.modal-message {
+		font-size: 14px;
+		color: #4b5563;
+		margin: 0 0 4px 0;
+	}
+
+	.modal-filename {
+		font-size: 14px;
+		font-weight: 600;
+		color: #1f2937;
+		margin: 0 0 16px 0;
+	}
+
+	.delete-modal-icon {
+		display: flex;
+		justify-content: center;
+		margin-bottom: 12px;
+		color: #ef4444;
+	}
+
+	.modal-actions {
 		display: flex;
 		justify-content: flex-end;
 		gap: 8px;
@@ -1482,7 +1747,8 @@
 	}
 
 	.btn-cancel,
-	.btn-confirm {
+	.btn-confirm,
+	.btn-danger {
 		padding: 8px 16px;
 		border-radius: 6px;
 		font-size: 14px;
@@ -1494,16 +1760,20 @@
 		color: #374151;
 	}
 
-	.btn-cancel:hover {
-		background: #e5e7eb;
-	}
+	.btn-cancel:hover { background: #e5e7eb; }
 
 	.btn-confirm {
 		background: #3b82f6;
 		color: white;
 	}
 
-	.btn-confirm:hover {
-		background: #2563eb;
+	.btn-confirm:hover:not(:disabled) { background: #2563eb; }
+	.btn-confirm:disabled { opacity: 0.5; cursor: not-allowed; }
+
+	.btn-danger {
+		background: #ef4444;
+		color: white;
 	}
+
+	.btn-danger:hover { background: #dc2626; }
 </style>

@@ -293,10 +293,19 @@ export default {
 		welcome: 'Welcome!',
 		subtitle: "Let's set up your NAS.",
 		steps: {
+			welcome: 'Welcome',
 			language: 'Language',
 			device: 'Device',
 			account: 'Account',
-			password: 'Password'
+			password: 'Password',
+			ssh: 'SSH',
+			features: 'Discover'
+		},
+		welcomeScreen: {
+			title: 'Welcome to PiNAS!',
+			thankYou: 'Thank you for installing PiNAS on your Raspberry Pi.',
+			description: 'In just a few steps, we\'ll set up your personal NAS and you\'ll be ready to store, share and manage your files.',
+			letsGo: 'Let\'s get started!'
 		},
 		language: {
 			title: 'Choose your language',
@@ -323,10 +332,54 @@ export default {
 			placeholder: 'Enter password',
 			confirmPlaceholder: 'Confirm password'
 		},
+		ssh: {
+			title: 'Remote access (SSH)',
+			description: 'SSH lets you connect to your NAS remotely via terminal.',
+			enableSsh: 'Enable SSH',
+			enableHint: 'Allow remote terminal access to your device',
+			port: 'Port',
+			passwordLabel: 'SSH Password',
+			passwordPlaceholder: 'Enter SSH password',
+			confirmPasswordLabel: 'Confirm Password',
+			confirmPasswordPlaceholder: 'Confirm SSH password',
+			passwordHint: 'This password will be used to connect as root via SSH.',
+			skipHint: 'You can always enable SSH later in Settings.'
+		},
+		features: {
+			title: 'Your NAS is ready!',
+			subtitle: 'Here\'s what you can do with PiNAS:',
+			items: {
+				files: {
+					title: 'File Manager',
+					description: 'Browse, upload and organize all your files.'
+				},
+				storage: {
+					title: 'Storage',
+					description: 'Manage your disks, create RAID pools and volumes.'
+				},
+				shares: {
+					title: 'File Sharing',
+					description: 'Share folders on your network via SMB.'
+				},
+				docker: {
+					title: 'Docker & Apps',
+					description: 'Install apps like Plex, Pi-hole and more.'
+				},
+				kodi: {
+					title: 'Media Center',
+					description: 'Kodi is built-in for your movies and music.'
+				},
+				terminal: {
+					title: 'Terminal',
+					description: 'Full shell access right from your browser.'
+				}
+			}
+		},
 		buttons: {
 			back: 'Back',
 			next: 'Next',
-			complete: 'Complete Setup'
+			complete: 'Start using PiNAS',
+			getStarted: 'Let\'s go!'
 		},
 		validation: {
 			machineNameRequired: 'Machine name is required',
@@ -337,7 +390,9 @@ export default {
 			usernameInvalid: 'Only letters, numbers and underscores allowed',
 			passwordRequired: 'Password is required',
 			passwordMinLength: 'Password must be at least 6 characters',
-			passwordMismatch: 'Passwords do not match'
+			passwordMismatch: 'Passwords do not match',
+			sshPasswordMinLength: 'SSH password must be at least 4 characters',
+			sshPasswordMismatch: 'SSH passwords do not match'
 		}
 	},
 
@@ -365,7 +420,9 @@ export default {
 			refresh: 'Refresh',
 			search: 'Search...',
 			newFolder: 'New folder',
+			newFile: 'New file',
 			upload: 'Upload',
+			download: 'Download',
 			copy: 'Copy',
 			paste: 'Paste',
 			cut: 'Cut',
@@ -395,10 +452,35 @@ export default {
 			rename: 'Rename',
 			properties: 'Properties'
 		},
+		modals: {
+			newFolderTitle: 'New Folder',
+			newFileTitle: 'New File',
+			folderNamePlaceholder: 'Folder name',
+			fileNamePlaceholder: 'File name',
+			deleteTitle: 'Delete',
+			deleteFolderMessage: 'Delete this folder and all its contents?',
+			deleteFileMessage: 'Delete this file?',
+			emptyFolder: 'This folder is empty'
+		},
 		statusBar: {
 			item: 'item in total',
 			items: 'items in total',
 			selected: 'selected'
+		}
+	},
+
+	// Task Manager
+	taskManager: {
+		title: 'Tasks',
+		clear: 'Clear completed',
+		empty: 'No tasks',
+		types: {
+			upload: 'Upload',
+			copy: 'Copy',
+			move: 'Move',
+			delete: 'Delete',
+			createFolder: 'Create folder',
+			createFile: 'Create file'
 		}
 	},
 
@@ -825,6 +907,35 @@ export default {
 			toggleAddonFailed: 'Failed to toggle addon',
 			scanFailed: 'Failed to scan library'
 		}
+	},
+
+	// Network Settings
+	networkSettings: {
+		title: 'Network',
+		description: 'Configure network interfaces and DNS',
+		tabs: {
+			general: 'General',
+			interfaces: 'Network Interface'
+		},
+		hostname: 'Hostname',
+		hostnameHint: 'Name of your device on the network',
+		defaultGateway: 'Default Gateway',
+		dnsServer: 'DNS Server',
+		configureDnsManually: 'Configure DNS server manually',
+		primaryDns: 'Primary DNS',
+		secondaryDns: 'Secondary DNS',
+		dnsAuto: 'DNS provided by DHCP',
+		ipAddress: 'IP Address',
+		subnetMask: 'Subnet Mask',
+		gateway: 'Gateway',
+		macAddress: 'MAC Address',
+		speed: 'Speed',
+		method: 'Method',
+		manual: 'Manual',
+		connected: 'Connected',
+		disconnected: 'Disconnected',
+		editInterface: 'Edit Interface',
+		noInterfaces: 'No network interfaces detected'
 	},
 
 	// File Service

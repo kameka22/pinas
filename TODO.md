@@ -65,7 +65,7 @@
   - [x] `system.stats` (CPU, RAM, réseau)
   - [ ] `storage.update` (changements disques)
   - [ ] `notification.new`
-  - [ ] `task.progress`
+  - [x] `task.progress` (progression installation packages)
 - [x] Reconnexion automatique côté client
 
 ---
@@ -314,6 +314,10 @@
   - [x] Template et WriteFile (base64)
   - [x] Exec commandes shell
   - [x] Docker steps (pull, create, start, stop, rm)
+- [x] Installation en background (tokio::spawn) avec suivi progression WebSocket
+  - [x] `install_start()` : crée enregistrements DB, retourne task_id immédiatement
+  - [x] `install_execute()` : exécute les steps en tâche de fond
+  - [x] Progression en temps réel via WebSocket (`task.progress` events)
 - [x] Substitution de variables (`${DATA_DIR}`, `${PACKAGES_DIR}`, etc.)
 - [x] Catalogue distant GitHub (`kameka22/pinas-app-catalog`)
 - [x] Fallback catalogue intégré
@@ -352,18 +356,23 @@
 - [x] Traductions i18n pour les 3 composants (EN/FR)
 
 ### 5.15 File Service (Control Panel) ✅ NOUVEAU
-- [x] Interface avec onglets (SSH, SMB, NFS, FTP)
-- [x] Onglet SSH fonctionnel :
-  - [x] Toggle enable/disable
-  - [x] Affichage statut (running/stopped)
-  - [x] Affichage port
-  - [x] Changement mot de passe (modal)
-  - [x] Informations connexion
+- [x] Interface avec onglets (SMB, NFS, FTP)
 - [x] Intégration dans Control Panel (section "File Service")
 - [x] i18n complet (EN/FR)
 - [ ] Onglet SMB (placeholder)
 - [ ] Onglet NFS (placeholder)
 - [ ] Onglet FTP (placeholder)
+
+### 5.17 Terminal Settings (Control Panel) ✅ NOUVEAU
+- [x] Composant `TerminalSettings.svelte` dédié
+- [x] SSH déplacé de File Service vers catégorie Terminal
+- [x] Toggle enable/disable SSH
+- [x] Affichage statut (running/stopped)
+- [x] Affichage port
+- [x] Changement mot de passe (modal)
+- [x] Informations connexion (`ssh root@IP -p port`)
+- [x] Intégration dans Control Panel (section "Terminal")
+- [x] i18n complet (EN/FR)
 
 ### 5.16 FolderPicker Component ✅ NOUVEAU
 - [x] Composant réutilisable pour sélection de dossiers
@@ -379,13 +388,16 @@
 
 ## Phase 6 : Onboarding ✅
 
-### 6.1 First Setup Wizard
+### 6.1 First Setup Wizard (7 étapes)
 - [x] Page onboarding (`/onboarding`)
-- [x] Step 1 : Choix de la langue
-- [x] Step 2 : Nom du device
-- [x] Step 3 : Nom d'utilisateur admin
-- [x] Step 4 : Mot de passe
-- [x] Store onboarding avec validation
+- [x] Step 1 : Bienvenue (welcome screen avec logo et description)
+- [x] Step 2 : Choix de la langue (FR/EN)
+- [x] Step 3 : Nom du device
+- [x] Step 4 : Nom d'utilisateur admin
+- [x] Step 5 : Mot de passe admin
+- [x] Step 6 : Activation SSH (toggle + mot de passe optionnel)
+- [x] Step 7 : Sélection des fonctionnalités (Docker, Samba, etc.)
+- [x] Store onboarding avec validation par étape
 - [x] Redirection vers desktop après completion
 - [x] Connexion API backend `/api/setup/complete`
 - [x] Auto-login avec JWT après création admin
@@ -461,8 +473,8 @@
 ### Frontend (Avancé - UI complète + Apps dynamiques)
 - **Interface desktop** : Shell complet avec TopBar, Dock, Window Manager
 - **Design** : Style UGOS (light theme, glass morphism, gradients)
-- **App Center** : Installation d'apps depuis catalogue distant
-- **Composants génériques** : IframeApp, WebviewApp, ServiceApp
+- **App Center** : Installation d'apps depuis catalogue distant avec progression temps réel
+- **Composants génériques** : IframeApp, WebviewApp, ServiceApp, DockerApp
 - **i18n** : Traductions EN/FR + support dynamique par app + labelKey pour noms d'apps
 - **Window Manager** : Support appConfig pour composants dynamiques
 - **Terminal** : Application terminal web avec historique et commandes built-in
@@ -471,9 +483,11 @@
 - **Modales** : ProfileModal, ChangePasswordModal
 - **Storage Manager** : Complet avec pools, volumes, disks, partitions, S.M.A.R.T., wipe, scrub
 - **File Manager** : Sidebar dynamique avec home/shares/volumes et navigation multi-locations
+- **Control Panel** : SSH déplacé dans catégorie Terminal (`TerminalSettings.svelte`)
+- **Onboarding** : 7 étapes (welcome, langue, device, username, password, SSH, features)
 
 ### Backend (Fonctionnel)
-- **Package Manager** : Installation complète avec Docker support
+- **Package Manager** : Installation en background (tokio::spawn) avec progression WebSocket
 - **Docker Service** : API complète via bollard
 - **Services Manager** : API `/api/services` pour gestion systemd (start/stop/restart/logs)
 - **Apps Registry** : Endpoint pour apps avec fenêtre
@@ -501,6 +515,18 @@
 ## Prochaines étapes
 
 ### Terminé récemment ✅
+- [x] **Onboarding étendu à 7 étapes**
+  - [x] Welcome screen, choix langue, device name, username, password
+  - [x] Activation SSH (toggle + mot de passe optionnel)
+  - [x] Sélection fonctionnalités (Docker, Samba, etc.)
+- [x] **SSH déplacé vers Terminal (Control Panel)**
+  - [x] Nouveau composant `TerminalSettings.svelte`
+  - [x] Retiré de FileService.svelte (ne garde que SMB/NFS/FTP)
+  - [x] Intégré dans ControlPanel sous catégorie Terminal
+- [x] **Installation packages en background**
+  - [x] Split `install()` en `install_start()` + `install_execute()` (tokio::spawn)
+  - [x] Réponse HTTP immédiate avec task_id avant début installation
+  - [x] Progression temps réel via WebSocket (`task.progress` events)
 - [x] **Storage Manager complet**
   - [x] Backend: API disques, pools, volumes (avec dev mode)
   - [x] Frontend: Refonte UI avec wizard création pool
@@ -538,9 +564,9 @@
 - [ ] Synchronisation cloud (rclone)
 - [ ] Backup/Restore système
 - [ ] Real-time updates via WebSocket pour Storage Manager
-- [ ] Permissions par dossier/volume
+- [x] Permissions par dossier/volume (API + UI Permission viewer)
 
 ---
 
-*Dernière mise à jour : 5 Février 2026*
+*Dernière mise à jour : 7 Février 2026*
 *Cible OS : LibreELEC 12.x (package intégré à l'image)*

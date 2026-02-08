@@ -68,6 +68,9 @@ hex = "0.4"
 # Base64
 base64 = "0.21"
 
+# Hostname
+hostname = "0.4"
+
 [dev-dependencies]
 tokio-test = "0.4"
 

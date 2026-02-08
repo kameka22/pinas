@@ -58,7 +58,7 @@ impl PackageService {
     }
 
     /// Get variable substitutions for manifest paths
-    fn get_substitutions(&self) -> HashMap<String, String> {
+    fn get_substitutions(&self, app_id: Option<&str>) -> HashMap<String, String> {
         let arch = std::env::consts::ARCH;
         let docker_arch = match arch {
             "aarch64" => "aarch64",
@@ -72,20 +72,36 @@ impl PackageService {
         vars.insert("DOWNLOADS_DIR".to_string(), self.downloads_dir.clone());
         vars.insert("BIN_DIR".to_string(), self.bin_dir.clone());
         vars.insert("ARCH".to_string(), docker_arch.to_string());
+
+        // Per-app data directory
+        if let Some(id) = app_id {
+            vars.insert("APP_DATA_DIR".to_string(), format!("{}/apps/{}", self.data_dir, id));
+        }
+
+        // System hostname
+        let hostname = hostname::get()
+            .map(|h| h.to_string_lossy().to_string())
+            .unwrap_or_else(|_| "pinas".to_string());
+        vars.insert("DEVICE_HOSTNAME".to_string(), hostname);
+
+        // Default app password (placeholder)
+        vars.insert("APP_PASSWORD".to_string(), "changeme".to_string());
+
         vars
     }
 
     /// Substitute variables in a string
-    fn substitute_vars(&self, input: &str) -> String {
+    fn substitute_vars(&self, input: &str, app_id: Option<&str>) -> String {
         let mut result = input.to_string();
-        for (key, value) in self.get_substitutions() {
+        for (key, value) in self.get_substitutions(app_id) {
             result = result.replace(&format!("${{{}}}", key), &value);
         }
         result
     }
 
     /// Substitute variables in an InstallStep
-    fn substitute_step(&self, step: &InstallStep) -> InstallStep {
+    fn substitute_step(&self, step: &InstallStep, app_id: Option<&str>) -> InstallStep {
+        let s = |input: &str| self.substitute_vars(input, app_id);
         match step {
             InstallStep::Download { url, sha256, sha256_aarch64, sha256_x86_64, dest } => {
                 // Select the appropriate SHA256 based on current architecture
@@ -96,66 +112,72 @@ impl PackageService {
                     _ => sha256.clone(),
                 };
                 InstallStep::Download {
-                    url: self.substitute_vars(url),
+                    url: s(url),
                     sha256: selected_sha256,
-                    sha256_aarch64: None, // Clear arch-specific after selection
+                    sha256_aarch64: None,
                     sha256_x86_64: None,
-                    dest: self.substitute_vars(dest),
+                    dest: s(dest),
                 }
             }
             InstallStep::Extract { src, dest } => InstallStep::Extract {
-                src: self.substitute_vars(src),
-                dest: self.substitute_vars(dest),
+                src: s(src), dest: s(dest),
             },
             InstallStep::Copy { src, dest } => InstallStep::Copy {
-                src: self.substitute_vars(src),
-                dest: self.substitute_vars(dest),
+                src: s(src), dest: s(dest),
             },
             InstallStep::Symlink { src, dest } => InstallStep::Symlink {
-                src: self.substitute_vars(src),
-                dest: self.substitute_vars(dest),
+                src: s(src), dest: s(dest),
             },
             InstallStep::Chmod { path, mode } => InstallStep::Chmod {
-                path: self.substitute_vars(path),
-                mode: mode.clone(),
+                path: s(path), mode: mode.clone(),
             },
             InstallStep::Mkdir { path } => InstallStep::Mkdir {
-                path: self.substitute_vars(path),
+                path: s(path),
             },
             InstallStep::Template { src, dest } => InstallStep::Template {
-                src: src.clone(),
-                dest: self.substitute_vars(dest),
+                src: src.clone(), dest: s(dest),
             },
             InstallStep::WriteFile { dest, content } => InstallStep::WriteFile {
-                dest: self.substitute_vars(dest),
-                content: content.clone(),
+                dest: s(dest), content: content.clone(),
             },
             InstallStep::Exec { command, ignore_error } => InstallStep::Exec {
-                command: self.substitute_vars(command),
-                ignore_error: *ignore_error,
+                command: s(command), ignore_error: *ignore_error,
             },
             InstallStep::Delete { path } => InstallStep::Delete {
-                path: self.substitute_vars(path),
+                path: s(path),
             },
             InstallStep::DockerPull { image } => InstallStep::DockerPull {
-                image: self.substitute_vars(image),
+                image: s(image),
             },
             InstallStep::DockerCreate { config } => {
                 let mut new_config = config.clone();
-                // Substitute volume paths
                 for vol in &mut new_config.volumes {
-                    vol.host = self.substitute_vars(&vol.host);
+                    vol.host = s(&vol.host);
+                }
+                // Also substitute environment variable values
+                for env in &mut new_config.environment {
+                    env.value = s(&env.value);
                 }
                 InstallStep::DockerCreate { config: new_config }
             },
             InstallStep::DockerStart { container } => InstallStep::DockerStart {
-                container: self.substitute_vars(container),
+                container: s(container),
             },
             InstallStep::DockerStop { container } => InstallStep::DockerStop {
-                container: self.substitute_vars(container),
+                container: s(container),
             },
             InstallStep::DockerRm { container } => InstallStep::DockerRm {
-                container: self.substitute_vars(container),
+                container: s(container),
+            },
+            InstallStep::ComposeUp { dest, content, project_name } => InstallStep::ComposeUp {
+                dest: s(dest),
+                content: s(content),
+                project_name: project_name.as_ref().map(|p| s(p)),
+            },
+            InstallStep::ComposeDown { compose_file, remove_volumes, project_name } => InstallStep::ComposeDown {
+                compose_file: s(compose_file),
+                remove_volumes: *remove_volumes,
+                project_name: project_name.as_ref().map(|p| s(p)),
             },
         }
     }
@@ -274,8 +296,9 @@ impl PackageService {
         Ok(())
     }
 
-    /// Install a package from manifest
-    pub async fn install(&self, manifest: &PackageManifest, manifest_url: Option<&str>) -> Result<String> {
+    /// Start package installation: create DB records and return task_id immediately.
+    /// The actual installation steps must be run separately via `install_execute`.
+    pub async fn install_start(&self, manifest: &PackageManifest, manifest_url: Option<&str>) -> Result<String> {
         // Check if already installed successfully
         if self.is_installed(&manifest.id).await? {
             return Err(anyhow!("Package {} is already installed", manifest.id));
@@ -333,68 +356,89 @@ impl PackageService {
         .execute(&self.db)
         .await?;
 
+        Ok(task_id)
+    }
+
+    /// Execute package installation steps (should be called in a background task).
+    /// Updates DB status to completed/failed when done.
+    pub async fn install_execute(&self, manifest: &PackageManifest, task_id: &str) {
         // Execute installation steps (simulated in dev mode)
         let result = if self.dev_mode {
-            self.execute_dev_mode_steps(&manifest.id, &task_id).await
+            self.execute_dev_mode_steps(&manifest.id, task_id).await
         } else {
-            self.execute_install_steps(manifest, &task_id).await
+            self.execute_install_steps(manifest, task_id).await
         };
 
         // Update status based on result
         match result {
             Ok(_) => {
                 let now = chrono::Utc::now().to_rfc3339();
-                sqlx::query("UPDATE installed_packages SET status = 'installed', updated_at = ? WHERE id = ?")
+                let _ = sqlx::query("UPDATE installed_packages SET status = 'installed', updated_at = ? WHERE id = ?")
                     .bind(&now)
                     .bind(&manifest.id)
                     .execute(&self.db)
-                    .await?;
+                    .await;
 
-                sqlx::query("UPDATE package_tasks SET status = 'completed', completed_at = ? WHERE id = ?")
+                let _ = sqlx::query("UPDATE package_tasks SET status = 'completed', completed_at = ? WHERE id = ?")
                     .bind(&now)
-                    .bind(&task_id)
+                    .bind(task_id)
                     .execute(&self.db)
-                    .await?;
+                    .await;
 
                 // Store translations if frontend config has i18n
                 if let Some(frontend) = &manifest.frontend {
                     for (locale, translations) in &frontend.i18n {
-                        let trans_json = serde_json::to_string(translations)?;
-                        sqlx::query(
-                            r#"INSERT OR REPLACE INTO app_translations (package_id, locale, translations, created_at, updated_at)
-                               VALUES (?, ?, ?, ?, ?)"#
-                        )
-                        .bind(&manifest.id)
-                        .bind(locale)
-                        .bind(&trans_json)
-                        .bind(&now)
-                        .bind(&now)
-                        .execute(&self.db)
-                        .await?;
+                        if let Ok(trans_json) = serde_json::to_string(translations) {
+                            let _ = sqlx::query(
+                                r#"INSERT OR REPLACE INTO app_translations (package_id, locale, translations, created_at, updated_at)
+                                   VALUES (?, ?, ?, ?, ?)"#
+                            )
+                            .bind(&manifest.id)
+                            .bind(locale)
+                            .bind(&trans_json)
+                            .bind(&now)
+                            .bind(&now)
+                            .execute(&self.db)
+                            .await;
+                        }
                     }
                 }
+
+                // Broadcast final completion
+                self.broadcast_progress(task_id, &manifest.id, "completed", manifest.install.steps.len() as i32, manifest.install.steps.len() as i32, None);
             }
             Err(ref e) => {
                 let now = chrono::Utc::now().to_rfc3339();
                 let error_msg = e.to_string();
-                sqlx::query("UPDATE installed_packages SET status = 'error', error_message = ?, updated_at = ? WHERE id = ?")
+                let _ = sqlx::query("UPDATE installed_packages SET status = 'error', error_message = ?, updated_at = ? WHERE id = ?")
                     .bind(&error_msg)
                     .bind(&now)
                     .bind(&manifest.id)
                     .execute(&self.db)
-                    .await?;
+                    .await;
 
-                sqlx::query("UPDATE package_tasks SET status = 'failed', error_message = ?, completed_at = ? WHERE id = ?")
+                let _ = sqlx::query("UPDATE package_tasks SET status = 'failed', error_message = ?, completed_at = ? WHERE id = ?")
                     .bind(&error_msg)
                     .bind(&now)
-                    .bind(&task_id)
+                    .bind(task_id)
                     .execute(&self.db)
-                    .await?;
+                    .await;
+
+                // Broadcast failure
+                let total = manifest.install.steps.len() as i32;
+                let event = TaskProgressEvent {
+                    task_id: task_id.to_string(),
+                    package_id: manifest.id.clone(),
+                    status: "failed".to_string(),
+                    progress: 0,
+                    total_steps: total,
+                    progress_percent: 0,
+                    current_step: None,
+                    error_message: Some(error_msg),
+                };
+                let _ = self.task_tx.send(event);
             }
         }
-
-        result?;
-        Ok(task_id)
     }
 
     /// Broadcast a task progress event via WebSocket
@@ -481,6 +525,14 @@ impl PackageService {
             InstallStep::DockerStart { container } => format!("Starting container {}", container),
             InstallStep::DockerStop { container } => format!("Stopping container {}", container),
             InstallStep::DockerRm { container } => format!("Removing container {}", container),
+            InstallStep::ComposeUp { project_name, .. } => {
+                let name = project_name.as_deref().unwrap_or("app");
+                format!("Starting services ({})", name)
+            }
+            InstallStep::ComposeDown { project_name, .. } => {
+                let name = project_name.as_deref().unwrap_or("app");
+                format!("Stopping services ({})", name)
+            }
         }
     }
 
@@ -489,27 +541,24 @@ impl PackageService {
         let total = manifest.install.steps.len() as i32;
 
         for (i, step) in manifest.install.steps.iter().enumerate() {
-            let substituted_step = self.substitute_step(step);
+            let substituted_step = self.substitute_step(step, Some(&manifest.id));
             let step_desc = Self::step_description(&substituted_step);
             tracing::info!("Executing step {}/{}: {}", i + 1, total, step_desc);
 
             // Update progress in DB
             sqlx::query("UPDATE package_tasks SET progress = ?, current_step = ? WHERE id = ?")
-                .bind(i as i32)
+                .bind(i as i32 + 1)
                 .bind(&step_desc)
                 .bind(task_id)
                 .execute(&self.db)
                 .await?;
 
-            // Broadcast progress via WebSocket
-            self.broadcast_progress(task_id, &manifest.id, "running", i as i32, total, Some(&step_desc));
+            // Broadcast progress before step (show current step name)
+            self.broadcast_progress(task_id, &manifest.id, "running", i as i32 + 1, total, Some(&step_desc));
 
             self.execute_step(&substituted_step, manifest, &manifest.id).await
                 .with_context(|| format!("Failed at step {}: {:?}", i + 1, substituted_step))?;
         }
-
-        // Broadcast completion
-        self.broadcast_progress(task_id, &manifest.id, "completed", total, total, None);
 
         Ok(())
     }
@@ -537,21 +586,18 @@ impl PackageService {
 
             // Update DB
             sqlx::query("UPDATE package_tasks SET progress = ?, current_step = ? WHERE id = ?")
-                .bind(i as i32)
+                .bind(i as i32 + 1)
                 .bind(*desc)
                 .bind(task_id)
                 .execute(&self.db)
                 .await?;
 
-            // Broadcast via WebSocket
-            self.broadcast_progress(task_id, package_id, "running", i as i32, total, Some(desc));
+            // Broadcast via WebSocket (i+1 so progress starts at 1/total, not 0/total)
+            self.broadcast_progress(task_id, package_id, "running", i as i32 + 1, total, Some(desc));
 
             // Simulate work
             tokio::time::sleep(std::time::Duration::from_millis(*delay_ms)).await;
         }
-
-        // Broadcast completion
-        self.broadcast_progress(task_id, package_id, "completed", total, total, None);
 
         Ok(())
     }
@@ -683,6 +729,47 @@ impl PackageService {
                 // Remove container from tracking
                 let _ = self.untrack_container(container).await;
             }
+            InstallStep::ComposeUp { dest, content, project_name } => {
+                tracing::info!("Docker Compose up: {}", dest);
+                // Write the compose file
+                if let Some(parent) = Path::new(dest.as_str()).parent() {
+                    fs::create_dir_all(parent).await?;
+                }
+                fs::write(dest, content).await?;
+                self.track_file(package_id, dest, "config").await?;
+
+                // Run docker compose up
+                let mut cmd = Command::new("docker");
+                cmd.arg("compose").arg("-f").arg(dest);
+                if let Some(name) = project_name {
+                    cmd.arg("-p").arg(name);
+                }
+                cmd.arg("up").arg("-d");
+
+                let output = cmd.output().await?;
+                if !output.status.success() {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    return Err(anyhow!("docker compose up failed: {}", stderr));
+                }
+            }
+            InstallStep::ComposeDown { compose_file, remove_volumes, project_name } => {
+                tracing::info!("Docker Compose down: {}", compose_file);
+                let mut cmd = Command::new("docker");
+                cmd.arg("compose").arg("-f").arg(compose_file);
+                if let Some(name) = project_name {
+                    cmd.arg("-p").arg(name);
+                }
+                cmd.arg("down");
+                if *remove_volumes {
+                    cmd.arg("--volumes");
+                }
+
+                let output = cmd.output().await?;
+                if !output.status.success() {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    tracing::warn!("docker compose down failed: {}", stderr);
+                }
+            }
         }
 
         Ok(())
@@ -728,6 +815,24 @@ impl PackageService {
                 }
                 // Also remove from tracking
                 let _ = self.untrack_container(container).await;
+            }
+            InstallStep::ComposeDown { compose_file, remove_volumes, project_name } => {
+                tracing::info!("Docker Compose down (uninstall): {}", compose_file);
+                let mut cmd = Command::new("docker");
+                cmd.arg("compose").arg("-f").arg(compose_file);
+                if let Some(name) = project_name {
+                    cmd.arg("-p").arg(name);
+                }
+                cmd.arg("down");
+                if *remove_volumes {
+                    cmd.arg("--volumes");
+                }
+
+                let output = cmd.output().await?;
+                if !output.status.success() {
+                    let stderr = String::from_utf8_lossy(&output.stderr);
+                    tracing::warn!("docker compose down failed: {}", stderr);
+                }
             }
             _ => {
                 tracing::warn!("Unhandled uninstall step type: {:?}", step);
@@ -818,10 +923,10 @@ impl PackageService {
         if let Some(manifest_data) = &package.manifest_data {
             let manifest: PackageManifest = serde_json::from_str(manifest_data)?;
 
-            // Execute uninstall steps (pass empty package_id since we're uninstalling)
+            // Execute uninstall steps
             for step in &manifest.uninstall.steps {
                 // Apply variable substitution
-                let substituted_step = self.substitute_step(step);
+                let substituted_step = self.substitute_step(step, Some(&manifest.id));
                 if let Err(e) = self.execute_uninstall_step(&substituted_step).await {
                     tracing::warn!("Uninstall step failed (continuing): {}", e);
                 }
