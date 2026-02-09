@@ -139,22 +139,6 @@ impl UpdateService {
     pub async fn check_for_update(&self) -> Result<UpdateCheckResult> {
         let current = Self::current_version();
 
-        if self.dev_mode {
-            return Ok(UpdateCheckResult {
-                available: true,
-                current_version: current,
-                latest_version: "99.0.0".to_string(),
-                update_type: Some("minor".to_string()),
-                reboot_required: Some(false),
-                changelog: Some(HashMap::from([
-                    ("en".to_string(), "Dev mode simulated update: new features and improvements.".to_string()),
-                    ("fr".to_string(), "Mise à jour simulée en mode dev : nouvelles fonctionnalités et améliorations.".to_string()),
-                ])),
-                download_size: Some(15_000_000),
-                published_at: Some(chrono::Utc::now().to_rfc3339()),
-            });
-        }
-
         let url = format!(
             "https://api.github.com/repos/{}/{}/releases/latest",
             self.github_owner, self.github_repo
