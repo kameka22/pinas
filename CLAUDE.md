@@ -88,6 +88,7 @@ PiNAS est un système d'exploitation NAS moderne et performant, inspiré des int
 │   │   │   ├── network.rs   # Configuration réseau
 │   │   │   ├── ssh.rs        # SSH enable/disable/password
 │   │   │   ├── permissions.rs # Permissions par dossier
+│   │   │   ├── cups.rs       # Imprimantes CUPS (detect, add, jobs)
 │   │   │   ├── ws.rs         # WebSocket handler
 │   │   │   └── middleware.rs # Auth middleware, CORS
 │   │   ├── services/         # Logique métier
@@ -103,6 +104,7 @@ PiNAS est un système d'exploitation NAS moderne et performant, inspiré des int
 │   │   │   ├── storage.rs    # Opérations stockage
 │   │   │   ├── share.rs      # Gestion partages
 │   │   │   ├── ssh.rs        # Service SSH (enable/disable/password)
+│   │   │   ├── cups.rs       # Service CUPS (imprimantes USB, IPP/AirPrint)
 │   │   │   └── system.rs     # Métriques système
 │   │   ├── models/           # Structs DB
 │   │   │   ├── user.rs       # Modèle utilisateur
@@ -147,23 +149,31 @@ PiNAS est un système d'exploitation NAS moderne et performant, inspiré des int
 │   ├── package.json
 │   └── svelte.config.js
 ├── libreelec/                # Package LibreELEC natif
-│   └── packages/pinas/
-│       ├── package.mk            # Définition package (version, deps, install)
-│       ├── bin/
-│       │   ├── pinas             # Binaire backend compilé
-│       │   ├── pinas-init.sh     # Script d'initialisation
-│       │   ├── pinas-debug.sh    # Script debug
-│       │   └── pinas-resize-storage.sh
-│       ├── system.d/
-│       │   ├── pinas.service     # Service systemd principal
-│       │   └── pinas-resize-storage.service
-│       └── tmpfiles.d/
-│           └── pinas.conf        # Création répertoires au boot
+│   └── packages/
+│       ├── pinas/
+│       │   ├── package.mk            # Définition package (version, deps, install)
+│       │   ├── bin/
+│       │   │   ├── pinas             # Binaire backend compilé
+│       │   │   ├── pinas-init.sh     # Script d'initialisation
+│       │   │   ├── pinas-debug.sh    # Script debug
+│       │   │   └── pinas-resize-storage.sh
+│       │   ├── system.d/
+│       │   │   ├── pinas.service     # Service systemd principal
+│       │   │   └── pinas-resize-storage.service
+│       │   └── tmpfiles.d/
+│       │       └── pinas.conf        # Création répertoires au boot
+│       └── cups/
+│           ├── package.mk            # CUPS 2.4.10 (autotools build)
+│           └── system.d/
+│               └── cups.service      # Service CUPS (désactivé par défaut)
 ├── scripts/                  # Scripts de build
 │   ├── build-arm64.sh            # Build complet ARM64
 │   ├── build-x86.sh              # Build x86 (dev)
 │   ├── build-libreelec-image.sh  # Build image LibreELEC complète
-│   └── remote-build.sh           # Build sur VM distante
+│   ├── remote-build.sh           # Build sur VM distante
+│   ├── deploy-pi.sh              # Déploiement sur Pi via SSH
+│   ├── convert-umbrel.py         # Conversion apps Umbrel → PiNAS
+│   └── convert-umbrel-batch.sh   # Conversion batch
 ├── docker/                   # Environnement dev Docker
 │   ├── docker-compose/
 │   │   └── docker-compose.yml
@@ -408,6 +418,20 @@ POST   /api/permissions            # Créer permission
 PUT    /api/permissions/:id        # Modifier permission
 DELETE /api/permissions/:id        # Supprimer permission
 
+# CUPS (Imprimantes)
+GET    /api/cups/status            # État du service CUPS
+POST   /api/cups/enable            # Activer CUPS
+POST   /api/cups/disable           # Désactiver CUPS
+GET    /api/cups/printers          # Liste imprimantes configurées
+POST   /api/cups/printers          # Ajouter imprimante
+DELETE /api/cups/printers/:name    # Supprimer imprimante
+PUT    /api/cups/printers/:name    # Modifier imprimante
+POST   /api/cups/printers/:name/test # Page de test
+GET    /api/cups/detect            # Détecter imprimantes USB
+GET    /api/cups/drivers           # Drivers disponibles (query: uri)
+GET    /api/cups/jobs              # File d'attente impression
+DELETE /api/cups/jobs/:id          # Annuler job
+
 # WebSocket
 WS     /api/ws                    # Events temps réel
 ```
@@ -483,6 +507,7 @@ Frontend (Svelte)              Backend (Rust)
 | `FileService.svelte` | File Service | Onglets SMB/NFS/FTP (placeholders) |
 | `NetworkSettings.svelte` | Network | Configuration réseau (interfaces, DNS, hostname) |
 | `TerminalSettings.svelte` | Terminal | Configuration SSH (enable/disable, port, password) |
+| `PrinterSettings.svelte` | Printer | Imprimantes CUPS (detect, add, jobs, test page) |
 
 ### Composants génériques pour apps installées
 
@@ -616,6 +641,7 @@ CREATE TABLE storage_volumes (
 | Samba | Disponible | Configurable via PiNAS |
 | SSH | Intégré | Configurable via PiNAS (Control Panel > Terminal) |
 | Docker | Optionnel | Via package App Center (binaires statiques) |
+| CUPS | Intégré | Désactivé par défaut, configurable via Control Panel > Printer |
 | Avahi/mDNS | Intégré | Actif par défaut |
 
 ### Contraintes techniques
@@ -700,13 +726,14 @@ Le catalogue d'applications est hébergé sur GitHub : `kameka22/pinas-app-catal
 
 ```
 app-catalog/
-├── catalog.json              # Index avec metadata de toutes les apps
+├── catalog.json              # Index avec metadata de toutes les apps (28 apps)
 └── apps/
-    ├── docker/manifest.json  # Manifest d'installation Docker
+    ├── docker/manifest.json  # Manifest d'installation Docker (binaire)
     ├── portainer/manifest.json
-    ├── plex/manifest.json
-    ├── pihole/manifest.json
-    └── samba/manifest.json
+    ├── samba/manifest.json   # Manifest Samba (binaire)
+    ├── jellyfin/manifest.json
+    ├── nextcloud/manifest.json  # Multi-container (Compose)
+    └── ...                   # 28 apps total
 ```
 
 ### Format Manifest
@@ -763,6 +790,7 @@ app-catalog/
 |------|-------|
 | `binary` | Télécharge et extrait des binaires statiques (ex: Docker) |
 | `docker` | Utilise Docker pour pull/create/start des containers |
+| `compose` | Docker Compose pour apps multi-container (ex: Nextcloud) |
 
 ### Variables substituées
 
@@ -770,9 +798,11 @@ app-catalog/
 |----------|--------|
 | `${PACKAGES_DIR}` | `/storage/.pinas/packages` |
 | `${DATA_DIR}` | `/storage/.pinas/data` |
+| `${APP_DATA_DIR}` | `/storage/.pinas/data/apps/{app_id}` |
 | `${BIN_DIR}` | `/storage/.pinas/bin` |
 | `${DOWNLOADS_DIR}` | `/storage/.pinas/downloads` |
 | `${ARCH}` | `aarch64` ou `x86_64` |
+| `${DEVICE_HOSTNAME}` | Hostname système |
 
 ### Vérification SHA256
 

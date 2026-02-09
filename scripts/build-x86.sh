@@ -375,6 +375,11 @@ echo ">>> [${CURRENT_STEP}/${TOTAL_STEPS}] Installing PiNAS package into LibreEL
 rm -rf "${LIBREELEC_DIR}/packages/pinas"
 cp -r "${PACKAGE_DIR}" "${LIBREELEC_DIR}/packages/"
 
+# Install CUPS package (printer sharing)
+rm -rf "${LIBREELEC_DIR}/packages/cups"
+cp -r "${PROJECT_ROOT}/libreelec/packages/cups" "${LIBREELEC_DIR}/packages/"
+echo -e "    ${GREEN}✓${NC} CUPS package installed"
+
 # Verify www directory was copied
 if [ -d "${LIBREELEC_DIR}/packages/pinas/www" ] && [ -f "${LIBREELEC_DIR}/packages/pinas/www/index.html" ]; then
     echo -e "    ${GREEN}✓${NC} Frontend files included in package"

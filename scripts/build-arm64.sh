@@ -352,9 +352,14 @@ echo -e "    ${GREEN}✓${NC} LibreELEC version: $LIBREELEC_BRANCH"
 # 5. Install PiNAS package and add dependency
 CURRENT_STEP=$((CURRENT_STEP + 1))
 echo ""
-echo ">>> [${CURRENT_STEP}/${TOTAL_STEPS}] Installing PiNAS package into LibreELEC..."
+echo ">>> [${CURRENT_STEP}/${TOTAL_STEPS}] Installing PiNAS packages into LibreELEC..."
 rm -rf "${LIBREELEC_DIR}/packages/pinas"
 cp -r "${PACKAGE_DIR}" "${LIBREELEC_DIR}/packages/"
+
+# Install CUPS package (printer sharing)
+rm -rf "${LIBREELEC_DIR}/packages/cups"
+cp -r "${PROJECT_ROOT}/libreelec/packages/cups" "${LIBREELEC_DIR}/packages/"
+echo -e "    ${GREEN}✓${NC} CUPS package installed"
 
 # Verify www directory was copied
 if [ -d "${LIBREELEC_DIR}/packages/pinas/www" ] && [ -f "${LIBREELEC_DIR}/packages/pinas/www/index.html" ]; then

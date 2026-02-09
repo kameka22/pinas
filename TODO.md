@@ -210,6 +210,42 @@
 - [x] Niveaux: none, read, write
 - [x] Création automatique permission write sur home à la création utilisateur
 
+### 2.13 Network Service ✅ NOUVEAU
+- [x] `GET /api/network/status` - Interfaces, DNS, gateway, hostname
+- [x] `PUT /api/network/interface` - Configure une interface (DHCP/static)
+- [x] `PUT /api/network/dns` - Configure les DNS
+- [x] `PUT /api/network/hostname` - Change le hostname
+- [x] Support connman (LibreELEC network manager)
+- [x] Mode dev (simulation)
+
+### 2.14 CUPS Service ✅ NOUVEAU
+- [x] `GET /api/cups/status` - État du service CUPS
+- [x] `POST /api/cups/enable` - Activer CUPS
+- [x] `POST /api/cups/disable` - Désactiver CUPS
+- [x] `GET /api/cups/printers` - Liste imprimantes configurées
+- [x] `POST /api/cups/printers` - Ajouter imprimante
+- [x] `DELETE /api/cups/printers/:name` - Supprimer imprimante
+- [x] `PUT /api/cups/printers/:name` - Modifier imprimante
+- [x] `POST /api/cups/printers/:name/test` - Page de test
+- [x] `GET /api/cups/detect` - Détecter imprimantes USB
+- [x] `GET /api/cups/drivers?uri=...` - Drivers disponibles
+- [x] `GET /api/cups/jobs` - File d'attente impression
+- [x] `DELETE /api/cups/jobs/:id` - Annuler job
+- [x] Guard `require_enabled` (retourne 503 si désactivé)
+- [x] Mode dev avec OnceLock/AtomicBool pour état simulé
+- [x] Package LibreELEC CUPS (`libreelec/packages/cups/`)
+
+### 2.15 Docker Compose Support ✅ NOUVEAU
+- [x] `ComposeUp` step dans InstallStep (écrit docker-compose.yml + `docker compose up -d`)
+- [x] `ComposeDown` step dans InstallStep (`docker compose down`)
+- [x] Substitution variables dans contenu YAML
+- [x] Support `project_name` et `remove_volumes`
+- [x] Champs étendus dans ContainerConfig :
+  - [x] `cap_add`, `cap_drop`, `user`, `command`, `entrypoint`
+  - [x] `dns`, `extra_hosts`, `tmpfs`
+- [x] Fix `network_mode` dans `create_container()`
+- [x] Variables supplémentaires : `${APP_DATA_DIR}`, `${DEVICE_HOSTNAME}`
+
 ---
 
 ## Phase 3 : Frontend SvelteKit - Fondations
@@ -384,6 +420,25 @@
   - [x] KodiApp (add media source modal)
 - [x] i18n complet (EN/FR)
 
+### 5.18 Network Settings (Control Panel) ✅ NOUVEAU
+- [x] Composant `NetworkSettings.svelte` dédié
+- [x] Configuration interfaces réseau (DHCP/Static)
+- [x] Configuration DNS
+- [x] Configuration hostname
+- [x] Intégration dans Control Panel (section "Network")
+- [x] i18n complet (EN/FR)
+
+### 5.19 Printer Settings (Control Panel) ✅ NOUVEAU
+- [x] Composant `PrinterSettings.svelte` dédié
+- [x] Toggle enable/disable CUPS
+- [x] Détection imprimantes USB
+- [x] Ajout/suppression/modification imprimantes
+- [x] File d'attente d'impression (jobs)
+- [x] Page de test
+- [x] Informations protocoles (IPP, AirPrint, raw queue)
+- [x] Intégration dans Control Panel (section "Printer")
+- [x] i18n complet (EN/FR)
+
 ---
 
 ## Phase 6 : Onboarding ✅
@@ -454,9 +509,15 @@
 - [x] Plex manifest (Docker + WebviewApp)
 - [x] Pi-hole manifest (Docker + IframeApp)
 - [x] Samba manifest (Binaire + ServiceApp)
-- [ ] Nextcloud manifest
-- [ ] Transmission manifest
-- [ ] Home Assistant manifest
+- [x] 25 apps converties depuis Umbrel (Nextcloud, Jellyfin, Home Assistant, etc.)
+
+### 8.4 Script Conversion Umbrel ✅ NOUVEAU
+- [x] `scripts/convert-umbrel.py` - Convertit apps Umbrel → manifests PiNAS
+- [x] `scripts/convert-umbrel-batch.sh` - Conversion batch
+- [x] Support single-service → docker_pull/create/start
+- [x] Support multi-service → compose_up avec YAML inline
+- [x] Filtrage service app_proxy (Umbrel-spécifique)
+- [x] Mapping variables Umbrel → PiNAS
 
 ### 8.3 Format Manifest
 - [x] Metadata (id, name, version, description, author, license)
@@ -500,11 +561,17 @@
 - **Locations API** : Emplacements navigables (home, shares, volumes)
 - **SSH Service** : Enable/disable SSH + changement mot de passe (compatible LibreELEC)
 - **Permissions API** : CRUD permissions par dossier/utilisateur/groupe
+- **Network Service** : Configuration interfaces, DNS, hostname (connman)
+- **CUPS Service** : Partage imprimantes USB via IPP/AirPrint
+- **Docker Compose** : Support apps multi-container (ComposeUp/ComposeDown)
+- **Variables étendues** : `${APP_DATA_DIR}`, `${DEVICE_HOSTNAME}`
 
 ### App Catalog (GitHub)
 - **Repository** : `kameka22/pinas-app-catalog`
-- **Apps disponibles** : Docker, Portainer, Plex, Pi-hole, Samba
+- **Apps disponibles** : 28 apps (Docker, Portainer, Samba + 25 apps converties depuis Umbrel)
+- **Catégories** : containers, media, network, utilities
 - **Format** : Manifest JSON avec frontend config + i18n
+- **Compose** : Support multi-container (Nextcloud, PhotoPrism, Paperless-ngx)
 
 ### Package LibreELEC (Fonctionnel ✅)
 - Cross-compilation aarch64-musl fonctionnelle
@@ -515,35 +582,27 @@
 ## Prochaines étapes
 
 ### Terminé récemment ✅
+- [x] **CUPS Printer Sharing**
+  - [x] Backend: Service CUPS complet (detect, add, remove, jobs, test page)
+  - [x] Frontend: PrinterSettings.svelte dans Control Panel
+  - [x] Package LibreELEC CUPS (autotools build, cupsd.conf)
+  - [x] Intégration build scripts (arm64, x86, libreelec-image)
+- [x] **Network Settings**
+  - [x] Backend: Service Network (connman, interfaces, DNS, hostname)
+  - [x] Frontend: NetworkSettings.svelte dans Control Panel
+- [x] **Docker Compose & Umbrel Apps**
+  - [x] ComposeUp/ComposeDown steps dans package.rs
+  - [x] ContainerConfig étendu (cap_add, user, command, tmpfs, etc.)
+  - [x] Fix network_mode dans create_container()
+  - [x] Script convert-umbrel.py + batch conversion
+  - [x] 25 apps converties depuis Umbrel (28 total dans le catalogue)
 - [x] **Onboarding étendu à 7 étapes**
-  - [x] Welcome screen, choix langue, device name, username, password
-  - [x] Activation SSH (toggle + mot de passe optionnel)
-  - [x] Sélection fonctionnalités (Docker, Samba, etc.)
-- [x] **SSH déplacé vers Terminal (Control Panel)**
-  - [x] Nouveau composant `TerminalSettings.svelte`
-  - [x] Retiré de FileService.svelte (ne garde que SMB/NFS/FTP)
-  - [x] Intégré dans ControlPanel sous catégorie Terminal
-- [x] **Installation packages en background**
-  - [x] Split `install()` en `install_start()` + `install_execute()` (tokio::spawn)
-  - [x] Réponse HTTP immédiate avec task_id avant début installation
-  - [x] Progression temps réel via WebSocket (`task.progress` events)
-- [x] **Storage Manager complet**
-  - [x] Backend: API disques, pools, volumes (avec dev mode)
-  - [x] Frontend: Refonte UI avec wizard création pool
-  - [x] Protection disques système automatique
-  - [x] Support RAID (Basic, JBOD, RAID0/1/5/10, Btrfs)
-  - [x] Pool Scrub operation, Pool Edit, Disk Wipe, Disk Details, S.M.A.R.T.
-  - [x] i18n complet (EN/FR)
+- [x] **Installation packages en background** (tokio::spawn + WebSocket progress)
+- [x] **Storage Manager complet** (pools, RAID, volumes, S.M.A.R.T.)
 - [x] **Home directories & File Manager dynamique**
-  - [x] Backend: HomeService (création/archivage dossiers home)
-  - [x] Backend: Locations API (GET /api/locations)
-  - [x] Backend: Support location_id dans API Files
-  - [x] Frontend: Sidebar dynamique avec sections (Personnel, Partages, Volumes)
-  - [x] i18n complet (EN/FR)
 
 ### Court terme
-- [ ] Tester installation réelle d'apps sur Pi
-- [ ] Ajouter plus d'apps au catalogue (Nextcloud, Transmission, Home Assistant)
+- [ ] Tester installation réelle d'apps sur Pi (Syncthing, Jellyfin, Nextcloud)
 - [x] Implémenter endpoint `/api/services` pour ServiceApp
 - [x] Connecter Process Manager aux vraies données système
 - [ ] Améliorer Terminal avec auto-completion
@@ -568,5 +627,5 @@
 
 ---
 
-*Dernière mise à jour : 7 Février 2026*
+*Dernière mise à jour : 9 Février 2026*
 *Cible OS : LibreELEC 12.x (package intégré à l'image)*

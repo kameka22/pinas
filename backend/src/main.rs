@@ -113,6 +113,7 @@ fn create_router(state: AppState) -> Router {
         .nest("/api/network", api::network::router())
         .nest("/api/permissions", api::permissions::router())
         .nest("/api/ssh", api::ssh::router())
+        .nest("/api/cups", api::cups::router())
         // WebSocket
         .route("/api/ws", get(api::ws::ws_handler))
         // State

@@ -89,8 +89,12 @@ echo ""
 echo ">>> [5/8] Installing PiNAS package..."
 rm -rf "${LIBREELEC_DIR}/packages/pinas"
 cp -r "${PROJECT_ROOT}/libreelec/packages/pinas" "${LIBREELEC_DIR}/packages/"
-
 echo "    Package installed to packages/pinas/"
+
+# Install CUPS package (printer sharing)
+rm -rf "${LIBREELEC_DIR}/packages/cups"
+cp -r "${PROJECT_ROOT}/libreelec/packages/cups" "${LIBREELEC_DIR}/packages/"
+echo "    CUPS package installed to packages/cups/"
 
 # 6. Add PiNAS as dependency
 echo ""

@@ -537,6 +537,56 @@ class ApiClient {
 		return this.post<void>('/ssh/password', { password });
 	}
 
+	// CUPS endpoints
+	async getCupsStatus(): Promise<CupsStatus> {
+		return this.get<CupsStatus>('/cups/status');
+	}
+
+	async enableCups(): Promise<void> {
+		return this.post<void>('/cups/enable');
+	}
+
+	async disableCups(): Promise<void> {
+		return this.post<void>('/cups/disable');
+	}
+
+	async getCupsPrinters(): Promise<CupsPrinter[]> {
+		return this.get<CupsPrinter[]>('/cups/printers');
+	}
+
+	async detectPrinters(): Promise<DetectedPrinter[]> {
+		return this.get<DetectedPrinter[]>('/cups/detect');
+	}
+
+	async getPrinterDrivers(uri: string): Promise<PrinterDriver[]> {
+		return this.get<PrinterDriver[]>(`/cups/drivers?uri=${encodeURIComponent(uri)}`);
+	}
+
+	async addPrinter(data: AddPrinterRequest): Promise<void> {
+		return this.post<void>('/cups/printers', data);
+	}
+
+	async removePrinter(name: string): Promise<void> {
+		return this.delete(`/cups/printers/${encodeURIComponent(name)}`);
+	}
+
+	async updatePrinter(name: string, data: UpdatePrinterRequest): Promise<void> {
+		return this.put<void>(`/cups/printers/${encodeURIComponent(name)}`, data);
+	}
+
+	async printTestPage(printerName: string): Promise<void> {
+		return this.post<void>(`/cups/printers/${encodeURIComponent(printerName)}/test`);
+	}
+
+	async getPrintJobs(printer?: string): Promise<PrintJob[]> {
+		const params = printer ? `?printer=${encodeURIComponent(printer)}` : '';
+		return this.get<PrintJob[]>(`/cups/jobs${params}`);
+	}
+
+	async cancelPrintJob(jobId: number): Promise<void> {
+		return this.delete(`/cups/jobs/${jobId}`);
+	}
+
 	// Network endpoints
 	async getNetworkStatus(): Promise<NetworkStatus> {
 		return this.get<NetworkStatus>('/network/status');
@@ -792,6 +842,58 @@ export interface SshStatus {
 	enabled: boolean;
 	running: boolean;
 	port: number;
+}
+
+// CUPS types
+export interface CupsStatus {
+	enabled: boolean;
+	running: boolean;
+	printer_count: number;
+}
+
+export interface CupsPrinter {
+	name: string;
+	uri: string;
+	state: string;
+	state_message: string;
+	shared: boolean;
+	is_default: boolean;
+	model: string;
+	location: string;
+}
+
+export interface DetectedPrinter {
+	uri: string;
+	model: string;
+}
+
+export interface PrinterDriver {
+	id: string;
+	name: string;
+}
+
+export interface PrintJob {
+	id: number;
+	printer: string;
+	title: string;
+	user: string;
+	state: string;
+	size: number;
+	created_at: string;
+}
+
+export interface AddPrinterRequest {
+	name: string;
+	uri: string;
+	driver: string;
+	location?: string;
+	shared?: boolean;
+}
+
+export interface UpdatePrinterRequest {
+	shared?: boolean;
+	is_default?: boolean;
+	location?: string;
 }
 
 export const api = new ApiClient(API_BASE);

@@ -6,17 +6,26 @@ Modern NAS operating system for Raspberry Pi 5, built on LibreELEC.
 
 ## Overview
 
-PiNAS transforms your Raspberry Pi into a full-featured NAS with a modern web interface inspired by Synology DSM. It runs as an addon on LibreELEC, allowing your Pi to serve as both a media center (Kodi) and a NAS.
+PiNAS transforms your Raspberry Pi into a full-featured NAS with a modern web interface inspired by Synology DSM. It runs as a native package on LibreELEC, allowing your Pi to serve as both a media center (Kodi) and a NAS.
 
 ## Features
 
-- **Desktop-like web interface** - Windows, dock, and widgets
-- **File management** - Browse, upload, download files
-- **Storage management** - Disk monitoring and mounting
-- **Share management** - SMB/Samba shares configuration
-- **User management** - Multi-user support with permissions
-- **Real-time monitoring** - CPU, RAM, network, disk usage
-- **Lightweight** - ~50MB RAM, ~100MB disk footprint
+- **Desktop-like web interface** — Windows, dock, topbar, and widgets
+- **File management** — Browse, upload, download, rename, create folders across locations
+- **Storage management** — Pools (RAID 0/1/5/10, JBOD, Btrfs), volumes, S.M.A.R.T. monitoring
+- **Share management** — SMB/Samba shares configuration
+- **User & group management** — Multi-user with RBAC permissions per folder
+- **App Center** — Install 28+ apps from catalog (Docker-based)
+- **Docker Compose** — Multi-container apps (Nextcloud, PhotoPrism, etc.)
+- **Network configuration** — Interfaces, DNS, hostname (connman)
+- **SSH management** — Enable/disable, password change
+- **Printer sharing** — CUPS integration (USB printers shared via IPP/AirPrint)
+- **Real-time monitoring** — CPU, RAM, network, disk via WebSocket
+- **Terminal** — Web terminal with command history
+- **Process Manager** — System process monitoring and management
+- **Onboarding wizard** — 7-step setup (language, device name, user, password, SSH, features)
+- **i18n** — English and French
+- **Lightweight** — ~50MB RAM, ~100MB disk footprint
 
 ## Tech Stack
 
@@ -24,8 +33,10 @@ PiNAS transforms your Raspberry Pi into a full-featured NAS with a modern web in
 |-----------|------------|
 | OS | LibreELEC 12.x |
 | Backend | Rust (Axum + Tokio) |
-| Frontend | SvelteKit + Svelte 5 |
+| Frontend | SvelteKit + Svelte 5 (SSG) |
 | Database | SQLite |
+| Style | TailwindCSS v4 |
+| Icons | Iconify (MDI) |
 | Target | Raspberry Pi 5 (ARM64) |
 
 ## Requirements
@@ -45,28 +56,16 @@ PiNAS transforms your Raspberry Pi into a full-featured NAS with a modern web in
    ```
 3. Insert SD card and boot your Pi
 4. Access PiNAS at `http://<pi-ip>:3000`
-
-### Default Credentials
-
-- Username: `admin`
-- Password: `admin`
+5. Follow the onboarding wizard to set up your admin account
 
 ## Development
 
 ### Prerequisites
 
-- Rust 1.70+
-- Node.js 20+
-- npm
+- Docker (for building — no local Rust/cargo needed)
+- Node.js 20+ / npm (for frontend dev)
 
-### Backend
-
-```bash
-cd backend
-cargo run
-```
-
-### Frontend
+### Frontend Dev
 
 ```bash
 cd frontend
@@ -74,104 +73,131 @@ npm install
 npm run dev
 ```
 
-Access the dev server at `http://localhost:5173`
+Access at `http://localhost:5173`
 
-## Building for Raspberry Pi
+### Build (x86 dev image)
 
-### Requirements
+```bash
+./scripts/build-x86.sh
+```
 
-- Ubuntu ARM64 VM or native ARM64 machine
-- 20GB+ free disk space
-- 4GB+ RAM
-
-### Build Commands
+### Build (ARM64 production)
 
 ```bash
 # Full build (backend + frontend + LibreELEC image)
 ./scripts/build-arm64.sh
 
-# Build only PiNAS package (skip LibreELEC image)
-./scripts/build-arm64.sh --skip-libreelec
-
-# Rebuild frontend only
-./scripts/build-arm64.sh --frontend-only
-
-# Rebuild backend only
-./scripts/build-arm64.sh --backend-only
-
-# Clean build
-./scripts/build-arm64.sh --clean
+# Options
+./scripts/build-arm64.sh --skip-libreelec   # Skip image generation
+./scripts/build-arm64.sh --frontend-only     # Frontend only
+./scripts/build-arm64.sh --backend-only      # Backend only
+./scripts/build-arm64.sh --clean             # Clean build
 ```
 
-The build creates a LibreELEC image with PiNAS pre-integrated at:
-```
-extra/LibreELEC.tv/target/LibreELEC-RPi5.aarch64-*.img.gz
+### Deploy to Pi
+
+```bash
+./scripts/deploy-pi.sh <pi-ip>               # Deploy via SSH
+./scripts/remote-build.sh <vm-ip>            # Build on remote ARM64 VM
 ```
 
 ## Project Structure
 
 ```
-├── backend/           # Rust API server
-├── frontend/          # SvelteKit web interface
-├── libreelec/         # LibreELEC package definition
-│   └── packages/pinas/
-├── scripts/           # Build scripts
-└── addon/             # Kodi addon (alternative install)
+├── backend/              # Rust API server (Axum)
+├── frontend/             # SvelteKit web interface
+├── app-catalog/          # App catalog (28 apps)
+│   ├── catalog.json
+│   └── apps/
+├── libreelec/            # LibreELEC packages
+│   └── packages/
+│       ├── pinas/        # Main PiNAS package
+│       └── cups/         # Printer sharing (CUPS)
+├── scripts/              # Build & deploy scripts
+│   ├── build-arm64.sh
+│   ├── build-x86.sh
+│   ├── build-libreelec-image.sh
+│   ├── deploy-pi.sh
+│   ├── remote-build.sh
+│   └── convert-umbrel.py
+└── docker/               # Dev environment
 ```
 
-## API Endpoints
+## App Catalog
 
-| Endpoint | Description |
-|----------|-------------|
-| `GET /api/health` | Health check |
-| `POST /api/auth/login` | Authentication |
-| `GET /api/system/info` | System information |
-| `GET /api/storage/disks` | List disks |
-| `GET /api/storage/pools` | List storage pools |
-| `GET /api/storage/volumes` | List volumes |
-| `GET /api/shares` | List shares |
-| `GET /api/locations` | Browsable locations (home, shares, volumes) |
-| `GET /api/files` | File browser (supports location_id) |
-| `GET /api/users` | List users |
-| `GET /api/groups` | List groups |
-| `WS /api/ws` | Real-time events |
+28 apps available across 4 categories:
 
-## Configuration
+| Category | Apps |
+|----------|------|
+| **Containers** | Docker, Portainer |
+| **Media** | Plex, Jellyfin, Emby, Sonarr, Radarr, Lidarr, qBittorrent, Transmission, SABnzbd, PhotoPrism |
+| **Network** | Samba, Pi-hole, AdGuard Home, WireGuard, Nginx Proxy Manager |
+| **Utilities** | Nextcloud, Home Assistant, Syncthing, Vaultwarden, Grafana, Uptime Kuma, File Browser, Code Server, Node-RED, Paperless-ngx, Duplicati |
 
-Environment variables (set in `/usr/lib/systemd/system/pinas.service`):
+Apps are installed via the App Center UI. Single-container apps use Docker pull/create/start steps. Multi-container apps (Nextcloud, PhotoPrism, etc.) use Docker Compose.
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `PINAS_BIND_ADDRESS` | `0.0.0.0:3000` | Server address |
-| `PINAS_DATABASE_URL` | `sqlite:/storage/.pinas/data/pinas.db` | Database path |
-| `PINAS_FILES_ROOT` | `/storage/.pinas/files` | Files root directory |
-| `PINAS_STATIC_DIR` | `/storage/.pinas/www` | Frontend files |
+See [app-catalog/README.md](app-catalog/README.md) for details.
 
-## Troubleshooting
+## API Overview
 
-### Service not starting
+| Area | Endpoints |
+|------|-----------|
+| Auth | `/api/auth/login`, `/api/auth/logout`, `/api/auth/me` |
+| Setup | `/api/setup/status`, `/api/setup/complete` |
+| Users | `/api/users` (CRUD) |
+| Groups | `/api/groups` (CRUD + members) |
+| Permissions | `/api/permissions` (CRUD per folder) |
+| System | `/api/system/info` |
+| Storage | `/api/storage/disks`, `/pools`, `/volumes` |
+| Files | `/api/files` (browse, upload, download) |
+| Locations | `/api/locations` (home, shares, volumes) |
+| Shares | `/api/shares` (CRUD) |
+| Docker | `/api/docker/status`, `/containers`, `/images` |
+| Packages | `/api/packages/catalog`, `/install`, `/task/:id` |
+| Apps | `/api/apps/registry`, `/api/apps/:id/i18n/:locale` |
+| Services | `/api/services/:name` (start/stop/restart/logs) |
+| Network | `/api/network/status`, `/interface`, `/dns`, `/hostname` |
+| SSH | `/api/ssh/status`, `/enable`, `/disable`, `/password` |
+| CUPS | `/api/cups/status`, `/printers`, `/detect`, `/jobs` |
+| Terminal | `/api/terminal/exec` |
+| WebSocket | `/api/ws` (real-time events) |
 
-```bash
-# Check service status
-systemctl status pinas
+## Roadmap
 
-# View logs
-journalctl -u pinas -f
+### Done
 
-# Check init logs
-cat /storage/.pinas/logs/init.log
-```
+- [x] Desktop-like web interface (TopBar, Dock, Window Manager)
+- [x] Authentication (JWT + Argon2 + sessions)
+- [x] User & group management with RBAC permissions
+- [x] Storage Manager (pools, volumes, RAID, S.M.A.R.T.)
+- [x] File Manager with dynamic locations (home, shares, volumes)
+- [x] App Center with 28 Docker apps
+- [x] Docker Compose support (multi-container apps)
+- [x] Network configuration (interfaces, DNS, hostname)
+- [x] SSH management (enable/disable, password)
+- [x] CUPS printer sharing (USB printers via IPP/AirPrint)
+- [x] Terminal app with command history
+- [x] Process Manager
+- [x] Onboarding wizard (7 steps)
+- [x] i18n (English + French)
+- [x] LibreELEC package + ARM64 build pipeline
+- [x] Umbrel app conversion script (Python)
 
-### Frontend not loading
+### In Progress
 
-```bash
-# Verify frontend files exist
-ls -la /usr/share/pinas/www/
-ls -la /storage/.pinas/www/
+- [ ] SMB/NFS/FTP share configuration UI (placeholders exist)
+- [ ] Real-time Storage Manager updates via WebSocket
+- [ ] Upload files in File Manager
+- [ ] Drag & drop in File Manager
 
-# Manually copy frontend
-cp -r /usr/share/pinas/www/. /storage/.pinas/www/
-```
+### Planned
+
+- [ ] NFS support
+- [ ] Volume resize
+- [ ] Cloud sync (rclone)
+- [ ] Backup/Restore system
+- [ ] CI/CD (GitHub Actions)
+- [ ] Dark theme
 
 ## License
 

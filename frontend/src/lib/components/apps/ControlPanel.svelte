@@ -4,6 +4,7 @@
 	import TimeLanguage from './TimeLanguage.svelte';
 	import FileService from './FileService.svelte';
 	import TerminalSettings from './TerminalSettings.svelte';
+	import PrinterSettings from './PrinterSettings.svelte';
 	import NetworkSettings from './NetworkSettings.svelte';
 	import { t } from '$lib/i18n';
 	import { systemInfo as systemInfoStore } from '$stores/system';
@@ -34,7 +35,8 @@
 				{ id: 'files', icon: 'mdi:folder', labelKey: 'controlPanel.items.fileService', iconColor: 'text-orange-500', component: 'FileService' },
 				{ id: 'device', icon: 'mdi:monitor-screenshot', labelKey: 'controlPanel.items.deviceConnection', iconColor: 'text-slate-500' },
 				{ id: 'domain', icon: 'mdi:domain', labelKey: 'controlPanel.items.domainLdap', iconColor: 'text-blue-600' },
-				{ id: 'terminal', icon: 'mdi:console-line', labelKey: 'controlPanel.items.terminal', iconColor: 'text-purple-500', component: 'TerminalSettings' }
+				{ id: 'terminal', icon: 'mdi:console-line', labelKey: 'controlPanel.items.terminal', iconColor: 'text-purple-500', component: 'TerminalSettings' },
+				{ id: 'printer', icon: 'mdi:printer', labelKey: 'controlPanel.items.printer', iconColor: 'text-indigo-500', component: 'PrinterSettings' }
 			]
 		},
 		{
@@ -77,7 +79,8 @@
 				{ id: 'files', icon: 'mdi:folder', labelKey: 'controlPanel.items.fileService', gradient: 'from-orange-400 to-orange-500' },
 				{ id: 'device', icon: 'mdi:monitor-screenshot', labelKey: 'controlPanel.items.deviceConnection', gradient: 'from-slate-400 to-slate-500' },
 				{ id: 'domain', icon: 'mdi:domain', labelKey: 'controlPanel.items.domainLdap', gradient: 'from-blue-500 to-blue-600' },
-				{ id: 'terminal', icon: 'mdi:console-line', labelKey: 'controlPanel.items.terminal', gradient: 'from-purple-400 to-purple-500' }
+				{ id: 'terminal', icon: 'mdi:console-line', labelKey: 'controlPanel.items.terminal', gradient: 'from-purple-400 to-purple-500' },
+				{ id: 'printer', icon: 'mdi:printer', labelKey: 'controlPanel.items.printer', gradient: 'from-indigo-400 to-indigo-500' }
 			]
 		},
 		{
@@ -232,6 +235,9 @@
 			{:else if selectedItem === 'terminal'}
 				<!-- Terminal / SSH Settings -->
 				<TerminalSettings />
+			{:else if selectedItem === 'printer'}
+				<!-- Printer Sharing (CUPS) -->
+				<PrinterSettings />
 			{:else if selectedItem === 'network'}
 				<!-- Network Settings -->
 				<NetworkSettings />

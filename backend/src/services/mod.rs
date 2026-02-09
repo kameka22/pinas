@@ -1,4 +1,5 @@
 pub mod auth;
+pub mod cups;
 pub mod docker;
 pub mod group;
 pub mod home;
