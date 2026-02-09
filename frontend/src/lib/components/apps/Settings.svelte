@@ -1,5 +1,6 @@
 <script lang="ts">
 	import Icon from '@iconify/svelte';
+	import { t } from '$lib/i18n';
 
 	let activeSection = 'general';
 
@@ -7,7 +8,6 @@
 		{ id: 'general', label: 'General', icon: 'mdi:cog' },
 		{ id: 'network', label: 'Network', icon: 'mdi:lan' },
 		{ id: 'services', label: 'Services', icon: 'mdi:server' },
-		{ id: 'updates', label: 'Updates', icon: 'mdi:update' },
 		{ id: 'backup', label: 'Backup', icon: 'mdi:backup-restore' },
 		{ id: 'notifications', label: 'Notifications', icon: 'mdi:bell' },
 		{ id: 'power', label: 'Power', icon: 'mdi:power' }

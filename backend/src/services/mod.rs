@@ -13,4 +13,5 @@ pub mod share;
 pub mod ssh;
 pub mod storage;
 pub mod system;
+pub mod update;
 pub mod user;

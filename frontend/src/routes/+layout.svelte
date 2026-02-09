@@ -10,17 +10,23 @@
 	import Login from '$components/auth/Login.svelte';
 	import ProfileModal from '$components/modals/ProfileModal.svelte';
 	import ChangePasswordModal from '$components/modals/ChangePasswordModal.svelte';
+	import UpdateSuccessModal from '$components/modals/UpdateSuccessModal.svelte';
 	import TaskManager from '$components/desktop/TaskManager.svelte';
 	import { connectWebSocket } from '$stores/websocket';
 	import { isSetupComplete, isLoading, initOnboarding } from '$stores/onboarding';
-	import { auth } from '$stores/api';
+	import { auth, api } from '$stores/api';
 	import { systemInfo } from '$stores/system';
+	import type { JustUpdatedResult } from '$stores/api';
 
 	let showNotifications = false;
 	let showAppLauncher = false;
 	let showTaskManager = false;
 	let showProfileModal = false;
 	let showChangePasswordModal = false;
+	let showUpdateModal = false;
+	let updateModalVersion = '';
+	let updateModalPreviousVersion = '';
+	let updateModalChangelog: Record<string, string> | null = null;
 
 	// Check if user is authenticated
 	$: isAuthenticated = $auth.isAuthenticated;
@@ -67,9 +73,25 @@
 	// Connect WebSocket only when authenticated
 	$: if (isAuthenticated && !wsDisconnect) {
 		wsDisconnect = connectWebSocket();
+		// Check if system was just updated
+		checkJustUpdated();
 	} else if (!isAuthenticated && wsDisconnect) {
 		wsDisconnect();
 		wsDisconnect = null;
+	}
+
+	async function checkJustUpdated() {
+		try {
+			const result: JustUpdatedResult = await api.getJustUpdated();
+			if (result.just_updated && result.version) {
+				updateModalVersion = result.version;
+				updateModalPreviousVersion = result.previous_version || '';
+				updateModalChangelog = result.changelog || null;
+				showUpdateModal = true;
+			}
+		} catch (e) {
+			// Silently ignore - not critical
+		}
 	}
 </script>
 
@@ -121,6 +143,12 @@
 	<!-- User Modals -->
 	<ProfileModal bind:show={showProfileModal} />
 	<ChangePasswordModal bind:show={showChangePasswordModal} />
+	<UpdateSuccessModal
+		bind:show={showUpdateModal}
+		version={updateModalVersion}
+		previousVersion={updateModalPreviousVersion}
+		changelog={updateModalChangelog}
+	/>
 
 	<!-- Version label -->
 	{#if $systemInfo?.version}

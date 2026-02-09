@@ -55,6 +55,7 @@ export default {
 			network: 'Réseau',
 			security: 'Sécurité',
 			indexingService: "Service d'indexation",
+			systemUpdate: 'Mise à jour système',
 			about: 'À propos'
 		},
 		tabs: {
@@ -449,8 +450,17 @@ export default {
 			compact: 'Compact'
 		},
 		contextMenu: {
+			open: 'Ouvrir',
 			download: 'Télécharger',
 			rename: 'Renommer',
+			copy: 'Copier',
+			cut: 'Couper',
+			delete: 'Supprimer',
+			newFolder: 'Nouveau dossier',
+			newFile: 'Nouveau fichier',
+			upload: 'Téléverser',
+			paste: 'Coller',
+			selectAll: 'Tout sélectionner',
 			properties: 'Propriétés'
 		},
 		modals: {
@@ -1096,5 +1106,36 @@ export default {
 		noContainers: 'Aucun conteneur trouvé',
 		noImages: 'Aucune image trouvée',
 		underDevelopment: 'Cette section est en cours de développement'
+	},
+
+	// Mise à jour système
+	systemUpdate: {
+		title: 'Mise à jour système',
+		currentVersion: 'Version actuelle',
+		checkForUpdates: 'Vérifier les mises à jour',
+		checking: 'Vérification...',
+		upToDate: 'Votre système est à jour',
+		upToDateDesc: 'Vous utilisez la dernière version de PiNAS.',
+		updateAvailable: 'Mise à jour disponible',
+		downloadSize: 'Taille du téléchargement',
+		noRebootRequired: 'Aucun redémarrage nécessaire',
+		rebootRequired: 'Redémarrage nécessaire après la mise à jour',
+		installUpdate: 'Installer la mise à jour',
+		installing: 'Installation en cours...',
+		downloading: 'Téléchargement en cours...',
+		applying: 'Application de la mise à jour...',
+		restarting: 'Redémarrage du service...',
+		updateHistory: 'Historique des mises à jour',
+		noHistory: 'Aucun historique de mise à jour.',
+		failedToCheck: 'Échec de la vérification des mises à jour',
+		failedToInstall: 'Échec de l\'installation de la mise à jour',
+		modal: {
+			title: 'Mise à jour réussie',
+			subtitle: 'PiNAS a été mis à jour avec succès',
+			updatedTo: 'Mis à jour vers la version',
+			changelog: 'Nouveautés',
+			dismiss: 'Parfait !',
+			thanks: 'Merci d\'utiliser PiNAS.'
+		}
 	}
 };

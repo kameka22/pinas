@@ -9,7 +9,7 @@ use axum::{
     Json, Router,
 };
 use serde::Serialize;
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, Mutex};
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::services::{ServeDir, ServeFile};
 use tower_http::trace::TraceLayer;
@@ -23,6 +23,7 @@ mod services;
 
 use crate::api::ws::{FileTaskEvent, TaskProgressEvent};
 use crate::config::AppConfig;
+use crate::services::update::UpdateAppliedInfo;
 
 /// Application state shared across handlers
 #[derive(Clone)]
@@ -31,6 +32,7 @@ pub struct AppState {
     pub db: sqlx::SqlitePool,
     pub task_tx: broadcast::Sender<TaskProgressEvent>,
     pub file_task_tx: broadcast::Sender<FileTaskEvent>,
+    pub just_updated: Arc<Mutex<Option<UpdateAppliedInfo>>>,
 }
 
 #[tokio::main]
@@ -60,12 +62,21 @@ async fn main() -> anyhow::Result<()> {
     // Create broadcast channel for file task events
     let (file_task_tx, _) = broadcast::channel::<FileTaskEvent>(100);
 
+    // Check if an update was just applied (flag file from previous version)
+    let data_dir = std::env::var("PINAS_DATA_DIR")
+        .unwrap_or_else(|_| "/storage/.pinas".to_string());
+    let just_updated = services::update::UpdateService::read_update_applied_flag(&data_dir);
+    if let Some(ref info) = just_updated {
+        tracing::info!("System was just updated: {} -> {}", info.previous_version, info.version);
+    }
+
     // Create app state
     let state = AppState {
         config: Arc::new(config),
         db,
         task_tx,
         file_task_tx,
+        just_updated: Arc::new(Mutex::new(just_updated)),
     };
 
     // Build router
@@ -98,6 +109,7 @@ fn create_router(state: AppState) -> Router {
         .nest("/api/auth", api::auth::router())
         .nest("/api/setup", api::setup::router())
         .nest("/api/files", api::files::router())
+        .nest("/api/system/update", api::update::router())
         .nest("/api/system", api::system::router())
         .nest("/api/storage", api::storage::router())
         .nest("/api/shares", api::shares::router())

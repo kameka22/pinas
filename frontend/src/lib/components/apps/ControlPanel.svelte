@@ -6,11 +6,14 @@
 	import TerminalSettings from './TerminalSettings.svelte';
 	import PrinterSettings from './PrinterSettings.svelte';
 	import NetworkSettings from './NetworkSettings.svelte';
+	import UpdateSettings from './UpdateSettings.svelte';
 	import { t } from '$lib/i18n';
 	import { systemInfo as systemInfoStore } from '$stores/system';
 
+	export let config: { section?: string } | undefined = undefined;
+
 	type ViewMode = 'grid' | 'detail';
-	let viewMode: ViewMode = 'grid';
+	let viewMode: ViewMode = config?.section ? 'detail' : 'grid';
 
 	let searchQuery = '';
 
@@ -52,6 +55,7 @@
 		{
 			titleKey: 'controlPanel.categories.service',
 			items: [
+				{ id: 'update', icon: 'mdi:update', labelKey: 'controlPanel.items.systemUpdate', iconColor: 'text-blue-600', component: 'UpdateSettings' },
 				{ id: 'about', icon: 'mdi:information', labelKey: 'controlPanel.items.about', iconColor: 'text-teal-500' }
 			]
 		}
@@ -96,12 +100,13 @@
 		{
 			titleKey: 'controlPanel.categories.service',
 			items: [
+				{ id: 'update', icon: 'mdi:update', labelKey: 'controlPanel.items.systemUpdate', gradient: 'from-blue-500 to-blue-600' },
 				{ id: 'about', icon: 'mdi:information', labelKey: 'controlPanel.items.about', gradient: 'from-teal-400 to-teal-500' }
 			]
 		}
 	];
 
-	let selectedItem: string | null = null;
+	let selectedItem: string | null = config?.section || null;
 	let activeTab = 'general';
 
 	// Mock system data
@@ -241,6 +246,9 @@
 			{:else if selectedItem === 'network'}
 				<!-- Network Settings -->
 				<NetworkSettings />
+			{:else if selectedItem === 'update'}
+				<!-- System Update -->
+				<UpdateSettings />
 			{:else if selectedItem === 'time'}
 				<!-- Time & Language -->
 				<TimeLanguage />

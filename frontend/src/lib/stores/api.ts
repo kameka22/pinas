@@ -603,6 +603,31 @@ class ApiClient {
 	async updateNetworkHostname(hostname: string): Promise<void> {
 		return this.put<void>('/network/hostname', { hostname });
 	}
+
+	// System Update endpoints
+	async checkForUpdate(): Promise<UpdateCheckResult> {
+		return this.get<UpdateCheckResult>('/system/update/check');
+	}
+
+	async installUpdate(): Promise<{ task_id: string }> {
+		return this.post<{ task_id: string }>('/system/update/install');
+	}
+
+	async getUpdateStatus(): Promise<UpdateStatusResult> {
+		return this.get<UpdateStatusResult>('/system/update/status');
+	}
+
+	async getUpdateHistory(): Promise<UpdateHistoryEntry[]> {
+		return this.get<UpdateHistoryEntry[]>('/system/update/history');
+	}
+
+	async getJustUpdated(): Promise<JustUpdatedResult> {
+		return this.get<JustUpdatedResult>('/system/update/just-updated');
+	}
+
+	async dismissUpdate(): Promise<void> {
+		return this.post<void>('/system/update/dismiss');
+	}
 }
 
 // File item type
@@ -894,6 +919,51 @@ export interface UpdatePrinterRequest {
 	shared?: boolean;
 	is_default?: boolean;
 	location?: string;
+}
+
+// System Update types
+export interface UpdateCheckResult {
+	available: boolean;
+	current_version: string;
+	latest_version: string;
+	update_type: string | null;
+	reboot_required: boolean | null;
+	changelog: Record<string, string> | null;
+	download_size: number | null;
+	published_at: string | null;
+}
+
+export interface UpdateStatusResult {
+	id?: string;
+	version?: string;
+	previous_version?: string;
+	update_type?: string;
+	status: string;
+	changelog?: string;
+	error_message?: string;
+	started_at?: string;
+	completed_at?: string;
+	created_at?: string;
+}
+
+export interface UpdateHistoryEntry {
+	id: string;
+	version: string;
+	previous_version: string;
+	update_type: string;
+	status: string;
+	changelog: string | null;
+	error_message: string | null;
+	started_at: string | null;
+	completed_at: string | null;
+	created_at: string;
+}
+
+export interface JustUpdatedResult {
+	just_updated: boolean;
+	version: string | null;
+	previous_version: string | null;
+	changelog: Record<string, string> | null;
 }
 
 export const api = new ApiClient(API_BASE);

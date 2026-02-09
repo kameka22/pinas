@@ -3,6 +3,7 @@
 	import { systemStats, systemInfo } from '$stores/system';
 	import { hasActiveTask, activeTaskCount } from '$stores/taskManager';
 	import { auth, api } from '$stores/api';
+	import { openWindow } from '$stores/windows';
 	import { createEventDispatcher, onMount, onDestroy } from 'svelte';
 	import { t, locale } from '$lib/i18n';
 
@@ -88,6 +89,8 @@
 		} catch (e) {
 			// Ignore - version just won't show
 		}
+		// Check for updates silently
+		checkForUpdates();
 	});
 
 	onDestroy(() => {
@@ -97,6 +100,34 @@
 	$: userInitial = $auth.user?.username?.[0]?.toUpperCase() || 'U';
 	$: userName = $auth.user?.username || 'User';
 	$: userRole = $auth.user?.role === 'admin' ? 'Administrator' : 'User';
+
+	// Update check
+	let updateAvailable = false;
+	let updateVersion = '';
+
+	async function checkForUpdates() {
+		try {
+			const result = await api.checkForUpdate();
+			updateAvailable = result.available;
+			updateVersion = result.latest_version;
+		} catch (_) {
+			// Silently ignore
+		}
+	}
+
+	function openSettingsUpdates() {
+		openWindow({
+			id: 'control-panel-update',
+			title: 'Control Panel',
+			icon: 'mdi:cog',
+			component: 'ControlPanel',
+			x: 150,
+			y: 60,
+			width: 950,
+			height: 650,
+			appConfig: { section: 'update' }
+		});
+	}
 </script>
 
 <header class="topbar">
@@ -149,6 +180,13 @@
 		<button class="topbar-btn" title="Widgets">
 			<Icon icon="mdi:widgets-outline" class="w-5 h-5" />
 		</button>
+
+		{#if updateAvailable}
+			<button class="topbar-btn update-btn" title="Update available: v{updateVersion}" on:click={openSettingsUpdates}>
+				<Icon icon="mdi:arrow-up-circle" class="w-5 h-5" />
+				<span class="update-badge"></span>
+			</button>
+		{/if}
 
 		<button class="topbar-btn relative" title={$t.topBar.notifications} on:click={() => showNotifications = !showNotifications}>
 			<Icon icon="mdi:bell-outline" class="w-5 h-5" />
@@ -413,5 +451,29 @@
 
 	.dropdown-item.danger:hover {
 		background: #fef2f2;
+	}
+
+	.update-btn {
+		color: #60a5fa !important;
+		animation: update-bounce 2s ease-in-out infinite;
+	}
+
+	@keyframes update-bounce {
+		0%, 100% { transform: translateY(0); color: #60a5fa; }
+		10% { transform: translateY(-4px); color: #93c5fd; }
+		20% { transform: translateY(0); }
+		30% { transform: translateY(-2px); color: #93c5fd; }
+		40% { transform: translateY(0); color: #60a5fa; }
+	}
+
+	.update-badge {
+		position: absolute;
+		top: 5px;
+		right: 5px;
+		width: 8px;
+		height: 8px;
+		background: #3b82f6;
+		border-radius: 50%;
+		border: 1.5px solid rgba(30, 41, 59, 0.85);
 	}
 </style>

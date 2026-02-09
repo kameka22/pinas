@@ -4,6 +4,7 @@
 	import { onMount } from 'svelte';
 	import { api, type FileItem as ApiFileItem, type BrowsableLocation } from '$lib/stores/api';
 	import { fileTasks } from '$stores/taskManager';
+	import ContextMenu from '$lib/components/ui/ContextMenu.svelte';
 
 	// Types for display (extends API type with icon)
 	interface FileItem {
@@ -43,6 +44,10 @@
 	// Clipboard state
 	let clipboard: { files: FileItem[]; mode: 'copy' | 'cut' } | null = null;
 
+	// Context menu state
+	let contextMenu = { visible: false, x: 0, y: 0 };
+	let contextMenuItems: Array<{label: string, icon?: string, action: () => void, danger?: boolean, disabled?: boolean}> = [];
+
 	// Upload state
 	let fileInput: HTMLInputElement;
 
@@ -55,6 +60,52 @@
 			actionMenuPos = { x: rect.right - 160, y: rect.bottom + 4 };
 			showActionMenu = fileId;
 		}
+	}
+
+	// Context menu handlers
+	function handleFileContextMenu(e: MouseEvent, file: FileItem) {
+		e.preventDefault();
+		e.stopPropagation();
+		showActionMenu = null;
+		if (!selectedFiles.includes(file.id)) {
+			selectedFiles = [file.id];
+		}
+		if (file.type === 'folder') {
+			contextMenuItems = [
+				{ label: $t.fileManager.contextMenu.open, icon: 'mdi:folder-open', action: () => selectFolder(file.path) },
+				{ label: $t.fileManager.contextMenu.rename, icon: 'mdi:pencil', action: () => openRenameModal(file) },
+				{ label: $t.fileManager.contextMenu.copy, icon: 'mdi:content-copy', action: () => { clipboard = { files: [file], mode: 'copy' }; } },
+				{ label: $t.fileManager.contextMenu.cut, icon: 'mdi:content-cut', action: () => { clipboard = { files: [file], mode: 'cut' }; } },
+				{ label: $t.fileManager.contextMenu.delete, icon: 'mdi:delete', action: () => openDeleteModal(file), danger: true }
+			];
+		} else {
+			contextMenuItems = [
+				{ label: $t.fileManager.contextMenu.download, icon: 'mdi:download', action: () => handleDownload(file) },
+				{ label: $t.fileManager.contextMenu.rename, icon: 'mdi:pencil', action: () => openRenameModal(file) },
+				{ label: $t.fileManager.contextMenu.copy, icon: 'mdi:content-copy', action: () => { clipboard = { files: [file], mode: 'copy' }; } },
+				{ label: $t.fileManager.contextMenu.cut, icon: 'mdi:content-cut', action: () => { clipboard = { files: [file], mode: 'cut' }; } },
+				{ label: $t.fileManager.contextMenu.delete, icon: 'mdi:delete', action: () => openDeleteModal(file), danger: true }
+			];
+		}
+		contextMenu = { visible: true, x: e.clientX, y: e.clientY };
+	}
+
+	function handleEmptyContextMenu(e: MouseEvent) {
+		e.preventDefault();
+		showActionMenu = null;
+		selectedFiles = [];
+		contextMenuItems = [
+			{ label: $t.fileManager.contextMenu.newFolder, icon: 'mdi:folder-plus', action: () => openCreateFolderModal() },
+			{ label: $t.fileManager.contextMenu.newFile, icon: 'mdi:file-plus', action: () => openCreateFileModal() },
+			{ label: $t.fileManager.contextMenu.upload, icon: 'mdi:upload', action: () => triggerUpload() },
+			{ label: $t.fileManager.contextMenu.paste, icon: 'mdi:content-paste', action: () => handlePaste(), disabled: !hasClipboard },
+			{ label: $t.fileManager.contextMenu.selectAll, icon: 'mdi:select-all', action: () => { selectedFiles = sortedFiles.map(f => f.id); } }
+		];
+		contextMenu = { visible: true, x: e.clientX, y: e.clientY };
+	}
+
+	function closeContextMenu() {
+		contextMenu = { ...contextMenu, visible: false };
 	}
 
 	// Locations state
@@ -372,10 +423,9 @@
 			} else {
 				await api.moveFiles(sources, destination, selectedLocationId || undefined);
 			}
-			// WebSocket will create and update task status
-			if (clipboard.mode === 'cut') {
-				clipboard = null;
-			}
+			// Clear clipboard and selection after paste
+			clipboard = null;
+			selectedFiles = [];
 			// Refresh after a short delay to let background ops complete
 			setTimeout(() => loadFiles(currentPath), 500);
 		} catch (e) {
@@ -480,6 +530,7 @@
 	function closeMenus() {
 		showActionMenu = null;
 		showViewDropdown = false;
+		closeContextMenu();
 	}
 
 	function closeModal() {
@@ -871,7 +922,8 @@
 		{/if}
 
 		<!-- File list -->
-		<div class="file-list-container">
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<div class="file-list-container" on:contextmenu={handleEmptyContextMenu}>
 			{#if loading}
 				<div class="loading-state">
 					<Icon icon="mdi:loading" class="w-8 h-8 animate-spin" />
@@ -946,6 +998,7 @@
 								class:cut={clipboard?.mode === 'cut' && clipboard.files.some(f => f.id === file.id)}
 								on:click={(e) => toggleSelect(file.id, e)}
 								on:dblclick={() => handleDoubleClick(file)}
+								on:contextmenu={(e) => handleFileContextMenu(e, file)}
 							>
 								<td class="cell-name">
 									<Icon
@@ -978,6 +1031,7 @@
 							class:cut={clipboard?.mode === 'cut' && clipboard.files.some(f => f.id === file.id)}
 							on:click={(e) => toggleSelect(file.id, e)}
 							on:dblclick={() => handleDoubleClick(file)}
+							on:contextmenu={(e) => handleFileContextMenu(e, file)}
 						>
 							<div class="file-card-icon">
 								<Icon
@@ -998,6 +1052,7 @@
 							class:cut={clipboard?.mode === 'cut' && clipboard.files.some(f => f.id === file.id)}
 							on:click={(e) => toggleSelect(file.id, e)}
 							on:dblclick={() => handleDoubleClick(file)}
+							on:contextmenu={(e) => handleFileContextMenu(e, file)}
 						>
 							<Icon
 								icon={file.icon}
@@ -1067,6 +1122,14 @@
 		</button>
 	</div>
 {/if}
+
+<ContextMenu
+	visible={contextMenu.visible}
+	x={contextMenu.x}
+	y={contextMenu.y}
+	items={contextMenuItems}
+	on:close={closeContextMenu}
+/>
 
 <style>
 	.file-manager {

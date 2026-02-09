@@ -55,6 +55,7 @@ export default {
 			network: 'Network',
 			security: 'Security',
 			indexingService: 'Indexing Service',
+			systemUpdate: 'System Update',
 			about: 'About'
 		},
 		tabs: {
@@ -449,8 +450,17 @@ export default {
 			compact: 'Compact'
 		},
 		contextMenu: {
+			open: 'Open',
 			download: 'Download',
 			rename: 'Rename',
+			copy: 'Copy',
+			cut: 'Cut',
+			delete: 'Delete',
+			newFolder: 'New Folder',
+			newFile: 'New File',
+			upload: 'Upload',
+			paste: 'Paste',
+			selectAll: 'Select All',
 			properties: 'Properties'
 		},
 		modals: {
@@ -1096,5 +1106,36 @@ export default {
 		noContainers: 'No containers found',
 		noImages: 'No images found',
 		underDevelopment: 'This section is under development'
+	},
+
+	// System Update
+	systemUpdate: {
+		title: 'System Update',
+		currentVersion: 'Current version',
+		checkForUpdates: 'Check for updates',
+		checking: 'Checking...',
+		upToDate: 'Your system is up to date',
+		upToDateDesc: 'You are running the latest version of PiNAS.',
+		updateAvailable: 'Update available',
+		downloadSize: 'Download size',
+		noRebootRequired: 'No reboot required',
+		rebootRequired: 'Reboot required after update',
+		installUpdate: 'Install update',
+		installing: 'Installing update...',
+		downloading: 'Downloading update...',
+		applying: 'Applying update...',
+		restarting: 'Restarting service...',
+		updateHistory: 'Update History',
+		noHistory: 'No update history yet.',
+		failedToCheck: 'Failed to check for updates',
+		failedToInstall: 'Failed to install update',
+		modal: {
+			title: 'Update Successful',
+			subtitle: 'PiNAS has been updated successfully',
+			updatedTo: 'Updated to version',
+			changelog: 'What\'s new',
+			dismiss: 'Got it!',
+			thanks: 'Thank you for using PiNAS.'
+		}
 	}
 };
