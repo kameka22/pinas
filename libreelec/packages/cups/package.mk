@@ -82,10 +82,8 @@ makeinstall_target() {
   make install DESTDIR="${INSTALL}"
 
   # Install systemd service (disabled by default - no symlink in wants)
-  # CUPS make install may create dirs with restrictive permissions, fix before copying
-  mkdir -p ${INSTALL}/usr/lib/systemd/system
-  chmod 755 ${INSTALL}/usr/lib/systemd/system
-  cp ${PKG_DIR}/system.d/cups.service ${INSTALL}/usr/lib/systemd/system/
+  # CUPS make install creates dirs with restrictive permissions, use install -D to bypass
+  install -Dm644 ${PKG_DIR}/system.d/cups.service ${INSTALL}/usr/lib/systemd/system/cups.service
 
   # NOTE: No symlink in default.target.wants = service is DISABLED by default
   # PiNAS backend will enable/disable via: systemctl enable/start cups
