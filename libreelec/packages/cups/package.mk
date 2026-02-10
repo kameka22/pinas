@@ -63,6 +63,18 @@ PKG_CONFIGURE_OPTS_TARGET=" \
   --without-java \
 "
 
+# CUPS fails to build in subdirs (no out-of-tree build support)
+# Override configure and make to run in-tree
+configure_target() {
+  cd ${PKG_BUILD}
+  ./configure ${PKG_CONFIGURE_OPTS_TARGET}
+}
+
+make_target() {
+  cd ${PKG_BUILD}
+  make
+}
+
 makeinstall_target() {
   # Install CUPS
   make install DESTDIR="${INSTALL}"
