@@ -132,14 +132,15 @@ PiNAS est un système d'exploitation NAS moderne et performant, inspiré des int
 │   │       │   ├── apps/         # Applications + sous-composants Control Panel
 │   │       │   ├── ui/           # Composants UI (ContextMenu)
 │   │       │   ├── auth/         # Login
-│   │       │   ├── modals/       # ProfileModal, ChangePasswordModal
+│   │       │   ├── modals/       # ProfileModal, ChangePasswordModal, UpdateSuccessModal
 │   │       │   └── onboarding/   # Wizard setup initial
 │   │       ├── stores/       # État global
 │   │       │   ├── api.ts        # Client API typé + auth store
 │   │       │   ├── desktop.ts    # Apps et registre
 │   │       │   ├── windows.ts    # État fenêtres
 │   │       │   ├── websocket.ts  # Connexion WS
-│   │       │   ├── system.ts     # Stats système
+│   │       │   ├── system.ts     # Stats système (+ devMode)
+│   │       │   ├── update.ts     # État écran mise à jour fullscreen
 │   │       │   └── onboarding.ts # État onboarding
 │   │       └── i18n/         # Internationalisation
 │   │           ├── en.ts         # Traductions anglais
@@ -318,7 +319,7 @@ POST   /api/groups/:id/members    # Ajouter membre
 DELETE /api/groups/:id/members/:user_id  # Retirer membre
 
 # Système
-GET    /api/system/info           # Infos système (CPU, RAM, uptime, etc.)
+GET    /api/system/info           # Infos système (CPU, RAM, uptime, dev_mode, etc.)
 
 # Emplacements (File Manager sidebar)
 GET    /api/locations             # Liste emplacements navigables (home, shares, volumes)
@@ -508,6 +509,8 @@ Frontend (Svelte)              Backend (Rust)
 | `NetworkSettings.svelte` | Network | Configuration réseau (interfaces, DNS, hostname) |
 | `TerminalSettings.svelte` | Terminal | Configuration SSH (enable/disable, port, password) |
 | `PrinterSettings.svelte` | Printer | Imprimantes CUPS (detect, add, jobs, test page) |
+| `UpdateSettings.svelte` | Service | Mise à jour système (check, install, historique) |
+| `UpdateScreen.svelte` | - | Écran fullscreen de mise à jour (phases: starting, progress, completed, error) |
 
 ### Composants génériques pour apps installées
 

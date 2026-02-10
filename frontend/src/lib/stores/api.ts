@@ -173,6 +173,7 @@ class ApiClient {
 			cpu: { model: string; cores: number; usage: number };
 			memory: { total: number; used: number; available: number; usage_percent: number };
 			load_average: { one: number; five: number; fifteen: number };
+			dev_mode: boolean;
 		}>('/system/info');
 	}
 

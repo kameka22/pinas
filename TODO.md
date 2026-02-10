@@ -545,6 +545,7 @@
 - **Storage Manager** : Complet avec pools, volumes, disks, partitions, S.M.A.R.T., wipe, scrub
 - **File Manager** : Sidebar dynamique avec home/shares/volumes et navigation multi-locations
 - **Control Panel** : SSH déplacé dans catégorie Terminal (`TerminalSettings.svelte`)
+- **Mise à jour système** : Écran fullscreen (UpdateScreen) avec modal confirmation, progression WebSocket, mode dev test
 - **Onboarding** : 7 étapes (welcome, langue, device, username, password, SSH, features)
 
 ### Backend (Fonctionnel)
@@ -582,6 +583,14 @@
 ## Prochaines étapes
 
 ### Terminé récemment ✅
+- [x] **Écran fullscreen de mise à jour** (style Synology DSM)
+  - [x] Backend: `dev_mode` exposé dans SystemInfo (`/api/system/info`)
+  - [x] Store `update.ts` pour état écran fullscreen
+  - [x] `UpdateScreen.svelte` : overlay fullscreen 4 phases (starting, progress, completed, error)
+  - [x] `UpdateSettings.svelte` : modal de confirmation + dispatch via store
+  - [x] Bouton "Test update screen" en dev mode (simulation complète sans API)
+  - [x] Intégration dans `+layout.svelte`
+  - [x] i18n EN/FR (`systemUpdate.screen.*`)
 - [x] **CUPS Printer Sharing**
   - [x] Backend: Service CUPS complet (detect, add, remove, jobs, test page)
   - [x] Frontend: PrinterSettings.svelte dans Control Panel
@@ -627,5 +636,5 @@
 
 ---
 
-*Dernière mise à jour : 9 Février 2026*
+*Dernière mise à jour : 10 Février 2026*
 *Cible OS : LibreELEC 12.x (package intégré à l'image)*

@@ -30,6 +30,7 @@ export interface SystemInfo {
 		five: number;
 		fifteen: number;
 	};
+	devMode: boolean;
 }
 
 // Real-time stats from WebSocket

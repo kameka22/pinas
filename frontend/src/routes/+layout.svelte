@@ -11,11 +11,13 @@
 	import ProfileModal from '$components/modals/ProfileModal.svelte';
 	import ChangePasswordModal from '$components/modals/ChangePasswordModal.svelte';
 	import UpdateSuccessModal from '$components/modals/UpdateSuccessModal.svelte';
+	import UpdateScreen from '$components/apps/UpdateScreen.svelte';
 	import TaskManager from '$components/desktop/TaskManager.svelte';
 	import { connectWebSocket } from '$stores/websocket';
 	import { isSetupComplete, isLoading, initOnboarding } from '$stores/onboarding';
 	import { auth, api } from '$stores/api';
 	import { systemInfo } from '$stores/system';
+	import { updateScreen } from '$stores/update';
 	import type { JustUpdatedResult } from '$stores/api';
 
 	let showNotifications = false;
@@ -149,6 +151,11 @@
 		previousVersion={updateModalPreviousVersion}
 		changelog={updateModalChangelog}
 	/>
+
+	<!-- Fullscreen Update Screen -->
+	{#if $updateScreen.active}
+		<UpdateScreen />
+	{/if}
 
 	<!-- Version label -->
 	{#if $systemInfo?.version}

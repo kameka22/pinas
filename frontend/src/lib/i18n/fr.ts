@@ -1136,6 +1136,24 @@ export default {
 			changelog: 'Nouveautés',
 			dismiss: 'Parfait !',
 			thanks: 'Merci d\'utiliser PiNAS.'
+		},
+		screen: {
+			starting: 'La mise à jour va démarrer...',
+			doNotTurnOff: 'Veuillez ne pas éteindre l\'appareil',
+			inProgress: 'Mise à jour en cours',
+			completed: 'Mise à jour terminée avec succès !',
+			installed: 'PiNAS {version} installé',
+			failed: 'La mise à jour a échoué',
+			reboot: 'Redémarrer',
+			reloadDesktop: 'Recharger le bureau',
+			close: 'Fermer',
+			confirm: {
+				title: 'Installer la mise à jour v{version} ?',
+				description: 'Cette opération va mettre à jour votre système. Ne débranchez pas l\'appareil.',
+				cancel: 'Annuler',
+				confirm: 'Confirmer'
+			},
+			devTest: 'Tester l\'écran de mise à jour'
 		}
 	}
 };

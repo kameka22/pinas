@@ -1,41 +1,19 @@
 <script lang="ts">
 	import Icon from '@iconify/svelte';
 	import { get } from 'svelte/store';
-	import { onMount, onDestroy } from 'svelte';
+	import { onMount } from 'svelte';
 	import { api } from '$stores/api';
 	import type { UpdateCheckResult, UpdateHistoryEntry } from '$stores/api';
-	import { taskProgress } from '$stores/websocket';
+	import { updateScreen } from '$stores/update';
+	import { systemInfo } from '$stores/system';
 	import { t, locale } from '$lib/i18n';
 
 	// Update state
 	let updateCheck: UpdateCheckResult | null = null;
 	let updateHistory: UpdateHistoryEntry[] = [];
 	let checking = false;
-	let installing = false;
-	let installTaskId: string | null = null;
 	let updateError = '';
-
-	// Track install progress via WebSocket subscription (avoids reactive cycle)
-	let installProgress: any = null;
-
-	const unsubProgress = taskProgress.subscribe((tasks) => {
-		if (!installTaskId) {
-			installProgress = null;
-			return;
-		}
-		const progress = tasks[installTaskId];
-		if (!progress) return;
-		installProgress = progress;
-		if (progress.status === 'completed') {
-			installing = false;
-			installTaskId = null;
-		} else if (progress.status === 'failed') {
-			installing = false;
-			updateError = progress.error_message || 'Update failed';
-			installTaskId = null;
-		}
-	});
-	onDestroy(unsubProgress);
+	let showConfirmModal = false;
 
 	onMount(() => {
 		checkForUpdates();
@@ -54,16 +32,37 @@
 		}
 	}
 
-	async function startInstall() {
-		installing = true;
+	function openConfirmModal() {
+		showConfirmModal = true;
+	}
+
+	async function confirmInstall() {
+		showConfirmModal = false;
 		updateError = '';
 		try {
 			const result = await api.installUpdate();
-			installTaskId = result.task_id;
+			updateScreen.set({
+				active: true,
+				taskId: result.task_id,
+				rebootRequired: updateCheck?.reboot_required ?? false,
+				version: updateCheck?.latest_version || '',
+				changelog: updateCheck?.changelog || null,
+				devTest: false
+			});
 		} catch (e) {
-			installing = false;
 			updateError = ($t as any).systemUpdate?.failedToInstall || 'Failed to install update';
 		}
+	}
+
+	function launchDevTest() {
+		updateScreen.set({
+			active: true,
+			taskId: null,
+			rebootRequired: false,
+			version: '1.0.0-dev',
+			changelog: null,
+			devTest: true
+		});
 	}
 
 	async function loadHistory() {
@@ -104,6 +103,9 @@
 		}
 		return changelog[lang] || changelog['en'] || '';
 	}
+
+	$: tScreen = ($t as any).systemUpdate?.screen || {};
+	$: isDevMode = $systemInfo?.devMode === true;
 </script>
 
 <div class="update-settings">
@@ -124,22 +126,7 @@
 		</div>
 	{/if}
 
-	{#if installing && installProgress}
-		<!-- Installing state -->
-		<div class="update-card installing">
-			<div class="update-icon spinning-icon">
-				<Icon icon="mdi:loading" class="w-6 h-6" />
-			</div>
-			<div class="update-info">
-				<h4>{($t as any).systemUpdate?.installing || 'Installing update...'}</h4>
-				<p class="update-step">{installProgress.current_step || ''}</p>
-				<div class="progress-bar">
-					<div class="progress-fill" style="width: {installProgress.progress_percent}%"></div>
-				</div>
-				<span class="progress-text">{installProgress.progress_percent}%</span>
-			</div>
-		</div>
-	{:else if checking}
+	{#if checking}
 		<!-- Checking state -->
 		<div class="update-card">
 			<div class="update-icon spinning-icon">
@@ -163,7 +150,7 @@
 				<div class="update-meta">
 					{#if updateCheck.download_size}
 						<span>{formatSize(updateCheck.download_size)}</span>
-						<span class="meta-dot">·</span>
+						<span class="meta-dot">&middot;</span>
 					{/if}
 					<span>
 						{#if updateCheck.reboot_required}
@@ -174,7 +161,7 @@
 					</span>
 				</div>
 			</div>
-			<button class="btn-primary install-btn" on:click={startInstall} disabled={installing}>
+			<button class="btn-primary install-btn" on:click={openConfirmModal}>
 				<Icon icon="mdi:download" class="w-4 h-4" />
 				{($t as any).systemUpdate?.installUpdate || 'Install update'}
 			</button>
@@ -196,6 +183,16 @@
 		</div>
 	{/if}
 
+	<!-- Dev mode test button -->
+	{#if isDevMode}
+		<div class="dev-test-section">
+			<button class="btn-dev-test" on:click={launchDevTest}>
+				<Icon icon="mdi:bug-play" class="w-4 h-4" />
+				{tScreen.devTest || 'Test update screen'}
+			</button>
+		</div>
+	{/if}
+
 	<!-- Update History -->
 	{#if updateHistory.length > 0}
 		<div class="history-section">
@@ -210,10 +207,10 @@
 						</div>
 						<div class="history-meta">
 							<span class="history-type">{entry.update_type}</span>
-							<span class="meta-dot">·</span>
+							<span class="meta-dot">&middot;</span>
 							<span>{formatDate(entry.created_at)}</span>
 							{#if entry.status === 'failed'}
-								<span class="meta-dot">·</span>
+								<span class="meta-dot">&middot;</span>
 								<span class="history-failed">failed</span>
 							{/if}
 						</div>
@@ -223,6 +220,44 @@
 		</div>
 	{/if}
 </div>
+
+<!-- Confirmation Modal -->
+{#if showConfirmModal}
+	<div class="modal-overlay" on:click={() => showConfirmModal = false} on:keydown={(e) => e.key === 'Escape' && (showConfirmModal = false)} role="dialog" tabindex="-1">
+		<div class="modal-card" on:click|stopPropagation role="document">
+			<div class="modal-icon">
+				<Icon icon="mdi:arrow-up-circle" class="w-8 h-8" />
+			</div>
+			<h3 class="modal-title">
+				{(tScreen.confirm?.title || 'Install update v{version}?').replace('{version}', updateCheck?.latest_version || '')}
+			</h3>
+			<p class="modal-desc">
+				{tScreen.confirm?.description || 'This will update your system. Do not unplug the device.'}
+			</p>
+			<div class="modal-meta">
+				{#if updateCheck?.download_size}
+					<span>{formatSize(updateCheck.download_size)}</span>
+					<span class="meta-dot">&middot;</span>
+				{/if}
+				<span>
+					{#if updateCheck?.reboot_required}
+						{($t as any).systemUpdate?.rebootRequired || 'Reboot required'}
+					{:else}
+						{($t as any).systemUpdate?.noRebootRequired || 'No reboot required'}
+					{/if}
+				</span>
+			</div>
+			<div class="modal-actions">
+				<button class="btn-modal-cancel" on:click={() => showConfirmModal = false}>
+					{tScreen.confirm?.cancel || 'Cancel'}
+				</button>
+				<button class="btn-modal-confirm" on:click={confirmInstall}>
+					{tScreen.confirm?.confirm || 'Confirm'}
+				</button>
+			</div>
+		</div>
+	</div>
+{/if}
 
 <style>
 	.update-settings {
@@ -290,11 +325,6 @@
 	.update-card.up-to-date {
 		border-color: #86efac;
 		background: #f0fdf4;
-	}
-
-	.update-card.installing {
-		border-color: #93c5fd;
-		background: #eff6ff;
 	}
 
 	.update-icon {
@@ -367,32 +397,6 @@
 		color: #cbd5e1;
 	}
 
-	.update-step {
-		font-size: 13px;
-		color: #3b82f6;
-		margin-bottom: 8px;
-	}
-
-	.progress-bar {
-		height: 6px;
-		background: #e2e8f0;
-		border-radius: 3px;
-		overflow: hidden;
-		margin-bottom: 4px;
-	}
-
-	.progress-fill {
-		height: 100%;
-		background: #3b82f6;
-		border-radius: 3px;
-		transition: width 0.3s ease;
-	}
-
-	.progress-text {
-		font-size: 12px;
-		color: #64748b;
-	}
-
 	.install-btn {
 		flex-shrink: 0;
 		align-self: center;
@@ -409,13 +413,8 @@
 		cursor: pointer;
 	}
 
-	.install-btn:hover:not(:disabled) {
+	.install-btn:hover {
 		background: #2563eb;
-	}
-
-	.install-btn:disabled {
-		opacity: 0.6;
-		cursor: not-allowed;
 	}
 
 	.btn-primary {
@@ -447,6 +446,30 @@
 		cursor: not-allowed;
 	}
 
+	/* Dev test section */
+	.dev-test-section {
+		margin-top: 16px;
+	}
+
+	.btn-dev-test {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		padding: 8px 14px;
+		background: #fef3c7;
+		border: 1px solid #fcd34d;
+		border-radius: 8px;
+		font-size: 13px;
+		color: #92400e;
+		cursor: pointer;
+		transition: all 0.15s ease;
+	}
+
+	.btn-dev-test:hover {
+		background: #fde68a;
+	}
+
+	/* History */
 	.history-section {
 		margin-top: 32px;
 	}
@@ -516,5 +539,99 @@
 	.history-failed {
 		color: #dc2626;
 		font-weight: 500;
+	}
+
+	/* Confirmation Modal */
+	.modal-overlay {
+		position: fixed;
+		inset: 0;
+		background: rgba(0, 0, 0, 0.5);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		z-index: 2000;
+	}
+
+	.modal-card {
+		background: white;
+		border-radius: 16px;
+		padding: 32px;
+		max-width: 420px;
+		width: 90%;
+		text-align: center;
+		box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+	}
+
+	.modal-icon {
+		width: 56px;
+		height: 56px;
+		border-radius: 14px;
+		background: #dbeafe;
+		color: #3b82f6;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		margin: 0 auto 16px;
+	}
+
+	.modal-title {
+		font-size: 17px;
+		font-weight: 600;
+		color: #1e293b;
+		margin-bottom: 8px;
+	}
+
+	.modal-desc {
+		font-size: 14px;
+		color: #64748b;
+		line-height: 1.5;
+		margin-bottom: 12px;
+	}
+
+	.modal-meta {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 6px;
+		font-size: 12px;
+		color: #94a3b8;
+		margin-bottom: 24px;
+	}
+
+	.modal-actions {
+		display: flex;
+		gap: 12px;
+		justify-content: center;
+	}
+
+	.btn-modal-cancel {
+		padding: 10px 24px;
+		border-radius: 8px;
+		font-size: 14px;
+		font-weight: 500;
+		background: white;
+		border: 1px solid #e2e8f0;
+		color: #475569;
+		cursor: pointer;
+		transition: all 0.15s ease;
+	}
+
+	.btn-modal-cancel:hover {
+		background: #f1f5f9;
+	}
+
+	.btn-modal-confirm {
+		padding: 10px 24px;
+		border-radius: 8px;
+		font-size: 14px;
+		font-weight: 500;
+		background: #3b82f6;
+		color: white;
+		cursor: pointer;
+		transition: all 0.15s ease;
+	}
+
+	.btn-modal-confirm:hover {
+		background: #2563eb;
 	}
 </style>

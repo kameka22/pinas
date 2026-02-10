@@ -1136,6 +1136,24 @@ export default {
 			changelog: 'What\'s new',
 			dismiss: 'Got it!',
 			thanks: 'Thank you for using PiNAS.'
+		},
+		screen: {
+			starting: 'The update is about to start...',
+			doNotTurnOff: 'Please do not turn off your device',
+			inProgress: 'Update in progress',
+			completed: 'Update completed successfully!',
+			installed: 'PiNAS {version} installed',
+			failed: 'Update failed',
+			reboot: 'Reboot',
+			reloadDesktop: 'Reload desktop',
+			close: 'Close',
+			confirm: {
+				title: 'Install update v{version}?',
+				description: 'This will update your system. Do not unplug the device.',
+				cancel: 'Cancel',
+				confirm: 'Confirm'
+			},
+			devTest: 'Test update screen'
 		}
 	}
 };

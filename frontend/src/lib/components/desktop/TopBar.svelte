@@ -85,6 +85,7 @@
 				cpu: info.cpu,
 				memory: info.memory,
 				loadAverage: info.load_average,
+				devMode: info.dev_mode ?? false,
 			});
 		} catch (e) {
 			// Ignore - version just won't show

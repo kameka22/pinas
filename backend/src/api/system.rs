@@ -31,6 +31,7 @@ pub struct SystemInfo {
     pub cpu: CpuInfo,
     pub memory: MemoryInfo,
     pub load_average: LoadAverage,
+    pub dev_mode: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -92,7 +93,7 @@ pub struct KillProcessRequest {
 }
 
 /// Get system information
-async fn get_info(State(_state): State<AppState>) -> impl IntoResponse {
+async fn get_info(State(state): State<AppState>) -> impl IntoResponse {
     let mut sys = System::new_all();
     sys.refresh_all();
 
@@ -126,6 +127,7 @@ async fn get_info(State(_state): State<AppState>) -> impl IntoResponse {
             five: load_avg.five,
             fifteen: load_avg.fifteen,
         },
+        dev_mode: state.config.dev_mode,
     };
 
     Json(info)

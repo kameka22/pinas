@@ -42,7 +42,7 @@ usage() {
     echo "Usage: $0 [OPTIONS]"
     echo ""
     echo "Options:"
-    echo "  --full               Major update (backend + frontend + scripts + services + system)"
+    echo "  --system             Include LibreELEC SYSTEM/KERNEL (requires reboot)"
     echo "  --frontend-only      Patch update (frontend only)"
     echo "  --changelog \"text\"    Changelog in English"
     echo "  --changelog-fr \"text\" Changelog in French"
@@ -50,17 +50,20 @@ usage() {
     echo "  --new                Reset VM configuration"
     echo "  -h, --help           Show this help"
     echo ""
+    echo "By default, includes: backend + frontend + migrations + scripts + services"
+    echo "No reboot required unless --system is used."
+    echo ""
     echo "Examples:"
-    echo "  $0                                    # Minor update (backend + frontend)"
-    echo "  $0 --frontend-only --changelog \"UI fix\" # Quick patch"
-    echo "  $0 --full --changelog \"Major release\"   # Full update with system files"
+    echo "  $0                                       # Full update (no reboot)"
+    echo "  $0 --frontend-only --changelog \"UI fix\"  # Quick frontend patch"
+    echo "  $0 --system --changelog \"Major release\"  # System update (reboot)"
     exit 0
 }
 
 while [[ $# -gt 0 ]]; do
     case $1 in
-        --full)
-            MODE="major"
+        --system)
+            MODE="system"
             shift
             ;;
         --frontend-only)
@@ -275,8 +278,10 @@ case $MODE in
         INCLUDE_BACKEND=true
         INCLUDE_FRONTEND=true
         INCLUDE_MIGRATIONS=true
+        INCLUDE_SCRIPTS=true
+        INCLUDE_SERVICES=true
         ;;
-    major)
+    system)
         INCLUDE_BACKEND=true
         INCLUDE_FRONTEND=true
         INCLUDE_MIGRATIONS=true
@@ -297,7 +302,8 @@ run_remote "rm -rf $REMOTE_BUILD_DIR && mkdir -p $REMOTE_BUILD_DIR"
 if [ "$INCLUDE_BACKEND" = true ]; then
     echo ""
     echo -e "    ${CYAN}--- Building backend (aarch64-musl) ---${NC}"
-    run_remote_tty "cd $REMOTE_PROJECT/backend && \
+    run_remote_tty "source \$HOME/.cargo/env 2>/dev/null || true && \
+        cd $REMOTE_PROJECT/backend && \
         if ! rustup target list --installed | grep -q aarch64-unknown-linux-musl; then \
             rustup target add aarch64-unknown-linux-musl; \
         fi && \
@@ -343,6 +349,8 @@ if [ "$INCLUDE_SCRIPTS" = true ]; then
     run_remote "mkdir -p $REMOTE_BUILD_DIR/scripts && \
         cp $REMOTE_PROJECT/libreelec/packages/pinas/bin/*.sh $REMOTE_BUILD_DIR/scripts/ 2>/dev/null || true && \
         chmod +x $REMOTE_BUILD_DIR/scripts/*.sh 2>/dev/null || true"
+    SCRIPT_COUNT=$(run_remote "ls $REMOTE_BUILD_DIR/scripts/*.sh 2>/dev/null | wc -l | tr -d ' '")
+    echo -e "    ${GREEN}Scripts: $SCRIPT_COUNT files${NC}"
 fi
 
 # Copy services
@@ -351,6 +359,8 @@ if [ "$INCLUDE_SERVICES" = true ]; then
     echo -e "    ${CYAN}--- Copying services ---${NC}"
     run_remote "mkdir -p $REMOTE_BUILD_DIR/services && \
         cp $REMOTE_PROJECT/libreelec/packages/pinas/system.d/*.service $REMOTE_BUILD_DIR/services/ 2>/dev/null || true"
+    SVC_COUNT=$(run_remote "ls $REMOTE_BUILD_DIR/services/*.service 2>/dev/null | wc -l | tr -d ' '")
+    echo -e "    ${GREEN}Services: $SVC_COUNT files${NC}"
 fi
 
 # Copy system files
