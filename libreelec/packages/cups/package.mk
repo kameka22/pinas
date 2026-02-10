@@ -76,11 +76,15 @@ make_target() {
 }
 
 makeinstall_target() {
+  cd ${PKG_BUILD}
+
   # Install CUPS
   make install DESTDIR="${INSTALL}"
 
   # Install systemd service (disabled by default - no symlink in wants)
+  # CUPS make install may create dirs with restrictive permissions, fix before copying
   mkdir -p ${INSTALL}/usr/lib/systemd/system
+  chmod 755 ${INSTALL}/usr/lib/systemd/system
   cp ${PKG_DIR}/system.d/cups.service ${INSTALL}/usr/lib/systemd/system/
 
   # NOTE: No symlink in default.target.wants = service is DISABLED by default
