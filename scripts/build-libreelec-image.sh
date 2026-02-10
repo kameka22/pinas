@@ -92,7 +92,9 @@ cp -r "${PROJECT_ROOT}/libreelec/packages/pinas" "${LIBREELEC_DIR}/packages/"
 echo "    Package installed to packages/pinas/"
 
 # Install CUPS package (printer sharing)
+# Remove both our copy and LibreELEC's built-in chrome-depends/cups to avoid duplicate package error
 rm -rf "${LIBREELEC_DIR}/packages/cups"
+rm -rf "${LIBREELEC_DIR}/packages/addons/addon-depends/chrome-depends/cups"
 cp -r "${PROJECT_ROOT}/libreelec/packages/cups" "${LIBREELEC_DIR}/packages/"
 echo "    CUPS package installed to packages/cups/"
 
