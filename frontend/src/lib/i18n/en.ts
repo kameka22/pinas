@@ -229,6 +229,7 @@ export default {
 		appLauncher: {
 			title: 'Applications',
 			categories: {
+				all: 'All',
 				system: 'System',
 				storageFiles: 'Storage & Files',
 				services: 'Services'
@@ -521,6 +522,7 @@ export default {
 			install: 'Install',
 			installing: 'Installing...',
 			uninstall: 'Uninstall',
+			uninstalling: 'Uninstalling...',
 			open: 'Open',
 			update: 'Update'
 		},

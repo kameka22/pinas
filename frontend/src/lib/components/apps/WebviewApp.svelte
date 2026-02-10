@@ -2,10 +2,11 @@
 	import { onMount, onDestroy } from 'svelte';
 	import Icon from '@iconify/svelte';
 	import { t } from '$lib/i18n';
+	import { gradientStyle } from '$lib/utils/gradient';
 
 	// Config passed from manifest
 	export let config: {
-		port: number;
+		port?: number;
 		path?: string;
 		name?: string;
 		icon?: string;
@@ -18,10 +19,13 @@
 	export let icon: string = config.icon || 'mdi:application';
 	export let gradient: string = config.gradient || 'from-slate-500 to-slate-600';
 
+	// Ensure port always has a value
+	$: effectivePort = config?.port || 8080;
+
 	let status: 'checking' | 'online' | 'offline' = 'checking';
 	let healthCheckInterval: ReturnType<typeof setInterval>;
 
-	$: appUrl = `http://${window.location.hostname}:${config.port}${config.path || '/'}`;
+	$: appUrl = `http://${window.location.hostname}:${effectivePort}${config?.path || '/'}`;
 
 	async function checkHealth() {
 		if (!config.checkHealth) {
@@ -69,7 +73,7 @@
 <div class="webview-app">
 	<div class="content">
 		<!-- App Icon -->
-		<div class="app-icon bg-gradient-to-br {gradient}">
+		<div class="app-icon" style={gradientStyle(gradient)}>
 			<Icon icon={icon} class="w-20 h-20 text-white" />
 		</div>
 

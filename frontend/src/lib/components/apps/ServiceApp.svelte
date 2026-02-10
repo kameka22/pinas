@@ -2,6 +2,7 @@
 	import { onMount, onDestroy } from 'svelte';
 	import Icon from '@iconify/svelte';
 	import { t } from '$lib/i18n';
+	import { gradientStyle } from '$lib/utils/gradient';
 
 	// Config passed from manifest
 	export let config: {
@@ -143,7 +144,7 @@
 <div class="service-app">
 	<!-- Header -->
 	<header class="header">
-		<div class="header-icon bg-gradient-to-br {gradient}">
+		<div class="header-icon" style={gradientStyle(gradient)}>
 			<Icon icon={icon} class="w-8 h-8 text-white" />
 		</div>
 		<div class="header-info">

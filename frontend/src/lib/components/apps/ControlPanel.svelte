@@ -9,6 +9,7 @@
 	import UpdateSettings from './UpdateSettings.svelte';
 	import { t } from '$lib/i18n';
 	import { systemInfo as systemInfoStore } from '$stores/system';
+	import { gradientStyle } from '$lib/utils/gradient';
 
 	export let config: { section?: string } | undefined = undefined;
 
@@ -428,7 +429,7 @@
 						<div class="icon-grid">
 							{#each category.items as item}
 								<button class="icon-item" on:click={() => selectItem(item.id)}>
-									<div class="icon-wrapper bg-gradient-to-br {item.gradient}">
+									<div class="icon-wrapper" style={gradientStyle(item.gradient)}>
 										<Icon icon={item.icon} class="w-7 h-7 text-white" />
 										{#if item.badge}
 											<span class="icon-badge">{item.badge}</span>

@@ -5,16 +5,20 @@
 
 	// Config passed from manifest
 	export let config: {
-		port: number;
+		port?: number;
 		path?: string;
 		title?: string;
 	} = { port: 8080, path: '/' };
+
+	// Ensure port always has a value (handles empty config object from API)
+	$: effectivePort = config?.port || 8080;
 
 	let loading = true;
 	let error: string | null = null;
 	let iframeEl: HTMLIFrameElement;
 
-	$: appUrl = `http://${window.location.hostname}:${config.port}${config.path || '/'}`;
+	// Use HTTP for local service connections (Docker containers run HTTP)
+	$: appUrl = `http://${window.location.hostname}:${effectivePort}${config?.path || '/'}`;
 
 	function handleLoad() {
 		loading = false;
@@ -95,7 +99,7 @@
 			<iframe
 				bind:this={iframeEl}
 				src={appUrl}
-				title={config.title || 'Application'}
+				title={config?.title || 'Application'}
 				on:load={handleLoad}
 				on:error={handleError}
 				class:hidden={loading}

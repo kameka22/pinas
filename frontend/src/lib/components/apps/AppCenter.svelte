@@ -66,6 +66,9 @@
 	let activeTaskId: string | null = null;
 	let activePackageId: string | null = null;
 
+	// Uninstall progress tracking
+	let uninstallingPackageId: string | null = null;
+
 	// Reactive: get progress from WebSocket store for the active task
 	$: activeProgress = activeTaskId ? $taskProgress[activeTaskId] ?? null : null;
 
@@ -397,6 +400,8 @@
 
 		const pkg = uninstallTarget;
 		showUninstallModal = false;
+		uninstallingPackageId = pkg.id;
+		installError = null;
 
 		try {
 			const response = await fetch(`/api/packages/${pkg.id}?delete_data=${deleteAppData}`, {
@@ -420,6 +425,7 @@
 			installError = error instanceof Error ? error.message : 'Uninstall failed';
 		}
 
+		uninstallingPackageId = null;
 		uninstallTarget = null;
 	}
 
@@ -568,6 +574,18 @@
 									{$t.appCenter.actions.install}
 								</button>
 							{/if}
+						{:else if selectedPackage.status === 'installed' && uninstallingPackageId === selectedPackage.id}
+							<div class="install-progress">
+								<div class="progress-header">
+									<Icon icon="mdi:loading" class="w-5 h-5 animate-spin text-red-500" />
+									<span class="progress-label uninstall-label">
+										{$t.appCenter.actions.uninstalling || 'Uninstalling...'}
+									</span>
+								</div>
+								<div class="progress-bar-container">
+									<div class="progress-bar-fill uninstall-bar" style="width: 100%"></div>
+								</div>
+							</div>
 						{:else if selectedPackage.status === 'installed'}
 							<button class="btn-secondary" on:click={() => handleOpenApp(selectedPackage)}>
 								<Icon icon="mdi:open-in-new" class="w-5 h-5" />
@@ -1416,6 +1434,20 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 		max-width: 180px;
+	}
+
+	.progress-label.uninstall-label {
+		color: #dc2626;
+	}
+
+	.progress-bar-fill.uninstall-bar {
+		background: linear-gradient(90deg, #dc2626, #ef4444);
+		animation: uninstall-pulse 1.5s ease-in-out infinite;
+	}
+
+	@keyframes uninstall-pulse {
+		0%, 100% { opacity: 1; }
+		50% { opacity: 0.6; }
 	}
 
 	.progress-bar-container {

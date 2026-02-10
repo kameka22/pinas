@@ -4,6 +4,7 @@
 	import { desktopApps, removeFromDesktop, initDesktop, loadInstalledApps, installedApps, type DesktopApp } from '$stores/desktop';
 	import { loadAllAppTranslations, t } from '$lib/i18n';
 	import Icon from '@iconify/svelte';
+	import { gradientStyle } from '$lib/utils/gradient';
 	import ContextMenu from '$lib/components/ui/ContextMenu.svelte';
 
 	let contextMenu = {
@@ -95,7 +96,7 @@
 			on:contextmenu={(e) => handleContextMenu(e, app)}
 			title={getAppLabel(app)}
 		>
-			<div class="icon-wrapper bg-gradient-to-br {app.gradient}">
+			<div class="icon-wrapper" style={gradientStyle(app.gradient)}>
 				<Icon icon={app.icon} class="w-8 h-8 text-white" />
 			</div>
 			<span class="icon-label">{getAppLabel(app)}</span>

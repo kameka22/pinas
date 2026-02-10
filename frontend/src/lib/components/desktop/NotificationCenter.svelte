@@ -1,6 +1,7 @@
 <script lang="ts">
 	import Icon from '@iconify/svelte';
 	import { t } from '$lib/i18n';
+	import { gradientStyle } from '$lib/utils/gradient';
 
 	export let visible = false;
 
@@ -82,7 +83,7 @@
 	<div class="notification-list">
 		{#each notifications as notification}
 			<div class="notification-item" class:unread={notification.unread}>
-				<div class="notification-icon bg-gradient-to-br {notification.iconGradient}">
+				<div class="notification-icon" style={gradientStyle(notification.iconGradient)}>
 					<Icon icon={notification.icon} class="w-5 h-5 text-white" />
 				</div>
 				<div class="notification-content">

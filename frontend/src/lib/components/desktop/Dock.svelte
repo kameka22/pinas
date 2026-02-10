@@ -2,6 +2,7 @@
 	import Icon from '@iconify/svelte';
 	import { windows, openWindow, focusWindow, restoreWindow } from '$stores/windows';
 	import { t } from '$lib/i18n';
+	import { gradientStyle } from '$lib/utils/gradient';
 
 	// Dock items configuration with translation keys
 	const dockItemsConfig = [
@@ -75,7 +76,7 @@
 				on:click={() => handleClick(item)}
 				title={item.label}
 			>
-				<div class="dock-icon bg-gradient-to-br {item.gradient}">
+				<div class="dock-icon" style={gradientStyle(item.gradient)}>
 					<Icon icon={item.icon} class="w-6 h-6 text-white" />
 				</div>
 				{#if isOpen(item.id)}
@@ -95,7 +96,7 @@
 					on:click={() => handleWindowClick(win)}
 					title={win.title}
 				>
-					<div class="dock-icon bg-gradient-to-br from-slate-600 to-slate-700">
+					<div class="dock-icon" style={gradientStyle('from-slate-600 to-slate-700')}>
 						<Icon icon={win.icon} class="w-6 h-6 text-white" />
 					</div>
 					{#if !win.minimized}
