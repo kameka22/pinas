@@ -1,5 +1,5 @@
 use serde::Deserialize;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// Marker value indicating no JWT secret was configured
 const DEFAULT_JWT_SECRET_MARKER: &str = "change-me-in-production";
@@ -50,6 +50,18 @@ pub struct AppConfig {
     /// Kodi JSON-RPC password
     #[serde(default = "default_kodi_password")]
     pub kodi_password: String,
+
+    /// TLS enabled (auto-detected: true in production, false in dev_mode)
+    #[serde(default)]
+    pub tls_enabled: bool,
+
+    /// Path to TLS certificate PEM file (auto-computed)
+    #[serde(skip)]
+    pub tls_cert_path: PathBuf,
+
+    /// Path to TLS private key PEM file (auto-computed)
+    #[serde(skip)]
+    pub tls_key_path: PathBuf,
 }
 
 fn default_bind_address() -> String {
@@ -117,6 +129,9 @@ impl AppConfig {
             dev_mode: default_dev_mode(),
             kodi_username: default_kodi_username(),
             kodi_password: default_kodi_password(),
+            tls_enabled: false,
+            tls_cert_path: PathBuf::new(),
+            tls_key_path: PathBuf::new(),
         });
 
         // Auto-generate JWT secret if using default marker
@@ -131,6 +146,27 @@ impl AppConfig {
                 ".kodi_password",
                 "Kodi password",
             )?;
+        }
+
+        // TLS: disabled in dev_mode, otherwise check env or default to true
+        if app_config.dev_mode {
+            app_config.tls_enabled = false;
+            tracing::info!("TLS disabled (dev_mode)");
+        } else {
+            // Check PINAS_TLS_ENABLED env var, default to true in production
+            app_config.tls_enabled = std::env::var("PINAS_TLS_ENABLED")
+                .map(|v| v != "false" && v != "0")
+                .unwrap_or(true);
+        }
+
+        // Setup TLS cert/key paths and generate if needed
+        if app_config.tls_enabled {
+            let data_dir = Self::get_data_dir(&app_config);
+            let tls_dir = Path::new(&data_dir).join(".tls");
+            app_config.tls_cert_path = tls_dir.join("cert.pem");
+            app_config.tls_key_path = tls_dir.join("key.pem");
+
+            Self::load_or_generate_tls_cert(&app_config)?;
         }
 
         Ok(app_config)
@@ -238,5 +274,93 @@ impl AppConfig {
 
         tracing::info!("Generated new {} at {}", label, secret_path.display());
         Ok(secret)
+    }
+
+    /// Get the data directory path from env or database URL
+    fn get_data_dir(config: &AppConfig) -> String {
+        std::env::var("PINAS_DATA_DIR").unwrap_or_else(|_| {
+            if let Some(path) = config.database_url.strip_prefix("sqlite:") {
+                let path = path.split('?').next().unwrap_or(path);
+                Path::new(path)
+                    .parent()
+                    .map(|p| p.to_string_lossy().to_string())
+                    .unwrap_or_else(|| ".".to_string())
+            } else {
+                ".".to_string()
+            }
+        })
+    }
+
+    /// Load existing TLS certificate or generate a self-signed one
+    fn load_or_generate_tls_cert(config: &AppConfig) -> anyhow::Result<()> {
+        let cert_path = &config.tls_cert_path;
+        let key_path = &config.tls_key_path;
+
+        // Check if both files exist and are non-empty
+        if cert_path.exists() && key_path.exists() {
+            if std::fs::metadata(cert_path)?.len() > 0
+                && std::fs::metadata(key_path)?.len() > 0
+            {
+                tracing::info!("TLS certificate loaded from {}", cert_path.display());
+                return Ok(());
+            }
+        }
+
+        tracing::info!("Generating self-signed TLS certificate...");
+
+        // Ensure TLS directory exists
+        if let Some(parent) = cert_path.parent() {
+            std::fs::create_dir_all(parent)?;
+
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                std::fs::set_permissions(parent, std::fs::Permissions::from_mode(0o700))?;
+            }
+        }
+
+        // Get hostname for SAN
+        let hostname = hostname::get()
+            .map(|h| h.to_string_lossy().to_string())
+            .unwrap_or_else(|_| "pinas".to_string());
+
+        // Generate self-signed certificate using rcgen
+        let mut params = rcgen::CertificateParams::new(vec![
+            hostname.clone(),
+            "localhost".to_string(),
+        ])?;
+
+        params.distinguished_name.push(
+            rcgen::DnType::CommonName,
+            rcgen::DnValue::Utf8String(hostname),
+        );
+
+        // Add IP SANs
+        params.subject_alt_names.push(
+            rcgen::SanType::IpAddress(std::net::IpAddr::V4(std::net::Ipv4Addr::new(127, 0, 0, 1))),
+        );
+
+        // 10 year validity
+        params.not_before = rcgen::date_time_ymd(2025, 1, 1);
+        params.not_after = rcgen::date_time_ymd(2035, 1, 1);
+
+        // Generate ECDSA P-256 key pair (algorithm is inferred by rcgen from key type)
+        let key_pair = rcgen::KeyPair::generate_for(&rcgen::PKCS_ECDSA_P256_SHA256)?;
+        let cert = params.self_signed(&key_pair)?;
+
+        // Write certificate
+        std::fs::write(cert_path, cert.pem())?;
+
+        // Write private key with restrictive permissions
+        std::fs::write(key_path, key_pair.serialize_pem())?;
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(key_path, std::fs::Permissions::from_mode(0o600))?;
+        }
+
+        tracing::info!("Self-signed TLS certificate generated at {}", cert_path.display());
+        Ok(())
     }
 }

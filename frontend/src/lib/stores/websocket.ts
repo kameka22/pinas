@@ -1,5 +1,4 @@
-import { writable, get } from 'svelte/store';
-import { auth } from './api';
+import { writable } from 'svelte/store';
 import { systemStats } from './system';
 import { fileTasks } from './taskManager';
 import type { FileTaskType, FileTaskStatus } from './taskManager';
@@ -31,9 +30,8 @@ export function connectWebSocket(): () => void {
 	const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
 
 	function getWsUrl(): string {
-		const token = get(auth).token;
-		const base = `${protocol}//${window.location.host}/api/ws`;
-		return token ? `${base}?token=${encodeURIComponent(token)}` : base;
+		// Auth cookie is sent automatically by the browser during WS handshake
+		return `${protocol}//${window.location.host}/api/ws`;
 	}
 
 	function connect() {

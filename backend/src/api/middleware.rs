@@ -1,12 +1,13 @@
 use axum::{
     async_trait,
     extract::FromRequestParts,
-    http::{header::AUTHORIZATION, request::Parts, StatusCode},
+    http::{header, header::AUTHORIZATION, request::Parts, StatusCode},
     response::{IntoResponse, Response},
     Json,
 };
 use serde::Serialize;
 
+use crate::api::cookies;
 use crate::services::auth::{extract_bearer_token, validate_jwt, AuthError, Claims};
 use crate::AppState;
 
@@ -63,36 +64,41 @@ impl FromRequestParts<AppState> for AuthUser {
     type Rejection = Response;
 
     async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, Self::Rejection> {
-        // Get Authorization header
-        let auth_header = parts
-            .headers
-            .get(AUTHORIZATION)
-            .and_then(|value| value.to_str().ok())
-            .ok_or_else(|| {
-                (
+        // Try cookie first, then Authorization header fallback
+        let token: String = {
+            // 1. Try pinas_session cookie
+            if let Some(cookie_token) = parts
+                .headers
+                .get(header::COOKIE)
+                .and_then(|v| v.to_str().ok())
+                .and_then(cookies::extract_token_from_cookies)
+            {
+                cookie_token.to_string()
+            }
+            // 2. Fallback: Authorization: Bearer <token>
+            else if let Some(bearer_token) = parts
+                .headers
+                .get(AUTHORIZATION)
+                .and_then(|v| v.to_str().ok())
+                .and_then(extract_bearer_token)
+            {
+                bearer_token.to_string()
+            }
+            // 3. No auth found
+            else {
+                return Err((
                     StatusCode::UNAUTHORIZED,
                     Json(AuthErrorResponse {
-                        error: "Missing authorization header".to_string(),
+                        error: "Missing authentication".to_string(),
                         code: "MISSING_AUTH".to_string(),
                     }),
                 )
-                    .into_response()
-            })?;
-
-        // Extract bearer token
-        let token = extract_bearer_token(auth_header).ok_or_else(|| {
-            (
-                StatusCode::UNAUTHORIZED,
-                Json(AuthErrorResponse {
-                    error: "Invalid authorization header format".to_string(),
-                    code: "INVALID_AUTH_FORMAT".to_string(),
-                }),
-            )
-                .into_response()
-        })?;
+                    .into_response());
+            }
+        };
 
         // Validate JWT
-        let claims = validate_jwt(token, &state.config).map_err(|e| e.into_response())?;
+        let claims = validate_jwt(&token, &state.config).map_err(|e| e.into_response())?;
 
         Ok(AuthUser::from(claims))
     }

@@ -1,5 +1,6 @@
 pub mod apps;
 pub mod auth;
+pub mod cookies;
 pub mod cups;
 pub mod docker;
 pub mod files;

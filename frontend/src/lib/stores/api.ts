@@ -10,24 +10,23 @@ interface AuthState {
 		username: string;
 		role: string;
 	} | null;
-	token: string | null;
 }
 
 export const auth = writable<AuthState>({
 	isAuthenticated: false,
-	user: null,
-	token: null
+	user: null
 });
 
-// Initialize auth from localStorage
+// Initialize auth from localStorage (user info only, token is in httpOnly cookie)
 if (typeof window !== 'undefined') {
-	const storedToken = localStorage.getItem('token');
+	// Migration: clean up legacy token from localStorage
+	localStorage.removeItem('token');
+
 	const storedUser = localStorage.getItem('user');
 
-	if (storedToken && storedUser) {
+	if (storedUser) {
 		auth.set({
 			isAuthenticated: true,
-			token: storedToken,
 			user: JSON.parse(storedUser)
 		});
 	}
@@ -36,15 +35,9 @@ if (typeof window !== 'undefined') {
 // API client
 class ApiClient {
 	private baseUrl: string;
-	private token: string | null = null;
 
 	constructor(baseUrl: string) {
 		this.baseUrl = baseUrl;
-
-		// Subscribe to auth changes
-		auth.subscribe((state) => {
-			this.token = state.token;
-		});
 	}
 
 	private async request<T>(
@@ -57,10 +50,6 @@ class ApiClient {
 		const headers: HeadersInit = {
 			'Content-Type': 'application/json'
 		};
-
-		if (this.token) {
-			headers['Authorization'] = `Bearer ${this.token}`;
-		}
 
 		const options: RequestInit = {
 			method,
@@ -134,18 +123,17 @@ class ApiClient {
 			role: response.user.is_admin ? 'admin' : 'user'
 		};
 
-		localStorage.setItem('token', response.token);
+		// Token is now stored in httpOnly cookie by the server
 		localStorage.setItem('user', JSON.stringify(user));
 
 		auth.set({
 			isAuthenticated: true,
-			token: response.token,
 			user
 		});
 	}
 
 	async logout(): Promise<void> {
-		// Call backend logout endpoint to invalidate session
+		// Call backend logout endpoint to invalidate session (also clears httpOnly cookie)
 		try {
 			await this.post('/auth/logout');
 		} catch (e) {
@@ -153,12 +141,10 @@ class ApiClient {
 			console.warn('Logout API call failed:', e);
 		}
 
-		localStorage.removeItem('token');
 		localStorage.removeItem('user');
 
 		auth.set({
 			isAuthenticated: false,
-			token: null,
 			user: null
 		});
 	}
@@ -440,14 +426,8 @@ class ApiClient {
 			formData.append('location_id', locationId);
 		}
 
-		const headers: HeadersInit = {};
-		if (this.token) {
-			headers['Authorization'] = `Bearer ${this.token}`;
-		}
-
 		const response = await fetch(`${this.baseUrl}/files/upload`, {
 			method: 'POST',
-			headers,
 			credentials: 'include',
 			body: formData
 		});
@@ -468,14 +448,8 @@ class ApiClient {
 			params.set('location_id', locationId);
 		}
 
-		const headers: HeadersInit = {};
-		if (this.token) {
-			headers['Authorization'] = `Bearer ${this.token}`;
-		}
-
 		const response = await fetch(`${this.baseUrl}/files/download?${params.toString()}`, {
 			method: 'GET',
-			headers,
 			credentials: 'include'
 		});
 

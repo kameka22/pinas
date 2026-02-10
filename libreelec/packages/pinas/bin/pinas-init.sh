@@ -20,6 +20,8 @@ log "PiNAS: Initializing directories..."
 mkdir -p /storage/.pinas/files
 mkdir -p /storage/.pinas/homes
 mkdir -p /storage/.pinas/data
+mkdir -p /storage/.pinas/data/.tls
+chmod 700 /storage/.pinas/data/.tls
 mkdir -p /storage/.pinas/logs
 mkdir -p /storage/.pinas/www
 

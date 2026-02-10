@@ -156,6 +156,11 @@ mod tests {
             home_on_delete: policy.to_string(),
             static_dir: None,
             dev_mode: true,
+            kodi_username: "kodi".to_string(),
+            kodi_password: "test".to_string(),
+            tls_enabled: false,
+            tls_cert_path: std::path::PathBuf::new(),
+            tls_key_path: std::path::PathBuf::new(),
         }
     }
 

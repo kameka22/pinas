@@ -1,6 +1,6 @@
 use axum::{
     extract::State,
-    http::StatusCode,
+    http::{header, StatusCode},
     response::IntoResponse,
     routing::{get, post},
     Json, Router,
@@ -8,6 +8,7 @@ use axum::{
 use chrono::{Duration, Utc};
 use serde::{Deserialize, Serialize};
 
+use crate::api::cookies;
 use crate::services::auth::generate_jwt;
 use crate::services::group::{add_member, get_group_by_name};
 use crate::services::home::HomeService;
@@ -217,7 +218,7 @@ async fn complete_setup(
     }
 
     let response = CompleteSetupResponse {
-        token,
+        token: token.clone(),
         user: UserInfo {
             id: user.id,
             username: user.username,
@@ -225,5 +226,12 @@ async fn complete_setup(
         },
     };
 
-    (StatusCode::OK, Json(response)).into_response()
+    let cookie = cookies::build_auth_cookie(
+        &token,
+        state.config.jwt_expiration_hours,
+        state.tls_enabled,
+    );
+    let mut resp = (StatusCode::OK, Json(response)).into_response();
+    resp.headers_mut().insert(header::SET_COOKIE, cookie);
+    resp
 }

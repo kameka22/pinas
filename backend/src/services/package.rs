@@ -146,8 +146,8 @@ impl PackageService {
             InstallStep::WriteFile { dest, content } => InstallStep::WriteFile {
                 dest: s(dest), content: content.clone(),
             },
-            InstallStep::Exec { command, ignore_error } => InstallStep::Exec {
-                command: s(command), ignore_error: *ignore_error,
+            InstallStep::Systemctl { operation, service, ignore_error } => InstallStep::Systemctl {
+                operation: operation.clone(), service: service.clone(), ignore_error: *ignore_error,
             },
             InstallStep::Delete { path } => InstallStep::Delete {
                 path: s(path),
@@ -548,17 +548,14 @@ impl PackageService {
                 let filename = dest.rsplit('/').next().unwrap_or("file");
                 format!("Writing {}", filename)
             }
-            InstallStep::Exec { command, .. } => {
-                // Show a simplified version of the command
-                if command.contains("systemctl start") {
-                    "Starting service".to_string()
-                } else if command.contains("systemctl enable") {
-                    "Enabling service".to_string()
-                } else if command.contains("systemctl daemon-reload") {
-                    "Reloading services".to_string()
-                } else {
-                    let short = if command.len() > 40 { &command[..40] } else { command };
-                    format!("Running: {}", short)
+            InstallStep::Systemctl { operation, service, .. } => {
+                match operation.as_str() {
+                    "start" | "restart" => format!("Starting service {}", service.as_deref().unwrap_or("")),
+                    "stop" => format!("Stopping service {}", service.as_deref().unwrap_or("")),
+                    "enable" => format!("Enabling service {}", service.as_deref().unwrap_or("")),
+                    "disable" => format!("Disabling service {}", service.as_deref().unwrap_or("")),
+                    "daemon-reload" => "Reloading services".to_string(),
+                    _ => format!("systemctl {}", operation),
                 }
             }
             InstallStep::Delete { path } => {
@@ -710,15 +707,34 @@ impl PackageService {
                 // Track written file
                 self.track_file(package_id, dest, "config").await?;
             }
-            InstallStep::Exec { command, ignore_error } => {
-                let status = Command::new("sh")
-                    .arg("-c")
-                    .arg(command)
-                    .status()
-                    .await?;
+            InstallStep::Systemctl { operation, service, ignore_error } => {
+                // Allowlist of valid systemctl operations
+                const ALLOWED_OPS: &[&str] = &[
+                    "daemon-reload", "enable", "disable", "start", "stop", "restart",
+                ];
+
+                if !ALLOWED_OPS.contains(&operation.as_str()) {
+                    return Err(anyhow!("Disallowed systemctl operation: {}", operation));
+                }
+
+                // Validate service name (alphanumeric, hyphens, dots, underscores, @ only)
+                if let Some(svc) = service {
+                    if !svc.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '.' || c == '_' || c == '@') {
+                        return Err(anyhow!("Invalid service name: {}", svc));
+                    }
+                }
+
+                let mut cmd = Command::new("systemctl");
+                cmd.arg(operation);
+                if let Some(svc) = service {
+                    cmd.arg(svc);
+                }
+
+                let status = cmd.status().await?;
 
                 if !status.success() && !ignore_error {
-                    return Err(anyhow!("Command failed: {}", command));
+                    let svc_str = service.as_deref().unwrap_or("");
+                    return Err(anyhow!("systemctl {} {} failed", operation, svc_str));
                 }
             }
             InstallStep::Delete { path } => {
@@ -823,15 +839,32 @@ impl PackageService {
     /// Execute a single uninstall step (no tracking needed)
     async fn execute_uninstall_step(&self, step: &InstallStep) -> Result<()> {
         match step {
-            InstallStep::Exec { command, ignore_error } => {
-                let status = Command::new("sh")
-                    .arg("-c")
-                    .arg(command)
-                    .status()
-                    .await?;
+            InstallStep::Systemctl { operation, service, ignore_error } => {
+                const ALLOWED_OPS: &[&str] = &[
+                    "daemon-reload", "enable", "disable", "start", "stop", "restart",
+                ];
+
+                if !ALLOWED_OPS.contains(&operation.as_str()) {
+                    return Err(anyhow!("Disallowed systemctl operation: {}", operation));
+                }
+
+                if let Some(svc) = service {
+                    if !svc.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '.' || c == '_' || c == '@') {
+                        return Err(anyhow!("Invalid service name: {}", svc));
+                    }
+                }
+
+                let mut cmd = Command::new("systemctl");
+                cmd.arg(operation);
+                if let Some(svc) = service {
+                    cmd.arg(svc);
+                }
+
+                let status = cmd.status().await?;
 
                 if !status.success() && !ignore_error {
-                    return Err(anyhow!("Command failed: {}", command));
+                    let svc_str = service.as_deref().unwrap_or("");
+                    return Err(anyhow!("systemctl {} {} failed", operation, svc_str));
                 }
             }
             InstallStep::Delete { path } => {

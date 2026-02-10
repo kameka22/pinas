@@ -173,8 +173,11 @@ pub enum InstallStep {
         dest: String,
         content: String, // Base64 encoded
     },
-    Exec {
-        command: String,
+    /// Systemctl operations (safe alternative to exec)
+    Systemctl {
+        operation: String, // "daemon-reload", "enable", "disable", "start", "stop", "restart"
+        #[serde(default)]
+        service: Option<String>,
         #[serde(default)]
         ignore_error: bool,
     },

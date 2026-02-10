@@ -196,12 +196,130 @@ const BLOCKED_PATTERNS: &[&str] = &[
     "umount /storage",
 ];
 
-/// Check if a command contains blocked patterns
+/// Normalize a command string for blocklist checking.
+/// Collapses whitespace, strips path prefixes, detects command substitution.
+fn normalize_command(command: &str) -> String {
+    let cmd = command.to_lowercase();
+
+    // Collapse all whitespace (tabs, multiple spaces) into single space
+    let cmd: String = cmd.split_whitespace().collect::<Vec<_>>().join(" ");
+
+    // Strip common path prefixes from binary names
+    let cmd = cmd
+        .replace("/usr/local/sbin/", "")
+        .replace("/usr/local/bin/", "")
+        .replace("/usr/sbin/", "")
+        .replace("/usr/bin/", "")
+        .replace("/sbin/", "")
+        .replace("/bin/", "");
+
+    cmd
+}
+
+/// Check if a command contains blocked patterns or dangerous constructs
 fn is_command_blocked(command: &str) -> bool {
     let cmd_lower = command.to_lowercase();
+
+    // Detect command substitution: $(...) or `...`
+    if cmd_lower.contains("$(") || cmd_lower.contains('`') {
+        return true;
+    }
+
+    // Detect heredoc/herestring injection
+    if cmd_lower.contains("<<") {
+        return true;
+    }
+
+    // Detect eval/exec wrappers
+    let normalized = normalize_command(command);
+    if normalized.starts_with("eval ") || normalized.starts_with("exec ") {
+        return true;
+    }
+
+    // Detect base64/hex decode piping (obfuscation attempts)
+    if normalized.contains("base64 -d") || normalized.contains("base64 --decode")
+        || normalized.contains("xxd -r")
+    {
+        return true;
+    }
+
+    // Check each segment of chained commands (split on ; && || |)
+    // This ensures "echo hello ; rm -rf /" is caught
+    let segments = split_command_segments(&cmd_lower);
+
+    for segment in &segments {
+        let norm = normalize_command(segment);
+        if BLOCKED_PATTERNS
+            .iter()
+            .any(|pattern| norm.contains(&pattern.to_lowercase()))
+        {
+            return true;
+        }
+    }
+
+    // Also check the full normalized command (for patterns like "| sh")
+    let full_norm = normalize_command(command);
     BLOCKED_PATTERNS
         .iter()
-        .any(|pattern| cmd_lower.contains(&pattern.to_lowercase()))
+        .any(|pattern| full_norm.contains(&pattern.to_lowercase()))
+}
+
+/// Split a command into segments by shell operators (; && || |)
+fn split_command_segments(command: &str) -> Vec<String> {
+    let mut segments = Vec::new();
+    let mut current = String::new();
+    let mut chars = command.chars().peekable();
+    let mut in_single_quote = false;
+    let mut in_double_quote = false;
+
+    while let Some(c) = chars.next() {
+        match c {
+            '\'' if !in_double_quote => {
+                in_single_quote = !in_single_quote;
+                current.push(c);
+            }
+            '"' if !in_single_quote => {
+                in_double_quote = !in_double_quote;
+                current.push(c);
+            }
+            ';' if !in_single_quote && !in_double_quote => {
+                segments.push(current.trim().to_string());
+                current = String::new();
+            }
+            '&' if !in_single_quote && !in_double_quote => {
+                if chars.peek() == Some(&'&') {
+                    chars.next(); // consume second &
+                    segments.push(current.trim().to_string());
+                    current = String::new();
+                } else {
+                    // Background operator & — also split
+                    segments.push(current.trim().to_string());
+                    current = String::new();
+                }
+            }
+            '|' if !in_single_quote && !in_double_quote => {
+                if chars.peek() == Some(&'|') {
+                    chars.next(); // consume second |
+                    segments.push(current.trim().to_string());
+                    current = String::new();
+                } else {
+                    // Pipe — keep current going but also add as new segment
+                    // so "curl x | sh" catches "sh" as a segment
+                    segments.push(current.trim().to_string());
+                    current = String::new();
+                }
+            }
+            _ => {
+                current.push(c);
+            }
+        }
+    }
+
+    if !current.trim().is_empty() {
+        segments.push(current.trim().to_string());
+    }
+
+    segments
 }
 
 /// Get the real root directory based on dev_mode

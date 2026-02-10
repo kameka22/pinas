@@ -36,34 +36,29 @@ Rapport consolidé — Février 2026
 
 ---
 
-### 4. Exécution de commandes arbitraires depuis les manifests
+### ~~4. Exécution de commandes arbitraires depuis les manifests~~ — CORRIGE
 
-**`backend/src/services/package.rs:668-677`**
+**`backend/src/services/package.rs`**, **`backend/src/models/manifest.rs`**
 
-```rust
-InstallStep::Exec { command, .. } => {
-    Command::new("sh").arg("-c").arg(command).status().await?;
-}
-```
+~~Les commandes `exec` dans les manifests du catalogue étaient exécutées telles quelles via `sh -c` en root. Un catalogue compromis = RCE totale.~~
 
-Les commandes `exec` dans les manifests du catalogue sont exécutées telles quelles via `sh -c` en root. Un catalogue compromis = RCE totale.
-
-**Fix** : Signer les manifests (GPG), whitelist d'actions autorisées, ou sandbox (conteneur).
+**Correction** : Le variant `Exec` a été entièrement supprimé de `InstallStep` et remplacé par `Systemctl` (opérations typées : daemon-reload, enable, disable, start, stop, restart). Les opérations sont validées contre une allowlist, et les noms de service sont vérifiés (alphanumérique + `-._@` uniquement). Les manifests docker et samba ont été migrés vers les actions typées (symlink, delete, systemctl).
 
 ---
 
-### 5. Blocklist terminal contournable
+### ~~5. Blocklist terminal contournable~~ — CORRIGE
 
-**`backend/src/api/terminal.rs:122-205`**
+**`backend/src/api/terminal.rs`**
 
-La vérification de commandes dangereuses se fait par `contains()` sur des patterns, facilement contourné :
+~~La vérification de commandes dangereuses se faisait par `contains()` sur des patterns, facilement contourné par espaces, substitution de commande, ou chaînage.~~
 
-- Espaces/tabs supplémentaires : `rm  -rf  /`
-- Substitution de commande : `` `rm -rf /` `` ou `$(rm -rf /)`
-- Variables d'environnement, encodage
-- Chaînage après `;` ou `&&`
-
-**Fix** : Si le terminal est nécessaire, utiliser un allowlist ou un parser AST du shell. Sinon, envisager un sandbox (bubblewrap/conteneur).
+**Correction** : Normalisation complète avant vérification :
+- Collapse de whitespace (tabs, espaces multiples → espace simple)
+- Suppression des préfixes de chemin (`/usr/bin/`, `/sbin/`, etc.)
+- Blocage automatique des constructions dangereuses : `$(...)`, backticks, heredocs (`<<`), `eval`, `exec`, encodage base64/hex
+- Découpage en segments par opérateurs shell (`;`, `&&`, `||`, `|`, `&`) avec respect des quotes
+- Chaque segment est vérifié individuellement contre la blocklist
+- Note : reste une défense en profondeur (terminal admin-only), pas une sandbox complète
 
 ---
 
@@ -92,17 +87,13 @@ La vérification de commandes dangereuses se fait par `contains()` sur des patte
 
 ## HAUT
 
-### 8. Token JWT stocké en `localStorage` (XSS = vol de session)
+### ~~8. Token JWT stocké en `localStorage` (XSS = vol de session)~~ — CORRIGE
 
-**`frontend/src/lib/stores/api.ts:24-32, 137-138`**
+**`frontend/src/lib/stores/api.ts`**, **`backend/src/api/cookies.rs`**, **`backend/src/api/auth.rs`**, **`backend/src/api/setup.rs`**
 
-```typescript
-localStorage.setItem('token', response.token);
-```
+~~Si un XSS est exploité, le token était directement accessible via `localStorage`.~~
 
-Si un XSS est exploité (voir point 9), le token est directement accessible. `localStorage` est lisible par tout JavaScript sur la page.
-
-**Fix** : Utiliser des cookies `httpOnly` + `SameSite=Strict`.
+**Correction** : Le token JWT est maintenant transmis via un cookie `httpOnly; SameSite=Strict; Path=/api` (+ `Secure` quand TLS actif). Le frontend ne stocke plus le token — seules les infos utilisateur non-sensibles restent dans `localStorage`. Le cookie est automatiquement envoyé par le navigateur (y compris lors du handshake WebSocket). L'extraction dans le middleware et le WebSocket handler vérifie le cookie en priorité, avec fallback sur `Authorization: Bearer` pour la rétrocompatibilité.
 
 ---
 
@@ -146,13 +137,13 @@ Si un XSS est exploité (voir point 9), le token est directement accessible. `lo
 
 ---
 
-### 13. Pas de HTTPS
+### ~~13. Pas de HTTPS~~ — CORRIGE
 
-**`backend/src/main.rs`**
+**`backend/src/main.rs`**, **`backend/src/config/mod.rs`**, **`backend/Cargo.toml`**
 
-Le serveur écoute en HTTP uniquement. Tous les tokens, mots de passe et données transitent en clair sur le réseau local.
+~~Le serveur écoutait en HTTP uniquement. Tous les tokens, mots de passe et données transitaient en clair.~~
 
-**Fix** : Générer un certificat auto-signé au premier démarrage, activer TLS. Ajouter HSTS.
+**Correction** : HTTPS activé par défaut en production via `axum-server` + `rustls`. Un certificat auto-signé ECDSA P-256 est généré automatiquement au premier démarrage par `rcgen` (pur Rust, pas d'OpenSSL) et stocké dans `{data_dir}/.tls/` avec permissions 600/700. Le header HSTS (`max-age=31536000; includeSubDomains`) est ajouté quand TLS est actif. En `dev_mode`, TLS est désactivé automatiquement (HTTP classique). Le port reste 3000.
 
 ---
 
@@ -305,8 +296,8 @@ Validation du path puis opération async dans un `tokio::spawn`. Symlinks modifi
 ### ~~Court terme~~ — FAIT
 
 6. ~~Rate limiting sur le login~~ CORRIGE
-7. Passer les tokens en cookies httpOnly
-8. Activer HTTPS (cert auto-signé)
+7. ~~Passer les tokens en cookies httpOnly~~ CORRIGE
+8. ~~Activer HTTPS (cert auto-signé)~~ CORRIGE
 9. ~~Ajouter les security headers~~ CORRIGE
 10. ~~Renforcer les mots de passe (12+ chars)~~ CORRIGE
 11. ~~Limiter la taille des uploads~~ CORRIGE

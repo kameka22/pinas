@@ -35,6 +35,7 @@ pub struct AppState {
     pub task_tx: broadcast::Sender<TaskProgressEvent>,
     pub file_task_tx: broadcast::Sender<FileTaskEvent>,
     pub just_updated: Arc<Mutex<Option<UpdateAppliedInfo>>>,
+    pub tls_enabled: bool,
 }
 
 #[tokio::main]
@@ -72,6 +73,8 @@ async fn main() -> anyhow::Result<()> {
         tracing::info!("System was just updated: {} -> {}", info.previous_version, info.version);
     }
 
+    let tls_enabled = config.tls_enabled;
+
     // Create app state
     let state = AppState {
         config: Arc::new(config),
@@ -79,23 +82,43 @@ async fn main() -> anyhow::Result<()> {
         task_tx,
         file_task_tx,
         just_updated: Arc::new(Mutex::new(just_updated)),
+        tls_enabled,
     };
+
+    // Capture TLS paths before state is moved into router
+    let tls_cert_path = state.config.tls_cert_path.clone();
+    let tls_key_path = state.config.tls_key_path.clone();
 
     // Build router
     let app = create_router(state);
 
     // Start server
     let addr: SocketAddr = bind_addr.parse()?;
-    tracing::info!("PiNAS server starting on {}", addr);
 
-    let listener = tokio::net::TcpListener::bind(addr).await?;
-    axum::serve(listener, app).await?;
+    if tls_enabled {
+        let tls_config = axum_server::tls_rustls::RustlsConfig::from_pem_file(
+            &tls_cert_path,
+            &tls_key_path,
+        )
+        .await?;
+
+        tracing::info!("PiNAS server starting on https://{}", addr);
+        axum_server::bind_rustls(addr, tls_config)
+            .serve(app.into_make_service())
+            .await?;
+    } else {
+        tracing::info!("PiNAS server starting on http://{}", addr);
+        let listener = tokio::net::TcpListener::bind(addr).await?;
+        axum::serve(listener, app).await?;
+    }
 
     Ok(())
 }
 
 /// Create the main router with all routes
 fn create_router(state: AppState) -> Router {
+    let tls_enabled = state.tls_enabled;
+
     // CORS configuration — restrict to same-origin and local dev
     let cors = CorsLayer::new()
         .allow_origin([
@@ -103,9 +126,11 @@ fn create_router(state: AppState) -> Router {
             "http://localhost:3000".parse().unwrap(),  // Backend self-serve
             "http://127.0.0.1:5173".parse().unwrap(),
             "http://127.0.0.1:3000".parse().unwrap(),
+            "https://localhost:3000".parse().unwrap(), // HTTPS variants
+            "https://127.0.0.1:3000".parse().unwrap(),
         ])
         .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE, Method::PATCH])
-        .allow_headers([header::AUTHORIZATION, header::CONTENT_TYPE])
+        .allow_headers([header::AUTHORIZATION, header::CONTENT_TYPE, header::COOKIE])
         .allow_credentials(true);
 
     let static_dir = state.config.static_dir.clone();
@@ -149,7 +174,8 @@ fn create_router(state: AppState) -> Router {
     }
 
     // Apply middleware
-    app.layer(TraceLayer::new_for_http())
+    let mut app = app
+        .layer(TraceLayer::new_for_http())
         .layer(cors)
         .layer(SetResponseHeaderLayer::overriding(
             header::HeaderName::from_static("x-frame-options"),
@@ -166,7 +192,17 @@ fn create_router(state: AppState) -> Router {
         .layer(SetResponseHeaderLayer::overriding(
             header::HeaderName::from_static("x-xss-protection"),
             header::HeaderValue::from_static("1; mode=block"),
-        ))
+        ));
+
+    // Add HSTS header only when TLS is active
+    if tls_enabled {
+        app = app.layer(SetResponseHeaderLayer::overriding(
+            header::HeaderName::from_static("strict-transport-security"),
+            header::HeaderValue::from_static("max-age=31536000; includeSubDomains"),
+        ));
+    }
+
+    app
 }
 
 /// Health check response

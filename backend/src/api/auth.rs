@@ -1,6 +1,6 @@
 use axum::{
     extract::State,
-    http::{header::AUTHORIZATION, StatusCode},
+    http::{header, header::AUTHORIZATION, StatusCode},
     response::IntoResponse,
     routing::{get, post},
     Json, Router,
@@ -11,6 +11,7 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::Instant;
 
+use crate::api::cookies;
 use crate::api::middleware::{AuthErrorResponse, AuthUser};
 use crate::services::auth::{extract_bearer_token, generate_jwt, verify_password, AuthError};
 use crate::services::session::{create_session, delete_session};
@@ -168,7 +169,7 @@ async fn login(
     }
 
     let response = LoginResponse {
-        token,
+        token: token.clone(),
         user: UserInfo {
             id: user.id,
             username: user.username,
@@ -177,7 +178,14 @@ async fn login(
         },
     };
 
-    (StatusCode::OK, Json(response)).into_response()
+    let cookie = cookies::build_auth_cookie(
+        &token,
+        state.config.jwt_expiration_hours,
+        state.tls_enabled,
+    );
+    let mut resp = (StatusCode::OK, Json(response)).into_response();
+    resp.headers_mut().insert(header::SET_COOKIE, cookie);
+    resp
 }
 
 /// Logout endpoint
@@ -185,19 +193,31 @@ async fn logout(
     State(state): State<AppState>,
     headers: axum::http::HeaderMap,
 ) -> impl IntoResponse {
-    // Extract token from header
-    if let Some(auth_header) = headers.get(AUTHORIZATION) {
-        if let Ok(header_str) = auth_header.to_str() {
-            if let Some(token) = extract_bearer_token(header_str) {
-                // Delete session from database
-                if let Err(e) = delete_session(&state.db, token).await {
-                    tracing::error!("Session deletion error: {}", e);
-                }
-            }
+    // Extract token: cookie first, then Authorization header fallback
+    let token = headers
+        .get(header::COOKIE)
+        .and_then(|v| v.to_str().ok())
+        .and_then(cookies::extract_token_from_cookies)
+        .map(|s| s.to_string())
+        .or_else(|| {
+            headers
+                .get(AUTHORIZATION)
+                .and_then(|v| v.to_str().ok())
+                .and_then(extract_bearer_token)
+                .map(|s| s.to_string())
+        });
+
+    if let Some(token) = token {
+        if let Err(e) = delete_session(&state.db, &token).await {
+            tracing::error!("Session deletion error: {}", e);
         }
     }
 
-    StatusCode::OK
+    // Clear the auth cookie
+    let clear_cookie = cookies::build_clear_cookie(state.tls_enabled);
+    let mut resp = StatusCode::OK.into_response();
+    resp.headers_mut().insert(header::SET_COOKIE, clear_cookie);
+    resp
 }
 
 /// Get current user info

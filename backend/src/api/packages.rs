@@ -385,14 +385,14 @@ fn get_docker_manifest() -> PackageManifest {
         InstallStep::Mkdir { path: "${DATA_DIR}/docker".to_string() },
         InstallStep::Template { src: "docker.service".to_string(), dest: "/storage/.config/system.d/docker.service".to_string() },
         InstallStep::Template { src: "daemon.json".to_string(), dest: "${DATA_DIR}/docker/daemon.json".to_string() },
-        InstallStep::Exec { command: "systemctl daemon-reload".to_string(), ignore_error: false },
-        InstallStep::Exec { command: "systemctl enable docker.service".to_string(), ignore_error: false },
-        InstallStep::Exec { command: "systemctl start docker.service".to_string(), ignore_error: false },
+        InstallStep::Systemctl { operation: "daemon-reload".to_string(), service: None, ignore_error: false },
+        InstallStep::Systemctl { operation: "enable".to_string(), service: Some("docker.service".to_string()), ignore_error: false },
+        InstallStep::Systemctl { operation: "start".to_string(), service: Some("docker.service".to_string()), ignore_error: false },
     ];
 
     let uninstall_steps = vec![
-        InstallStep::Exec { command: "systemctl stop docker.service".to_string(), ignore_error: true },
-        InstallStep::Exec { command: "systemctl disable docker.service".to_string(), ignore_error: true },
+        InstallStep::Systemctl { operation: "stop".to_string(), service: Some("docker.service".to_string()), ignore_error: true },
+        InstallStep::Systemctl { operation: "disable".to_string(), service: Some("docker.service".to_string()), ignore_error: true },
         InstallStep::Delete { path: "/storage/.config/system.d/docker.service".to_string() },
         InstallStep::Delete { path: "${BIN_DIR}/docker".to_string() },
         InstallStep::Delete { path: "${BIN_DIR}/dockerd".to_string() },
@@ -401,7 +401,7 @@ fn get_docker_manifest() -> PackageManifest {
         InstallStep::Delete { path: "${BIN_DIR}/ctr".to_string() },
         InstallStep::Delete { path: "${BIN_DIR}/runc".to_string() },
         InstallStep::Delete { path: "${PACKAGES_DIR}/docker".to_string() },
-        InstallStep::Exec { command: "systemctl daemon-reload".to_string(), ignore_error: true },
+        InstallStep::Systemctl { operation: "daemon-reload".to_string(), service: None, ignore_error: true },
     ];
 
     // Template files (base64 encoded)

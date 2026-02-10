@@ -117,26 +117,17 @@ function createOnboardingStore() {
 					admin_password: config.adminPassword
 				});
 
-				// Auto-login with the returned token
-				localStorage.setItem('token', response.token);
-				localStorage.setItem(
-					'user',
-					JSON.stringify({
-						id: response.user.id,
-						username: response.user.username,
-						role: response.user.is_admin ? 'admin' : 'user'
-					})
-				);
+				// Auto-login: token is set as httpOnly cookie by the server
+				const user = {
+					id: response.user.id,
+					username: response.user.username,
+					role: response.user.is_admin ? 'admin' : 'user'
+				};
+				localStorage.setItem('user', JSON.stringify(user));
 
-				// Update auth store (this also updates the API client token)
 				auth.set({
 					isAuthenticated: true,
-					token: response.token,
-					user: {
-						id: response.user.id,
-						username: response.user.username,
-						role: response.user.is_admin ? 'admin' : 'user'
-					}
+					user
 				});
 
 				// Configure SSH if enabled
@@ -182,12 +173,10 @@ function createOnboardingStore() {
 		// Pour les tests/dev : reset l'onboarding
 		resetSetup: () => {
 			saveSetupState(false);
-			localStorage.removeItem('token');
 			localStorage.removeItem('user');
 
 			auth.set({
 				isAuthenticated: false,
-				token: null,
 				user: null
 			});
 

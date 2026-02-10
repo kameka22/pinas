@@ -3,11 +3,6 @@
 	import { t } from '$lib/i18n';
 	import { auth } from '$stores/api';
 	import { systemInfo } from '$stores/system';
-	import { get } from 'svelte/store';
-
-	function getAuthToken(): string | null {
-		return get(auth).token;
-	}
 
 	interface PromptLine {
 		type: 'prompt';
@@ -192,10 +187,8 @@
 		try {
 			const response = await fetch('/api/terminal/exec', {
 				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json',
-					...(getAuthToken() ? { 'Authorization': `Bearer ${getAuthToken()}` } : {})
-				},
+				headers: { 'Content-Type': 'application/json' },
+				credentials: 'include',
 				body: JSON.stringify({ command, cwd })
 			});
 
@@ -359,10 +352,8 @@
 		try {
 			const response = await fetch('/api/terminal/complete', {
 				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json',
-					...(getAuthToken() ? { 'Authorization': `Bearer ${getAuthToken()}` } : {})
-				},
+				headers: { 'Content-Type': 'application/json' },
+				credentials: 'include',
 				body: JSON.stringify({ partial, cwd })
 			});
 

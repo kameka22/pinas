@@ -3,7 +3,7 @@ use axum::{
         ws::{Message, WebSocket, WebSocketUpgrade},
         Query, State,
     },
-    http::StatusCode,
+    http::{header, HeaderMap, StatusCode},
     response::IntoResponse,
 };
 use futures_util::{SinkExt, StreamExt};
@@ -13,6 +13,7 @@ use sysinfo::System;
 use tokio::sync::broadcast;
 use tokio::time::interval;
 
+use crate::api::cookies;
 use crate::services::auth::validate_jwt;
 use crate::AppState;
 
@@ -74,18 +75,24 @@ pub struct FileTaskEvent {
     pub error_message: Option<String>,
 }
 
-/// WebSocket handler (requires valid token in query param)
+/// WebSocket handler (requires valid token via cookie or query param)
 pub async fn ws_handler(
     ws: WebSocketUpgrade,
     State(state): State<AppState>,
+    headers: HeaderMap,
     Query(query): Query<WsQuery>,
 ) -> impl IntoResponse {
-    // Validate token
-    let token = match query.token {
-        Some(t) if !t.is_empty() => t,
-        _ => {
-            return StatusCode::UNAUTHORIZED.into_response();
-        }
+    // Try cookie first, then query param fallback
+    let token = headers
+        .get(header::COOKIE)
+        .and_then(|v| v.to_str().ok())
+        .and_then(cookies::extract_token_from_cookies)
+        .map(|s| s.to_string())
+        .or_else(|| query.token.filter(|t| !t.is_empty()));
+
+    let token = match token {
+        Some(t) => t,
+        None => return StatusCode::UNAUTHORIZED.into_response(),
     };
 
     if validate_jwt(&token, &state.config).is_err() {
