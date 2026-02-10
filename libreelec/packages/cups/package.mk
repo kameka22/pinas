@@ -36,7 +36,7 @@ PKG_SITE="https://openprinting.github.io/cups/"
 PKG_URL="https://github.com/OpenPrinting/cups/releases/download/v${PKG_VERSION}/cups-${PKG_VERSION}-source.tar.gz"
 PKG_DEPENDS_TARGET="toolchain zlib libusb gnutls avahi"
 PKG_LONGDESC="CUPS printing system - enables USB printer sharing over the network via IPP/AirPrint"
-PKG_TOOLCHAIN="autotools"
+PKG_TOOLCHAIN="configure"
 
 # Gutenprint version (printer drivers)
 GUTENPRINT_VERSION="5.3.4"
