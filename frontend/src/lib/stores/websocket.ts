@@ -1,4 +1,5 @@
-import { writable } from 'svelte/store';
+import { writable, get } from 'svelte/store';
+import { auth } from './api';
 import { systemStats } from './system';
 import { fileTasks } from './taskManager';
 import type { FileTaskType, FileTaskStatus } from './taskManager';
@@ -28,7 +29,12 @@ const MAX_RECONNECT_ATTEMPTS = 10;
 
 export function connectWebSocket(): () => void {
 	const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-	const wsUrl = `${protocol}//${window.location.hostname}:3000/api/ws`;
+
+	function getWsUrl(): string {
+		const token = get(auth).token;
+		const base = `${protocol}//${window.location.host}/api/ws`;
+		return token ? `${base}?token=${encodeURIComponent(token)}` : base;
+	}
 
 	function connect() {
 		if (isConnecting || (ws && ws.readyState === WebSocket.OPEN)) {
@@ -38,7 +44,7 @@ export function connectWebSocket(): () => void {
 		isConnecting = true;
 
 		try {
-			ws = new WebSocket(wsUrl);
+			ws = new WebSocket(getWsUrl());
 
 			ws.onopen = () => {
 				console.log('[WS] Connected to server');

@@ -84,8 +84,14 @@ impl PackageService {
             .unwrap_or_else(|_| "pinas".to_string());
         vars.insert("DEVICE_HOSTNAME".to_string(), hostname);
 
-        // Default app password (placeholder)
-        vars.insert("APP_PASSWORD".to_string(), "changeme".to_string());
+        // Generate random app password (32 hex chars = 16 bytes of entropy)
+        let mut pwd_bytes = [0u8; 16];
+        getrandom::getrandom(&mut pwd_bytes).unwrap_or_else(|_| {
+            // Fallback: use uuid if getrandom fails
+            let fallback = uuid::Uuid::new_v4().to_string().replace('-', "");
+            pwd_bytes.copy_from_slice(&fallback.as_bytes()[..16]);
+        });
+        vars.insert("APP_PASSWORD".to_string(), hex::encode(pwd_bytes));
 
         vars
     }
@@ -299,17 +305,53 @@ impl PackageService {
     /// Start package installation: create DB records and return task_id immediately.
     /// The actual installation steps must be run separately via `install_execute`.
     pub async fn install_start(&self, manifest: &PackageManifest, manifest_url: Option<&str>) -> Result<String> {
-        // Check if already installed successfully
-        if self.is_installed(&manifest.id).await? {
+        // Use a transaction to atomically check + insert (prevents race condition)
+        let mut tx = self.db.begin().await?;
+
+        // Check if already installed successfully (inside transaction)
+        let existing: Option<(String,)> = sqlx::query_as(
+            "SELECT id FROM installed_packages WHERE id = ? AND status = 'installed'"
+        )
+        .bind(&manifest.id)
+        .fetch_optional(&mut *tx)
+        .await?;
+
+        if existing.is_some() {
             return Err(anyhow!("Package {} is already installed", manifest.id));
         }
 
-        // Clean up any failed/incomplete previous installation
-        self.cleanup_failed_installation(&manifest.id).await?;
+        // Clean up any failed/incomplete previous installation (inside transaction)
+        sqlx::query("DELETE FROM package_files WHERE package_id = ? AND (SELECT status FROM installed_packages WHERE id = package_files.package_id) != 'installed'")
+            .bind(&manifest.id)
+            .execute(&mut *tx)
+            .await
+            .ok();
+        sqlx::query("DELETE FROM docker_containers WHERE package_id = ? AND (SELECT status FROM installed_packages WHERE id = docker_containers.package_id) != 'installed'")
+            .bind(&manifest.id)
+            .execute(&mut *tx)
+            .await
+            .ok();
+        sqlx::query("DELETE FROM installed_packages WHERE id = ? AND status != 'installed'")
+            .bind(&manifest.id)
+            .execute(&mut *tx)
+            .await
+            .ok();
+        sqlx::query("DELETE FROM package_tasks WHERE package_id = ? AND status IN ('failed', 'running')")
+            .bind(&manifest.id)
+            .execute(&mut *tx)
+            .await
+            .ok();
 
         // Check dependencies
         for dep in &manifest.requirements.dependencies {
-            if !self.is_installed(dep).await? {
+            let dep_installed: Option<(String,)> = sqlx::query_as(
+                "SELECT id FROM installed_packages WHERE id = ? AND status = 'installed'"
+            )
+            .bind(dep)
+            .fetch_optional(&mut *tx)
+            .await?;
+
+            if dep_installed.is_none() {
                 return Err(anyhow!("Missing dependency: {}", dep));
             }
         }
@@ -328,7 +370,7 @@ impl PackageService {
         .bind(total_steps)
         .bind(&now)
         .bind(&now)
-        .execute(&self.db)
+        .execute(&mut *tx)
         .await?;
 
         // Prepare frontend config
@@ -353,8 +395,11 @@ impl PackageService {
         .bind(&now)
         .bind(&frontend_config_json)
         .bind(has_window)
-        .execute(&self.db)
+        .execute(&mut *tx)
         .await?;
+
+        // Commit the transaction
+        tx.commit().await?;
 
         Ok(task_id)
     }
@@ -841,17 +886,42 @@ impl PackageService {
         Ok(())
     }
 
+    /// Validate that a download URL uses HTTPS (except localhost)
+    fn validate_download_url(url: &str) -> Result<()> {
+        let parsed = reqwest::Url::parse(url)
+            .map_err(|e| anyhow!("Invalid download URL: {}", e))?;
+
+        match parsed.scheme() {
+            "https" => Ok(()),
+            "http" => {
+                let host = parsed.host_str().unwrap_or("");
+                if host == "localhost" || host == "127.0.0.1" {
+                    Ok(())
+                } else {
+                    Err(anyhow!("Only HTTPS URLs are allowed for downloads"))
+                }
+            }
+            other => Err(anyhow!("Unsupported URL scheme for download: {}", other)),
+        }
+    }
+
     /// Download a file with optional SHA256 verification
     async fn download_file(&self, url: &str, dest: &str, sha256: Option<&str>) -> Result<()> {
         tracing::info!("Downloading {} to {}", url, dest);
+
+        // Validate URL scheme
+        Self::validate_download_url(url)?;
 
         // Ensure parent directory exists
         if let Some(parent) = Path::new(dest).parent() {
             fs::create_dir_all(parent).await?;
         }
 
-        // Download file
-        let response = reqwest::get(url).await?;
+        // Download file with timeout
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(300))
+            .build()?;
+        let response = client.get(url).send().await?;
         if !response.status().is_success() {
             return Err(anyhow!("Download failed: HTTP {}", response.status()));
         }
@@ -882,7 +952,7 @@ impl PackageService {
         Ok(())
     }
 
-    /// Extract a tar.gz archive
+    /// Extract a tar.gz archive with path traversal protection
     async fn extract_archive(&self, src: &str, dest: &str) -> Result<()> {
         tracing::info!("Extracting {} to {}", src, dest);
 
@@ -896,11 +966,59 @@ impl PackageService {
             use flate2::read::GzDecoder;
             use std::fs::File;
             use tar::Archive;
+            use std::path::PathBuf;
+
+            let dest_canonical = std::fs::canonicalize(&dest_path)
+                .unwrap_or_else(|_| PathBuf::from(&dest_path));
 
             let file = File::open(&src_path)?;
             let decoder = GzDecoder::new(file);
             let mut archive = Archive::new(decoder);
-            archive.unpack(&dest_path)?;
+
+            // Validate each entry path before extracting
+            for entry_result in archive.entries()? {
+                let mut entry = entry_result?;
+                let entry_path = entry.path()?;
+
+                // Reject absolute paths
+                if entry_path.is_absolute() {
+                    return Err(anyhow::anyhow!(
+                        "Archive contains absolute path: {}",
+                        entry_path.display()
+                    ));
+                }
+
+                // Reject paths with .. components
+                for component in entry_path.components() {
+                    if matches!(component, std::path::Component::ParentDir) {
+                        return Err(anyhow::anyhow!(
+                            "Archive contains path traversal: {}",
+                            entry_path.display()
+                        ));
+                    }
+                }
+
+                // Verify the resolved path stays within destination
+                let full_path = dest_canonical.join(&entry_path);
+                // Normalize without requiring the path to exist yet
+                let normalized = full_path.components().fold(PathBuf::new(), |mut acc, c| {
+                    match c {
+                        std::path::Component::ParentDir => { acc.pop(); }
+                        other => acc.push(other),
+                    }
+                    acc
+                });
+
+                if !normalized.starts_with(&dest_canonical) {
+                    return Err(anyhow::anyhow!(
+                        "Archive entry escapes destination: {}",
+                        entry_path.display()
+                    ));
+                }
+
+                // Safe to extract this entry
+                entry.unpack_in(&dest_path)?;
+            }
 
             Ok::<_, anyhow::Error>(())
         })

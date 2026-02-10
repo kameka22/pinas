@@ -7,6 +7,7 @@ use axum::{
 };
 use serde::Serialize;
 
+use crate::api::middleware::AdminUser;
 use crate::services::network::{DnsConfig, NetworkService, UpdateHostnameRequest, UpdateInterfaceRequest};
 use crate::AppState;
 
@@ -47,9 +48,10 @@ async fn get_status(State(_state): State<AppState>) -> impl IntoResponse {
     }
 }
 
-/// Update network interface configuration (DHCP/static)
+/// Update network interface configuration (admin only, DHCP/static)
 async fn update_interface(
     State(_state): State<AppState>,
+    _admin: AdminUser,
     Json(payload): Json<UpdateInterfaceRequest>,
 ) -> impl IntoResponse {
     let service = NetworkService::new();
@@ -69,9 +71,10 @@ async fn update_interface(
     }
 }
 
-/// Update DNS configuration
+/// Update DNS configuration (admin only)
 async fn update_dns(
     State(_state): State<AppState>,
+    _admin: AdminUser,
     Json(payload): Json<DnsConfig>,
 ) -> impl IntoResponse {
     let service = NetworkService::new();
@@ -91,9 +94,10 @@ async fn update_dns(
     }
 }
 
-/// Update hostname
+/// Update hostname (admin only)
 async fn update_hostname(
     State(_state): State<AppState>,
+    _admin: AdminUser,
     Json(payload): Json<UpdateHostnameRequest>,
 ) -> impl IntoResponse {
     let service = NetworkService::new();

@@ -11,7 +11,7 @@ license = "GPL-3.0"
 axum = { version = "0.7", features = ["ws", "multipart", "macros"] }
 axum-extra = { version = "0.9", features = ["typed-header"] }
 tower = "0.4"
-tower-http = { version = "0.5", features = ["cors", "fs", "trace", "compression-gzip"] }
+tower-http = { version = "0.5", features = ["cors", "fs", "trace", "compression-gzip", "set-header"] }
 
 # Async runtime
 tokio = { version = "1", features = ["full"] }
@@ -64,6 +64,9 @@ async-trait = "0.1"
 # SHA256 verification
 sha2 = "0.10"
 hex = "0.4"
+
+# Secure random number generation
+getrandom = "0.2"
 
 # Base64
 base64 = "0.21"

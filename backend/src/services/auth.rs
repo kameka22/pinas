@@ -23,6 +23,10 @@ pub struct Claims {
     pub exp: usize,
     /// Issued at (Unix timestamp)
     pub iat: usize,
+    /// Issuer
+    pub iss: String,
+    /// Audience
+    pub aud: String,
 }
 
 /// Authentication errors
@@ -76,6 +80,8 @@ pub fn generate_jwt(user: &User, config: &AppConfig) -> Result<String, AuthError
         is_admin: user.is_admin,
         exp: expiration.timestamp() as usize,
         iat: now.timestamp() as usize,
+        iss: "pinas".to_string(),
+        aud: "pinas".to_string(),
     };
 
     encode(
@@ -88,7 +94,9 @@ pub fn generate_jwt(user: &User, config: &AppConfig) -> Result<String, AuthError
 
 /// Validate a JWT token and return the claims
 pub fn validate_jwt(token: &str, config: &AppConfig) -> Result<Claims, AuthError> {
-    let validation = Validation::default();
+    let mut validation = Validation::default();
+    validation.set_issuer(&["pinas"]);
+    validation.set_audience(&["pinas"]);
 
     decode::<Claims>(
         token,
@@ -131,8 +139,12 @@ mod tests {
             jwt_secret: "test-secret-key".to_string(),
             jwt_expiration_hours: 24,
             files_root: "./data/files".to_string(),
+            homes_root: "./data/homes".to_string(),
+            home_on_delete: "archive".to_string(),
             static_dir: None,
             dev_mode: false,
+            kodi_username: "kodi".to_string(),
+            kodi_password: "test".to_string(),
         };
 
         let user = User::new(

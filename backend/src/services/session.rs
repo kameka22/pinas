@@ -1,8 +1,16 @@
 use chrono::{DateTime, Utc};
+use sha2::{Digest, Sha256};
 use sqlx::SqlitePool;
 use thiserror::Error;
 
 use crate::models::session::Session;
+
+/// Hash a token with SHA-256 for secure storage
+fn hash_token(token: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(token.as_bytes());
+    hex::encode(hasher.finalize())
+}
 
 /// Session service errors
 #[derive(Debug, Error)]
@@ -17,16 +25,17 @@ pub enum SessionError {
     DatabaseError(#[from] sqlx::Error),
 }
 
-/// Create a new session
+/// Create a new session (stores hashed token in DB)
 pub async fn create_session(
     db: &SqlitePool,
     user_id: &str,
     token: &str,
     expires_at: DateTime<Utc>,
 ) -> Result<Session, SessionError> {
+    let token_hash = hash_token(token);
     let session = Session::new(
         user_id.to_string(),
-        token.to_string(),
+        token_hash,
         expires_at.to_rfc3339(),
     );
 
@@ -47,23 +56,25 @@ pub async fn create_session(
     Ok(session)
 }
 
-/// Get a session by token
+/// Get a session by token (looks up by hash)
 pub async fn get_session_by_token(
     db: &SqlitePool,
     token: &str,
 ) -> Result<Option<Session>, SessionError> {
+    let token_hash = hash_token(token);
     let session = sqlx::query_as::<_, Session>("SELECT * FROM sessions WHERE token = ?")
-        .bind(token)
+        .bind(&token_hash)
         .fetch_optional(db)
         .await?;
 
     Ok(session)
 }
 
-/// Delete a session by token
+/// Delete a session by token (looks up by hash)
 pub async fn delete_session(db: &SqlitePool, token: &str) -> Result<(), SessionError> {
+    let token_hash = hash_token(token);
     sqlx::query("DELETE FROM sessions WHERE token = ?")
-        .bind(token)
+        .bind(&token_hash)
         .execute(db)
         .await?;
 
@@ -144,8 +155,11 @@ mod tests {
             .unwrap();
 
         assert_eq!(session.user_id, "user-123");
-        assert_eq!(session.token, "token-abc");
+        // Token is stored as SHA-256 hash, not plaintext
+        assert_ne!(session.token, "token-abc");
+        assert_eq!(session.token, hash_token("token-abc"));
 
+        // Lookup by original token still works (hashed internally)
         let fetched = get_session_by_token(&pool, "token-abc").await.unwrap();
         assert!(fetched.is_some());
     }

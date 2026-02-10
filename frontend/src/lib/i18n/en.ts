@@ -780,6 +780,19 @@ export default {
 		}
 	},
 
+	// Terminal App
+	terminalApp: {
+		welcome: 'PiNAS Terminal v1.0',
+		helpHint: 'Type "help" for available commands.',
+		tabHint: 'Use Tab for path auto-completion.',
+		errors: {
+			authRequired: 'Authentication required. Please log in again.',
+			adminRequired: 'Admin access required to use the terminal.',
+			rateLimit: 'Rate limit exceeded. Please wait before executing more commands.',
+			connectionFailed: 'Connection failed'
+		}
+	},
+
 	// Kodi App
 	kodi: {
 		title: 'Kodi',

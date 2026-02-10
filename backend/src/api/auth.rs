@@ -7,12 +7,39 @@ use axum::{
 };
 use chrono::{Duration, Utc};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::sync::Mutex;
+use std::time::Instant;
 
 use crate::api::middleware::{AuthErrorResponse, AuthUser};
 use crate::services::auth::{extract_bearer_token, generate_jwt, verify_password, AuthError};
 use crate::services::session::{create_session, delete_session};
 use crate::services::user::{change_password as change_user_password, get_user_by_id, get_user_by_username};
 use crate::AppState;
+
+/// Login rate limiting: max 5 attempts per 60 seconds per username
+const LOGIN_RATE_LIMIT_MAX: usize = 5;
+const LOGIN_RATE_LIMIT_WINDOW_SECS: u64 = 60;
+
+static LOGIN_RATE_LIMITER: std::sync::LazyLock<Mutex<HashMap<String, Vec<Instant>>>> =
+    std::sync::LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// Check login rate limit for a username. Returns true if allowed.
+fn check_login_rate_limit(username: &str) -> bool {
+    let mut map = LOGIN_RATE_LIMITER.lock().unwrap();
+    let now = Instant::now();
+    let window = std::time::Duration::from_secs(LOGIN_RATE_LIMIT_WINDOW_SECS);
+
+    let timestamps = map.entry(username.to_lowercase()).or_default();
+    timestamps.retain(|t| now.duration_since(*t) < window);
+
+    if timestamps.len() >= LOGIN_RATE_LIMIT_MAX {
+        return false;
+    }
+
+    timestamps.push(now);
+    true
+}
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -53,6 +80,18 @@ async fn login(
     State(state): State<AppState>,
     Json(payload): Json<LoginRequest>,
 ) -> impl IntoResponse {
+    // Rate limit check (per username)
+    if !check_login_rate_limit(&payload.username) {
+        return (
+            StatusCode::TOO_MANY_REQUESTS,
+            Json(AuthErrorResponse {
+                error: "Too many login attempts. Please try again later.".to_string(),
+                code: "RATE_LIMITED".to_string(),
+            }),
+        )
+            .into_response();
+    }
+
     // Get user by username
     let user = match get_user_by_username(&state.db, &payload.username).await {
         Ok(Some(user)) => user,

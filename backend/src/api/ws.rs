@@ -1,8 +1,9 @@
 use axum::{
     extract::{
         ws::{Message, WebSocket, WebSocketUpgrade},
-        State,
+        Query, State,
     },
+    http::StatusCode,
     response::IntoResponse,
 };
 use futures_util::{SinkExt, StreamExt};
@@ -12,7 +13,14 @@ use sysinfo::System;
 use tokio::sync::broadcast;
 use tokio::time::interval;
 
+use crate::services::auth::validate_jwt;
 use crate::AppState;
+
+/// Query parameters for WebSocket connection
+#[derive(Debug, Deserialize)]
+pub struct WsQuery {
+    token: Option<String>,
+}
 
 #[derive(Debug, Serialize)]
 #[serde(tag = "type", content = "data")]
@@ -66,14 +74,28 @@ pub struct FileTaskEvent {
     pub error_message: Option<String>,
 }
 
-/// WebSocket handler
+/// WebSocket handler (requires valid token in query param)
 pub async fn ws_handler(
     ws: WebSocketUpgrade,
     State(state): State<AppState>,
+    Query(query): Query<WsQuery>,
 ) -> impl IntoResponse {
+    // Validate token
+    let token = match query.token {
+        Some(t) if !t.is_empty() => t,
+        _ => {
+            return StatusCode::UNAUTHORIZED.into_response();
+        }
+    };
+
+    if validate_jwt(&token, &state.config).is_err() {
+        return StatusCode::UNAUTHORIZED.into_response();
+    }
+
     let task_rx = state.task_tx.subscribe();
     let file_task_rx = state.file_task_tx.subscribe();
     ws.on_upgrade(move |socket| handle_socket(socket, task_rx, file_task_rx))
+        .into_response()
 }
 
 /// Handle individual WebSocket connection

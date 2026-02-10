@@ -1,9 +1,12 @@
 use axum::{extract::State, http::StatusCode, response::IntoResponse, routing::post, Json, Router};
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
-use std::time::Duration;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
 use tokio::process::Command;
 
+use crate::api::middleware::AdminUser;
 use crate::AppState;
 
 /// Virtual root shown to frontend (always /storage)
@@ -14,6 +17,14 @@ const PROD_ROOT: &str = "/storage";
 
 /// Real root in dev mode (relative to cwd)
 const DEV_ROOT: &str = "data";
+
+/// Rate limiting: max commands per window
+const RATE_LIMIT_MAX: usize = 30;
+const RATE_LIMIT_WINDOW_SECS: u64 = 60;
+
+/// Rate limiting for completion (lighter)
+const COMPLETE_RATE_LIMIT_MAX: usize = 60;
+const COMPLETE_RATE_LIMIT_WINDOW_SECS: u64 = 60;
 
 /// Request body for executing a command
 #[derive(Deserialize)]
@@ -36,41 +47,161 @@ pub struct ExecResponse {
     cwd: String,
 }
 
+/// Request body for tab completion
+#[derive(Deserialize)]
+pub struct CompleteRequest {
+    partial: String,
+    #[serde(default = "default_cwd")]
+    cwd: String,
+}
+
+/// A single completion match
+#[derive(Serialize)]
+pub struct CompleteMatch {
+    name: String,
+    is_dir: bool,
+}
+
+/// Response from tab completion
+#[derive(Serialize)]
+pub struct CompleteResponse {
+    matches: Vec<CompleteMatch>,
+    common_prefix: String,
+}
+
 /// Error response
 #[derive(Serialize)]
 struct ErrorResponse {
     error: String,
 }
 
+/// Rate limiter state (per user)
+static RATE_LIMITER: std::sync::LazyLock<Mutex<HashMap<String, Vec<Instant>>>> =
+    std::sync::LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// Rate limiter for completion (separate, lighter)
+static COMPLETE_RATE_LIMITER: std::sync::LazyLock<Mutex<HashMap<String, Vec<Instant>>>> =
+    std::sync::LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// Check rate limit for a user. Returns true if allowed.
+fn check_rate_limit(user_id: &str) -> bool {
+    let mut map = RATE_LIMITER.lock().unwrap();
+    let now = Instant::now();
+    let window = Duration::from_secs(RATE_LIMIT_WINDOW_SECS);
+
+    let timestamps = map.entry(user_id.to_string()).or_default();
+
+    // Remove expired entries
+    timestamps.retain(|t| now.duration_since(*t) < window);
+
+    if timestamps.len() >= RATE_LIMIT_MAX {
+        return false;
+    }
+
+    timestamps.push(now);
+    true
+}
+
+/// Check rate limit for completion. Returns true if allowed.
+fn check_complete_rate_limit(user_id: &str) -> bool {
+    let mut map = COMPLETE_RATE_LIMITER.lock().unwrap();
+    let now = Instant::now();
+    let window = Duration::from_secs(COMPLETE_RATE_LIMIT_WINDOW_SECS);
+
+    let timestamps = map.entry(user_id.to_string()).or_default();
+    timestamps.retain(|t| now.duration_since(*t) < window);
+
+    if timestamps.len() >= COMPLETE_RATE_LIMIT_MAX {
+        return false;
+    }
+
+    timestamps.push(now);
+    true
+}
+
 /// Dangerous commands/patterns that should be blocked
 const BLOCKED_PATTERNS: &[&str] = &[
+    // Filesystem destruction
     "rm -rf /",
     "rm -rf /*",
     "rm -fr /",
     "rm -fr /*",
+    "rm -rf --no-preserve-root",
     "mkfs",
     "dd if=",
+    "dd of=/dev/",
+    "> /dev/sd",
+    "> /dev/nvme",
+    "> /dev/mmcblk",
+    "> /dev/vd",
+    "mv /* ",
+    "find / -delete",
+    "find / -exec rm",
+    // Fork bomb and system overload
     ":(){:|:&};:",
+    ":(){ :|:& };:",
+    // System control (managed via PiNAS UI)
     "shutdown",
     "reboot",
     "poweroff",
     "halt",
     "init 0",
     "init 6",
-    "> /dev/sda",
+    "systemctl stop pinas",
+    "systemctl disable pinas",
+    // Privilege and permission abuse
     "chmod -R 777 /",
+    "chmod u+s",
+    "chmod g+s",
     "chown -R",
-    "mv /* ",
+    "usermod",
+    "useradd",
+    "userdel",
+    "groupmod",
+    "groupadd",
+    "groupdel",
+    "visudo",
+    "passwd",
+    // Remote code execution / exfiltration
     "wget | sh",
     "curl | sh",
     "wget | bash",
     "curl | bash",
+    "| sh",
+    "| bash",
+    "| zsh",
+    // Reverse shells
+    "nc -e",
+    "nc -c",
+    "ncat -e",
+    "ncat -c",
+    "/dev/tcp/",
+    "/dev/udp/",
+    // Persistence
+    "crontab",
+    "at ",
+    "at\t",
+    // Firewall/network tampering
+    "iptables",
+    "ip6tables",
+    "nftables",
+    "ufw ",
+    // Kernel/module manipulation
+    "insmod",
+    "rmmod",
+    "modprobe",
+    // Boot/mount manipulation
+    "mount -o remount",
+    "umount /flash",
+    "umount /storage",
 ];
 
 /// Check if a command contains blocked patterns
 fn is_command_blocked(command: &str) -> bool {
     let cmd_lower = command.to_lowercase();
-    BLOCKED_PATTERNS.iter().any(|pattern| cmd_lower.contains(pattern))
+    BLOCKED_PATTERNS
+        .iter()
+        .any(|pattern| cmd_lower.contains(&pattern.to_lowercase()))
 }
 
 /// Get the real root directory based on dev_mode
@@ -122,14 +253,42 @@ fn is_path_within_root(path: &PathBuf, root: &PathBuf) -> bool {
     }
 }
 
-/// Execute a terminal command
+/// Execute a terminal command (admin only)
 pub async fn execute(
     State(state): State<AppState>,
+    admin: AdminUser,
     Json(req): Json<ExecRequest>,
 ) -> impl IntoResponse {
     let command = req.command.trim();
     let dev_mode = state.config.dev_mode;
     let real_root = get_real_root(dev_mode);
+
+    // Rate limiting
+    if !check_rate_limit(&admin.id) {
+        tracing::warn!(
+            user = %admin.username,
+            "Terminal rate limit exceeded"
+        );
+        return (
+            StatusCode::TOO_MANY_REQUESTS,
+            Json(ExecResponse {
+                output: "Rate limit exceeded. Please wait before executing more commands."
+                    .to_string(),
+                exit_code: 1,
+                dev_mode,
+                cwd: req.cwd.clone(),
+            }),
+        );
+    }
+
+    // Audit log
+    tracing::info!(
+        user = %admin.username,
+        user_id = %admin.id,
+        command = %command,
+        cwd = %req.cwd,
+        "Terminal command executed"
+    );
 
     // Ensure real root exists
     if !real_root.exists() {
@@ -163,10 +322,15 @@ pub async fn execute(
 
     // Check for blocked commands
     if is_command_blocked(command) {
+        tracing::warn!(
+            user = %admin.username,
+            command = %command,
+            "Blocked dangerous terminal command"
+        );
         return (
             StatusCode::FORBIDDEN,
             Json(ExecResponse {
-                output: "❌ Commande non autorisée pour des raisons de sécurité".to_string(),
+                output: "Command blocked for security reasons".to_string(),
                 exit_code: 1,
                 dev_mode,
                 cwd: virtual_cwd,
@@ -190,15 +354,25 @@ pub async fn execute(
 
     // Execute the command with timeout
     match execute_command(command, &real_cwd).await {
-        Ok((output, exit_code)) => (
-            StatusCode::OK,
-            Json(ExecResponse {
-                output,
-                exit_code,
-                dev_mode,
-                cwd: virtual_cwd,
-            }),
-        ),
+        Ok((output, exit_code)) => {
+            if exit_code != 0 {
+                tracing::debug!(
+                    user = %admin.username,
+                    command = %command,
+                    exit_code = exit_code,
+                    "Terminal command failed"
+                );
+            }
+            (
+                StatusCode::OK,
+                Json(ExecResponse {
+                    output,
+                    exit_code,
+                    dev_mode,
+                    cwd: virtual_cwd,
+                }),
+            )
+        }
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(ExecResponse {
@@ -237,7 +411,11 @@ fn handle_cd_command(command: &str, current_virtual_cwd: &str, real_root: &PathB
         }
     } else if target.starts_with("~/") {
         // Home-relative path
-        format!("{}/{}", VIRTUAL_ROOT, target.strip_prefix("~/").unwrap())
+        format!(
+            "{}/{}",
+            VIRTUAL_ROOT,
+            target.strip_prefix("~/").unwrap()
+        )
     } else {
         // Relative path
         if current_virtual_cwd == VIRTUAL_ROOT {
@@ -300,7 +478,152 @@ async fn execute_command(command: &str, cwd: &PathBuf) -> Result<(String, i32), 
     }
 }
 
+/// Tab-complete file/directory names (admin only)
+pub async fn complete(
+    State(state): State<AppState>,
+    admin: AdminUser,
+    Json(req): Json<CompleteRequest>,
+) -> impl IntoResponse {
+    let dev_mode = state.config.dev_mode;
+    let real_root = get_real_root(dev_mode);
+
+    // Rate limiting
+    if !check_complete_rate_limit(&admin.id) {
+        return (
+            StatusCode::TOO_MANY_REQUESTS,
+            Json(CompleteResponse {
+                matches: vec![],
+                common_prefix: String::new(),
+            }),
+        );
+    }
+
+    // Ensure real root exists
+    if !real_root.exists() {
+        let _ = std::fs::create_dir_all(&real_root);
+    }
+
+    let partial = &req.partial;
+
+    // Determine the directory to list and the prefix to filter by
+    let (search_dir_virtual, prefix) = if partial.is_empty() {
+        // Empty partial: list current directory
+        (req.cwd.clone(), String::new())
+    } else if partial.starts_with('/') {
+        // Absolute path
+        let p = Path::new(partial);
+        if partial.ends_with('/') {
+            // e.g. "/storage/foo/" -> list that dir, no prefix filter
+            (partial.to_string(), String::new())
+        } else if let Some(parent) = p.parent() {
+            let file_part = p.file_name().map(|f| f.to_string_lossy().to_string()).unwrap_or_default();
+            (parent.to_string_lossy().to_string(), file_part)
+        } else {
+            (partial.to_string(), String::new())
+        }
+    } else {
+        // Relative path
+        let p = Path::new(partial);
+        if partial.ends_with('/') {
+            // e.g. "shares/" -> list cwd/shares/
+            let full = if req.cwd == VIRTUAL_ROOT {
+                format!("{}/{}", VIRTUAL_ROOT, partial.trim_end_matches('/'))
+            } else {
+                format!("{}/{}", req.cwd, partial.trim_end_matches('/'))
+            };
+            (full, String::new())
+        } else if partial.contains('/') {
+            // e.g. "shares/med" -> dir=cwd/shares, prefix=med
+            if let Some(parent) = p.parent() {
+                let file_part = p.file_name().map(|f| f.to_string_lossy().to_string()).unwrap_or_default();
+                let full_parent = if req.cwd == VIRTUAL_ROOT {
+                    format!("{}/{}", VIRTUAL_ROOT, parent.to_string_lossy())
+                } else {
+                    format!("{}/{}", req.cwd, parent.to_string_lossy())
+                };
+                (full_parent, file_part)
+            } else {
+                (req.cwd.clone(), partial.to_string())
+            }
+        } else {
+            // Simple name, e.g. "sha" -> list cwd, prefix=sha
+            (req.cwd.clone(), partial.to_string())
+        }
+    };
+
+    // Convert virtual directory to real path
+    let real_dir = virtual_to_real(&search_dir_virtual, &real_root);
+
+    // Verify the directory exists and is within root
+    if !real_dir.exists() || !real_dir.is_dir() || !is_path_within_root(&real_dir, &real_root) {
+        return (
+            StatusCode::OK,
+            Json(CompleteResponse {
+                matches: vec![],
+                common_prefix: String::new(),
+            }),
+        );
+    }
+
+    // Read directory entries and filter by prefix
+    let mut matches: Vec<CompleteMatch> = Vec::new();
+
+    if let Ok(entries) = std::fs::read_dir(&real_dir) {
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+
+            // Skip hidden files unless prefix starts with '.'
+            if name.starts_with('.') && !prefix.starts_with('.') {
+                continue;
+            }
+
+            if prefix.is_empty() || name.starts_with(&prefix) {
+                let is_dir = entry.file_type().map(|ft| ft.is_dir()).unwrap_or(false);
+                matches.push(CompleteMatch { name, is_dir });
+            }
+        }
+    }
+
+    // Sort matches alphabetically (dirs first, then files)
+    matches.sort_by(|a, b| {
+        match (a.is_dir, b.is_dir) {
+            (true, false) => std::cmp::Ordering::Less,
+            (false, true) => std::cmp::Ordering::Greater,
+            _ => a.name.cmp(&b.name),
+        }
+    });
+
+    // Calculate longest common prefix among all match names
+    let common_prefix = if matches.is_empty() {
+        String::new()
+    } else if matches.len() == 1 {
+        matches[0].name.clone()
+    } else {
+        let first = &matches[0].name;
+        let mut common_len = first.len();
+        for m in &matches[1..] {
+            common_len = first
+                .chars()
+                .zip(m.name.chars())
+                .take(common_len)
+                .take_while(|(a, b)| a == b)
+                .count();
+        }
+        first[..common_len].to_string()
+    };
+
+    (
+        StatusCode::OK,
+        Json(CompleteResponse {
+            matches,
+            common_prefix,
+        }),
+    )
+}
+
 /// Create the terminal router
 pub fn router() -> Router<AppState> {
-    Router::new().route("/exec", post(execute))
+    Router::new()
+        .route("/exec", post(execute))
+        .route("/complete", post(complete))
 }

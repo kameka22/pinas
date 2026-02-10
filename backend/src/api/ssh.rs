@@ -7,6 +7,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 
+use crate::api::middleware::AdminUser;
 use crate::services::ssh::SshService;
 use crate::AppState;
 
@@ -41,8 +42,8 @@ async fn get_status(State(_state): State<AppState>) -> impl IntoResponse {
     }
 }
 
-/// Enable SSH
-async fn enable_ssh(State(_state): State<AppState>) -> impl IntoResponse {
+/// Enable SSH (admin only)
+async fn enable_ssh(State(_state): State<AppState>, _admin: AdminUser) -> impl IntoResponse {
     let service = SshService::new();
 
     match service.enable().await {
@@ -54,8 +55,8 @@ async fn enable_ssh(State(_state): State<AppState>) -> impl IntoResponse {
     }
 }
 
-/// Disable SSH
-async fn disable_ssh(State(_state): State<AppState>) -> impl IntoResponse {
+/// Disable SSH (admin only)
+async fn disable_ssh(State(_state): State<AppState>, _admin: AdminUser) -> impl IntoResponse {
     let service = SshService::new();
 
     match service.disable().await {
@@ -72,9 +73,10 @@ pub struct ChangePasswordRequest {
     pub password: String,
 }
 
-/// Change SSH password
+/// Change SSH password (admin only)
 async fn change_password(
     State(_state): State<AppState>,
+    _admin: AdminUser,
     Json(payload): Json<ChangePasswordRequest>,
 ) -> impl IntoResponse {
     let service = SshService::new();

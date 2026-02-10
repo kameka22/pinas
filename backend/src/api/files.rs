@@ -1,5 +1,5 @@
 use axum::{
-    extract::{Multipart, Query, State},
+    extract::{DefaultBodyLimit, Multipart, Query, State},
     http::StatusCode,
     response::IntoResponse,
     routing::{delete, get, patch, post},
@@ -90,6 +90,9 @@ pub struct ErrorResponse {
     pub error: String,
 }
 
+/// Maximum upload size: 512 MB
+const MAX_UPLOAD_SIZE: usize = 512 * 1024 * 1024;
+
 /// Create the files router
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -100,7 +103,7 @@ pub fn router() -> Router<AppState> {
         .route("/rename", patch(rename_file))
         .route("/copy", post(copy_files))
         .route("/move", post(move_files))
-        .route("/upload", post(upload_file))
+        .route("/upload", post(upload_file).layer(DefaultBodyLimit::max(MAX_UPLOAD_SIZE)))
 }
 
 /// Validate that a path stays within the base directory (prevent path traversal)

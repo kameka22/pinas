@@ -7,6 +7,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 
+use crate::api::middleware::AdminUser;
 use crate::services::service::{ServiceManager, ServiceStatus, LogEntry};
 use crate::AppState;
 
@@ -51,9 +52,10 @@ async fn get_service_status(
     }
 }
 
-/// Start a service
+/// Start a service (admin only)
 async fn start_service(
     State(_state): State<AppState>,
+    _admin: AdminUser,
     Path(name): Path<String>,
 ) -> impl IntoResponse {
     let manager = ServiceManager::new();
@@ -70,9 +72,10 @@ async fn start_service(
     }
 }
 
-/// Stop a service
+/// Stop a service (admin only)
 async fn stop_service(
     State(_state): State<AppState>,
+    _admin: AdminUser,
     Path(name): Path<String>,
 ) -> impl IntoResponse {
     let manager = ServiceManager::new();
@@ -89,9 +92,10 @@ async fn stop_service(
     }
 }
 
-/// Restart a service
+/// Restart a service (admin only)
 async fn restart_service(
     State(_state): State<AppState>,
+    _admin: AdminUser,
     Path(name): Path<String>,
 ) -> impl IntoResponse {
     let manager = ServiceManager::new();
@@ -108,9 +112,10 @@ async fn restart_service(
     }
 }
 
-/// Enable a service (auto-start on boot)
+/// Enable a service (admin only, auto-start on boot)
 async fn enable_service(
     State(_state): State<AppState>,
+    _admin: AdminUser,
     Path(name): Path<String>,
 ) -> impl IntoResponse {
     let manager = ServiceManager::new();
@@ -127,9 +132,10 @@ async fn enable_service(
     }
 }
 
-/// Disable a service
+/// Disable a service (admin only)
 async fn disable_service(
     State(_state): State<AppState>,
+    _admin: AdminUser,
     Path(name): Path<String>,
 ) -> impl IntoResponse {
     let manager = ServiceManager::new();

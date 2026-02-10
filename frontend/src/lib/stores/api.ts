@@ -81,7 +81,9 @@ class ApiClient {
 			}
 
 			const error = await response.json().catch(() => ({ message: 'Request failed' }));
-			throw new Error(error.message || `HTTP ${response.status}`);
+			const apiError = new Error(error.message || error.error || `HTTP ${response.status}`) as any;
+			apiError.status = response.status;
+			throw apiError;
 		}
 
 		// Handle empty responses (204 No Content or empty body)

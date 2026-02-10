@@ -10,7 +10,9 @@ use axum::{
 };
 use serde::Serialize;
 use tokio::sync::{broadcast, Mutex};
-use tower_http::cors::{Any, CorsLayer};
+use axum::http::{header, Method};
+use tower_http::cors::CorsLayer;
+use tower_http::set_header::SetResponseHeaderLayer;
 use tower_http::services::{ServeDir, ServeFile};
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
@@ -94,11 +96,17 @@ async fn main() -> anyhow::Result<()> {
 
 /// Create the main router with all routes
 fn create_router(state: AppState) -> Router {
-    // CORS configuration
+    // CORS configuration — restrict to same-origin and local dev
     let cors = CorsLayer::new()
-        .allow_origin(Any)
-        .allow_methods(Any)
-        .allow_headers(Any);
+        .allow_origin([
+            "http://localhost:5173".parse().unwrap(),  // SvelteKit dev server
+            "http://localhost:3000".parse().unwrap(),  // Backend self-serve
+            "http://127.0.0.1:5173".parse().unwrap(),
+            "http://127.0.0.1:3000".parse().unwrap(),
+        ])
+        .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE, Method::PATCH])
+        .allow_headers([header::AUTHORIZATION, header::CONTENT_TYPE])
+        .allow_credentials(true);
 
     let static_dir = state.config.static_dir.clone();
 
@@ -141,7 +149,24 @@ fn create_router(state: AppState) -> Router {
     }
 
     // Apply middleware
-    app.layer(TraceLayer::new_for_http()).layer(cors)
+    app.layer(TraceLayer::new_for_http())
+        .layer(cors)
+        .layer(SetResponseHeaderLayer::overriding(
+            header::HeaderName::from_static("x-frame-options"),
+            header::HeaderValue::from_static("DENY"),
+        ))
+        .layer(SetResponseHeaderLayer::overriding(
+            header::HeaderName::from_static("x-content-type-options"),
+            header::HeaderValue::from_static("nosniff"),
+        ))
+        .layer(SetResponseHeaderLayer::overriding(
+            header::HeaderName::from_static("referrer-policy"),
+            header::HeaderValue::from_static("strict-origin-when-cross-origin"),
+        ))
+        .layer(SetResponseHeaderLayer::overriding(
+            header::HeaderName::from_static("x-xss-protection"),
+            header::HeaderValue::from_static("1; mode=block"),
+        ))
 }
 
 /// Health check response

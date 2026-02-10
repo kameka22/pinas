@@ -222,7 +222,11 @@ async fn resolve_package_manifest(package_id: &str) -> anyhow::Result<(PackageMa
     let catalog_url = std::env::var("PINAS_CATALOG_URL")
         .unwrap_or_else(|_| "https://raw.githubusercontent.com/kameka22/pinas-app-catalog/master/catalog.json".to_string());
 
-    if let Ok(response) = reqwest::get(&catalog_url).await {
+    // Validate catalog URL
+    if let Err(e) = validate_fetch_url(&catalog_url) {
+        tracing::warn!("Catalog URL validation failed: {}", e);
+        // Fall through to built-in manifests
+    } else if let Ok(response) = reqwest::get(&catalog_url).await {
         if response.status().is_success() {
             if let Ok(catalog) = response.json::<serde_json::Value>().await {
                 if let Some(apps) = catalog.get("apps").and_then(|a| a.as_array()) {
@@ -487,9 +491,57 @@ async fn get_task(
     }
 }
 
-/// Fetch manifest from URL
+/// Validate that a URL is safe to fetch (HTTPS only, no private IPs)
+fn validate_fetch_url(url: &str) -> anyhow::Result<()> {
+    let parsed = reqwest::Url::parse(url)
+        .map_err(|e| anyhow::anyhow!("Invalid URL: {}", e))?;
+
+    // Only allow HTTPS (except localhost in dev for testing)
+    match parsed.scheme() {
+        "https" => {}
+        "http" => {
+            let host = parsed.host_str().unwrap_or("");
+            if host != "localhost" && host != "127.0.0.1" {
+                anyhow::bail!("Only HTTPS URLs are allowed for remote resources");
+            }
+        }
+        other => anyhow::bail!("Unsupported URL scheme: {}", other),
+    }
+
+    // Block private/internal IP ranges to prevent SSRF
+    if let Some(host) = parsed.host_str() {
+        let blocked_prefixes = [
+            "10.", "172.16.", "172.17.", "172.18.", "172.19.",
+            "172.20.", "172.21.", "172.22.", "172.23.", "172.24.",
+            "172.25.", "172.26.", "172.27.", "172.28.", "172.29.",
+            "172.30.", "172.31.", "192.168.", "169.254.", "0.",
+        ];
+        let blocked_exact = ["metadata.google.internal", "[::1]"];
+
+        for prefix in &blocked_prefixes {
+            if host.starts_with(prefix) {
+                anyhow::bail!("URLs targeting private networks are not allowed");
+            }
+        }
+        for exact in &blocked_exact {
+            if host == *exact {
+                anyhow::bail!("URLs targeting private networks are not allowed");
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Fetch manifest from URL (HTTPS only)
 async fn fetch_manifest(url: &str) -> anyhow::Result<PackageManifest> {
-    let response = reqwest::get(url).await?;
+    validate_fetch_url(url)?;
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()?;
+
+    let response = client.get(url).send().await?;
     if !response.status().is_success() {
         anyhow::bail!("HTTP {}", response.status());
     }
