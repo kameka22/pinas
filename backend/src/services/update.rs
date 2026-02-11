@@ -367,8 +367,8 @@ impl UpdateService {
         let archive_bytes = download_response.bytes().await?;
         self.broadcast_progress(task_id, "running", 40, 100, Some("Download complete"), None);
 
-        // 3. Extract to /tmp/pinas-update/
-        let extract_dir = "/tmp/pinas-update";
+        // 3. Extract to storage (NOT /tmp/ — PrivateTmp=true would wipe it on service stop)
+        let extract_dir = &format!("{}/data/update-staging", self.data_dir);
         if fs::metadata(extract_dir).await.is_ok() {
             fs::remove_dir_all(extract_dir).await?;
         }
@@ -419,8 +419,8 @@ impl UpdateService {
         // 5. Backup DB
         self.broadcast_progress(task_id, "running", 60, 100, Some("Backing up database..."), None);
 
-        let db_path = format!("{}/pinas.db", self.data_dir);
-        let backup_path = format!("{}/pinas.db.bak-{}", self.data_dir, Self::current_version());
+        let db_path = format!("{}/data/pinas.db", self.data_dir);
+        let backup_path = format!("{}/data/pinas.db.bak-{}", self.data_dir, Self::current_version());
         if fs::metadata(&db_path).await.is_ok() {
             fs::copy(&db_path, &backup_path).await?;
         }
@@ -572,15 +572,33 @@ impl UpdateService {
         script_lines.push(format!("mkdir -p '{}/data'", self.data_dir));
         script_lines.push(format!("cat > '{}' << 'ENDFLAG'\n{}\nENDFLAG", flag_path, flag_json));
 
+        // Ensure systemd uses the updated binary (override the read-only service file)
+        script_lines.push("log \"Creating systemd service override...\"".to_string());
+        script_lines.push("mkdir -p /storage/.config/system.d/pinas.service.d".to_string());
+        script_lines.push(format!(
+            "cat > /storage/.config/system.d/pinas.service.d/exec.conf << 'ENDCONF'\n\
+             [Service]\n\
+             ExecStart=\n\
+             ExecStart={}/bin/pinas\n\
+             KillMode=process\n\
+             ENDCONF",
+            self.data_dir
+        ));
+        script_lines.push("systemctl daemon-reload".to_string());
+
         // Restart pinas and cleanup
         script_lines.push("log \"Starting pinas service...\"".to_string());
         script_lines.push("systemctl start pinas".to_string());
         script_lines.push("log \"Update applied successfully, cleaning up\"".to_string());
-        script_lines.push(format!("rm -rf '{}' /tmp/pinas-apply-update.sh", extract_dir));
+        // Safe cleanup: only remove the exact staging dir (guard against empty path)
+        script_lines.push(format!(
+            "[ -d '{dir}' ] && [ '{dir}' != '/' ] && rm -rf '{dir}'",
+            dir = extract_dir
+        ));
         script_lines.push("log \"Done\"".to_string());
 
         let script_content = script_lines.join("\n");
-        let script_path = "/tmp/pinas-apply-update.sh";
+        let script_path = &format!("{}/data/pinas-apply-update.sh", self.data_dir);
         fs::write(script_path, &script_content).await?;
 
         // Make executable
