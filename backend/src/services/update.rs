@@ -463,13 +463,19 @@ impl UpdateService {
         // 7. Write the apply script and trigger self-restart
         self.broadcast_progress(task_id, "running", 75, 100, Some("Applying update..."), None);
 
+        let log_file = format!("{}/data/update.log", self.data_dir);
         let mut script_lines = vec![
             "#!/bin/bash".to_string(),
             "set -e".to_string(),
             format!("EXTRACT_DIR={}", extract_dir),
             format!("DATA_DIR={}", self.data_dir),
+            format!("LOG={}", log_file),
+            "exec > \"$LOG\" 2>&1".to_string(),
+            "echo \"[$(date)] Apply script started\"".to_string(),
             "sleep 1".to_string(),
+            "echo \"[$(date)] Stopping pinas service...\"".to_string(),
             "systemctl stop pinas || true".to_string(),
+            "echo \"[$(date)] Service stopped, applying files...\"".to_string(),
         ];
 
         // Copy backend binary
@@ -522,7 +528,9 @@ impl UpdateService {
         script_lines.push(format!("cat > '{}' << 'ENDFLAG'\n{}\nENDFLAG", flag_path, flag_json));
 
         // Restart pinas and cleanup
+        script_lines.push("echo \"[$(date)] Starting pinas service...\"".to_string());
         script_lines.push("systemctl start pinas".to_string());
+        script_lines.push("echo \"[$(date)] Update applied successfully, cleaning up\"".to_string());
         script_lines.push(format!("rm -rf '{}' /tmp/pinas-apply-update.sh", extract_dir));
 
         let script_content = script_lines.join("\n");
@@ -549,8 +557,13 @@ impl UpdateService {
 
         self.broadcast_progress(task_id, "running", 90, 100, Some("Restarting service..."), None);
 
-        // Launch the apply script in background (nohup)
-        tokio::process::Command::new("nohup")
+        // Launch the apply script in its own systemd scope.
+        // IMPORTANT: nohup is NOT enough — when systemd stops the pinas service,
+        // it kills ALL processes in the cgroup (including nohup children).
+        // systemd-run creates a separate transient scope so the script survives.
+        tokio::process::Command::new("systemd-run")
+            .arg("--scope")
+            .arg("--unit=pinas-apply-update")
             .arg("bash")
             .arg(script_path)
             .stdout(std::process::Stdio::null())
