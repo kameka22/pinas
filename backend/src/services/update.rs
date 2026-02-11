@@ -460,58 +460,103 @@ impl UpdateService {
                 .await?;
         }
 
-        // 7. Write the apply script and trigger self-restart
+        // 7. Validate extracted files BEFORE writing apply script
+        self.broadcast_progress(task_id, "running", 70, 100, Some("Validating files..."), None);
+
+        if manifest.contents.backend {
+            let bin_path = format!("{}/pinas", extract_dir);
+            if fs::metadata(&bin_path).await.is_err() {
+                return Err(anyhow!("Backend binary missing from update archive"));
+            }
+            tracing::info!("Update: backend binary validated");
+        }
+        if manifest.contents.frontend {
+            let index_path = format!("{}/www/index.html", extract_dir);
+            if fs::metadata(&index_path).await.is_err() {
+                return Err(anyhow!("Frontend index.html missing from update archive"));
+            }
+            tracing::info!("Update: frontend files validated");
+        }
+
+        // 8. Write the apply script and trigger self-restart
         self.broadcast_progress(task_id, "running", 75, 100, Some("Applying update..."), None);
 
         let log_file = format!("{}/data/update.log", self.data_dir);
         let mut script_lines = vec![
             "#!/bin/bash".to_string(),
-            "set -e".to_string(),
-            format!("EXTRACT_DIR={}", extract_dir),
-            format!("DATA_DIR={}", self.data_dir),
-            format!("LOG={}", log_file),
+            format!("LOG=\"{}\"", log_file),
             "exec > \"$LOG\" 2>&1".to_string(),
-            "echo \"[$(date)] Apply script started\"".to_string(),
-            "sleep 1".to_string(),
-            "echo \"[$(date)] Stopping pinas service...\"".to_string(),
-            "systemctl stop pinas || true".to_string(),
-            "echo \"[$(date)] Service stopped, applying files...\"".to_string(),
+            "set -e".to_string(),
+            format!("EXTRACT_DIR=\"{}\"", extract_dir),
+            format!("DATA_DIR=\"{}\"", self.data_dir),
+            "".to_string(),
+            "log() { echo \"[$(date '+%Y-%m-%d %H:%M:%S')] $1\"; }".to_string(),
+            "".to_string(),
+            "log \"Apply script started\"".to_string(),
         ];
 
-        // Copy backend binary
+        // Validate critical files exist BEFORE stopping the service
+        if manifest.contents.backend {
+            let bin_src = format!("{}/pinas", extract_dir);
+            script_lines.push(format!(
+                "[ -f '{}' ] || {{ log \"ERROR: Backend binary not found\"; exit 1; }}",
+                bin_src
+            ));
+        }
+        if manifest.contents.frontend {
+            let www_src = format!("{}/www/index.html", extract_dir);
+            script_lines.push(format!(
+                "[ -f '{}' ] || {{ log \"ERROR: Frontend index.html not found\"; exit 1; }}",
+                www_src
+            ));
+        }
+        script_lines.push("log \"Files validated, stopping service...\"".to_string());
+
+        // Stop the service (|| true because the service might already be stopping)
+        script_lines.push("sleep 1".to_string());
+        script_lines.push("systemctl stop pinas || true".to_string());
+        script_lines.push("log \"Service stopped, applying files...\"".to_string());
+
+        // Copy backend binary (CRITICAL — no || true)
         if manifest.contents.backend {
             let bin_src = format!("{}/pinas", extract_dir);
             let bin_dest = format!("{}/bin/pinas", self.data_dir);
-            script_lines.push(format!("cp '{}' '{}' && chmod 755 '{}'", bin_src, bin_dest, bin_dest));
+            script_lines.push(format!("log \"Copying backend binary...\""));
+            script_lines.push(format!("cp '{}' '{}'", bin_src, bin_dest));
+            script_lines.push(format!("chmod 755 '{}'", bin_dest));
+            script_lines.push("log \"Backend binary installed\"".to_string());
         }
 
-        // Copy frontend
+        // Copy frontend (CRITICAL — no || true)
         if manifest.contents.frontend {
             let www_src = format!("{}/www/.", extract_dir);
             let www_dest = format!("{}/www/", self.data_dir);
+            script_lines.push("log \"Copying frontend files...\"".to_string());
             script_lines.push(format!("cp -r '{}' '{}'", www_src, www_dest));
+            script_lines.push("log \"Frontend files installed\"".to_string());
         }
 
-        // Copy migrations
+        // Copy migrations (optional — || true)
         if manifest.contents.migrations {
             let mig_src = format!("{}/migrations/.", extract_dir);
-            // Migrations are embedded in the binary at compile time, but for
-            // hot updates we may need to copy new migration files
             let mig_dest = format!("{}/migrations/", self.data_dir);
+            script_lines.push("log \"Copying migrations...\"".to_string());
             script_lines.push(format!("mkdir -p '{}' && cp -r '{}' '{}' 2>/dev/null || true", mig_dest, mig_src, mig_dest));
         }
 
-        // Copy scripts
+        // Copy scripts (optional — || true)
         if manifest.contents.scripts {
             let scripts_src = format!("{}/scripts/.", extract_dir);
             let scripts_dest = format!("{}/bin/", self.data_dir);
+            script_lines.push("log \"Copying scripts...\"".to_string());
             script_lines.push(format!("cp -r '{}' '{}' 2>/dev/null || true", scripts_src, scripts_dest));
             script_lines.push(format!("chmod +x {}/bin/*.sh 2>/dev/null || true", self.data_dir));
         }
 
-        // Copy services
+        // Copy services (optional — || true)
         if manifest.contents.services {
             let svc_src = format!("{}/services/.", extract_dir);
+            script_lines.push("log \"Copying service files...\"".to_string());
             script_lines.push(format!("cp -r '{}' '/storage/.config/system.d/' 2>/dev/null || true", svc_src));
             script_lines.push("systemctl daemon-reload".to_string());
         }
@@ -528,10 +573,11 @@ impl UpdateService {
         script_lines.push(format!("cat > '{}' << 'ENDFLAG'\n{}\nENDFLAG", flag_path, flag_json));
 
         // Restart pinas and cleanup
-        script_lines.push("echo \"[$(date)] Starting pinas service...\"".to_string());
+        script_lines.push("log \"Starting pinas service...\"".to_string());
         script_lines.push("systemctl start pinas".to_string());
-        script_lines.push("echo \"[$(date)] Update applied successfully, cleaning up\"".to_string());
+        script_lines.push("log \"Update applied successfully, cleaning up\"".to_string());
         script_lines.push(format!("rm -rf '{}' /tmp/pinas-apply-update.sh", extract_dir));
+        script_lines.push("log \"Done\"".to_string());
 
         let script_content = script_lines.join("\n");
         let script_path = "/tmp/pinas-apply-update.sh";
@@ -546,7 +592,6 @@ impl UpdateService {
         }
 
         if !manifest.contents.system {
-            // For non-system updates: complete the record now
             let now = chrono::Utc::now().to_rfc3339();
             sqlx::query("UPDATE system_updates SET status = 'applying', completed_at = ? WHERE id = ?")
                 .bind(&now)
@@ -557,14 +602,10 @@ impl UpdateService {
 
         self.broadcast_progress(task_id, "running", 90, 100, Some("Restarting service..."), None);
 
-        // Launch the apply script in its own systemd scope.
-        // IMPORTANT: nohup is NOT enough — when systemd stops the pinas service,
-        // it kills ALL processes in the cgroup (including nohup children).
-        // systemd-run creates a separate transient scope so the script survives.
-        tokio::process::Command::new("systemd-run")
-            .arg("--scope")
-            .arg("--unit=pinas-apply-update")
-            .arg("bash")
+        // Launch the apply script as a simple child process.
+        // KillMode=process in pinas.service ensures only the MainPID (pinas binary)
+        // is killed on stop — child processes like this script survive the cgroup.
+        tokio::process::Command::new("bash")
             .arg(script_path)
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())

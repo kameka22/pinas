@@ -93,7 +93,29 @@ else
     echo "$PINAS_PATH_LINE" >> "$PROFILE_FILE"
 fi
 
-# Also create bin directory if it doesn't exist
+# Create bin directory
 mkdir -p /storage/.pinas/bin
+
+# Copy binary from read-only system to writable storage (for updates)
+if [ -f /usr/bin/pinas ]; then
+    if [ ! -f /storage/.pinas/bin/pinas ] || \
+       [ /usr/bin/pinas -nt /storage/.pinas/bin/pinas ]; then
+        log "PiNAS: Copying binary to /storage/.pinas/bin/"
+        cp /usr/bin/pinas /storage/.pinas/bin/pinas
+        chmod 755 /storage/.pinas/bin/pinas
+        log "PiNAS: Binary ready"
+    else
+        log "PiNAS: Binary already up to date"
+    fi
+fi
+
+# Copy init script itself to writable storage (for update compatibility)
+if [ -f /usr/bin/pinas-init.sh ]; then
+    if [ ! -f /storage/.pinas/bin/pinas-init.sh ] || \
+       [ /usr/bin/pinas-init.sh -nt /storage/.pinas/bin/pinas-init.sh ]; then
+        cp /usr/bin/pinas-init.sh /storage/.pinas/bin/pinas-init.sh
+        chmod 755 /storage/.pinas/bin/pinas-init.sh
+    fi
+fi
 
 log "PiNAS: Initialization complete"

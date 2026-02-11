@@ -15,7 +15,8 @@ Environment=PINAS_TLS_ENABLED=false
 Environment=PINAS_KODI_USERNAME=kodi
 # PINAS_KODI_PASSWORD is auto-generated at first boot (stored in /storage/.pinas/data/.kodi_password)
 ExecStartPre=/usr/bin/pinas-init.sh
-ExecStart=/usr/bin/pinas
+ExecStart=/storage/.pinas/bin/pinas
+KillMode=process
 Restart=on-failure
 RestartSec=5
 StandardOutput=journal

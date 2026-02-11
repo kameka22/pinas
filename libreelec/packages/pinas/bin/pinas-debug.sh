@@ -17,7 +17,7 @@ WARNINGS=0
 ERRORS=0
 
 # Paths
-PINAS_BIN="/usr/bin/pinas"
+PINAS_BIN="/storage/.pinas/bin/pinas"
 PINAS_DB="/storage/.pinas/data/pinas.db"
 PINAS_WWW="/storage/.pinas/www"
 PINAS_CONFIG="/storage/.pinas/config.toml"
