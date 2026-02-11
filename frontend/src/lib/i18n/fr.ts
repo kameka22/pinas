@@ -260,7 +260,13 @@ export default {
 		userMenu: {
 			profile: 'Profil',
 			settings: 'Paramètres',
-			logout: 'Déconnexion'
+			logout: 'Déconnexion',
+			restart: 'Redémarrer',
+			shutdown: 'Éteindre',
+			confirmRestart: 'Êtes-vous sûr de vouloir redémarrer le système ?',
+			confirmShutdown: 'Êtes-vous sûr de vouloir éteindre le système ?',
+			restartingMessage: 'Le système redémarre...',
+			shuttingDownMessage: 'Le système s\'éteint...',
 		}
 	},
 

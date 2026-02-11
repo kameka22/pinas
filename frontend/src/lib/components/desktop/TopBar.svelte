@@ -6,6 +6,7 @@
 	import { openWindow } from '$stores/windows';
 	import { createEventDispatcher, onMount, onDestroy } from 'svelte';
 	import { t, locale } from '$lib/i18n';
+	import { get } from 'svelte/store';
 
 	const dispatch = createEventDispatcher();
 
@@ -37,6 +38,9 @@
 	let showUserMenu = false;
 	let userMenuRef: HTMLDivElement;
 
+	// Power confirmation modal
+	let powerModal: { visible: boolean; action: 'restart' | 'shutdown' } = { visible: false, action: 'restart' };
+
 	function toggleAppLauncher() {
 		dispatch('toggleLauncher');
 	}
@@ -53,6 +57,34 @@
 		showUserMenu = false;
 		await api.logout();
 		// No need to reload - the layout will detect auth change and show login
+	}
+
+	function openPowerModal(action: 'restart' | 'shutdown') {
+		showUserMenu = false;
+		powerModal = { visible: true, action };
+	}
+
+	function closePowerModal() {
+		powerModal = { ...powerModal, visible: false };
+	}
+
+	async function confirmPowerAction() {
+		const action = powerModal.action;
+		closePowerModal();
+		const info = get(systemInfo);
+		if (info.devMode) {
+			console.log(`[DEV] ${action} requested (no-op in dev mode)`);
+			return;
+		}
+		try {
+			if (action === 'restart') {
+				await api.rebootSystem();
+			} else {
+				await api.shutdownSystem();
+			}
+		} catch (e) {
+			console.error(`Failed to ${action}:`, e);
+		}
 	}
 
 	function openProfileModal() {
@@ -234,15 +266,54 @@
 
 					<div class="dropdown-divider"></div>
 
-					<button class="dropdown-item danger" on:click={handleLogout}>
-						<Icon icon="mdi:logout" class="w-4 h-4" />
-						<span>{$t.topBar?.logout || 'Logout'}</span>
-					</button>
+					<div class="power-row">
+						<button class="power-row-btn" on:click={handleLogout} title={$t.topBar?.logout || 'Logout'}>
+							<Icon icon="mdi:logout" class="w-5 h-5" />
+							<span>{$t.topBar?.logout || 'Logout'}</span>
+						</button>
+						<div class="power-row-sep"></div>
+						<button class="power-row-btn" on:click={() => openPowerModal('restart')} title={$t.topBar?.userMenu?.restart || 'Restart'}>
+							<Icon icon="mdi:restart" class="w-5 h-5" />
+							<span>{$t.topBar?.userMenu?.restart || 'Restart'}</span>
+						</button>
+						<div class="power-row-sep"></div>
+						<button class="power-row-btn power-row-danger" on:click={() => openPowerModal('shutdown')} title={$t.topBar?.userMenu?.shutdown || 'Shut Down'}>
+							<Icon icon="mdi:power" class="w-5 h-5" />
+							<span>{$t.topBar?.userMenu?.shutdown || 'Shut Down'}</span>
+						</button>
+					</div>
 				</div>
 			{/if}
 		</div>
 	</div>
 </header>
+
+<!-- Power confirmation modal -->
+{#if powerModal.visible}
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<div class="power-overlay" on:click={closePowerModal}></div>
+	<div class="power-modal">
+		<div class="power-modal-icon" class:shutdown={powerModal.action === 'shutdown'}>
+			<Icon icon={powerModal.action === 'restart' ? 'mdi:restart' : 'mdi:power'} class="w-8 h-8" />
+		</div>
+		<h3>{powerModal.action === 'restart'
+			? ($t.topBar?.userMenu?.restart || 'Restart')
+			: ($t.topBar?.userMenu?.shutdown || 'Shut Down')}</h3>
+		<p>{powerModal.action === 'restart'
+			? ($t.topBar?.userMenu?.confirmRestart || 'Are you sure you want to restart the system?')
+			: ($t.topBar?.userMenu?.confirmShutdown || 'Are you sure you want to shut down the system?')}</p>
+		<div class="power-modal-actions">
+			<button class="pm-btn pm-cancel" on:click={closePowerModal}>
+				{$t.common?.cancel || 'Cancel'}
+			</button>
+			<button class="pm-btn" class:pm-restart={powerModal.action === 'restart'} class:pm-shutdown={powerModal.action === 'shutdown'} on:click={confirmPowerAction}>
+				{powerModal.action === 'restart'
+					? ($t.topBar?.userMenu?.restart || 'Restart')
+					: ($t.topBar?.userMenu?.shutdown || 'Shut Down')}
+			</button>
+		</div>
+	</div>
+{/if}
 
 <style>
 	.topbar {
@@ -368,7 +439,7 @@
 		position: absolute;
 		top: calc(100% + 8px);
 		right: 0;
-		width: 220px;
+		width: 260px;
 		background: white;
 		border-radius: 12px;
 		box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
@@ -446,12 +517,42 @@
 		background: #f1f5f9;
 	}
 
-	.dropdown-item.danger {
+	.power-row {
+		display: flex;
+		align-items: stretch;
+		padding: 8px 10px;
+	}
+
+	.power-row-btn {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 6px;
+		padding: 14px 6px;
+		border-radius: 10px;
+		font-size: 13px;
+		color: #64748b;
+		cursor: pointer;
+		transition: all 0.15s ease;
+		border: none;
+		background: transparent;
+	}
+
+	.power-row-btn:hover {
+		background: #f1f5f9;
+		color: #334155;
+	}
+
+	.power-row-danger:hover {
+		background: #fef2f2;
 		color: #dc2626;
 	}
 
-	.dropdown-item.danger:hover {
-		background: #fef2f2;
+	.power-row-sep {
+		width: 1px;
+		background: #e2e8f0;
+		margin: 4px 0;
 	}
 
 	.update-btn {
@@ -476,5 +577,107 @@
 		background: #3b82f6;
 		border-radius: 50%;
 		border: 1.5px solid rgba(30, 41, 59, 0.85);
+	}
+
+	/* Power confirmation modal */
+	.power-overlay {
+		position: fixed;
+		inset: 0;
+		background: rgba(0, 0, 0, 0.4);
+		z-index: 2000;
+	}
+
+	.power-modal {
+		position: fixed;
+		top: 50%;
+		left: 50%;
+		transform: translate(-50%, -50%);
+		width: 360px;
+		background: white;
+		border-radius: 16px;
+		padding: 32px;
+		text-align: center;
+		z-index: 2001;
+		box-shadow: 0 25px 60px rgba(0, 0, 0, 0.25);
+		animation: modal-pop 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+	}
+
+	@keyframes modal-pop {
+		from { opacity: 0; transform: translate(-50%, -50%) scale(0.95); }
+		to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+	}
+
+	.power-modal-icon {
+		width: 56px;
+		height: 56px;
+		border-radius: 50%;
+		background: rgba(59, 130, 246, 0.1);
+		color: #3b82f6;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		margin: 0 auto 16px;
+	}
+
+	.power-modal-icon.shutdown {
+		background: rgba(239, 68, 68, 0.1);
+		color: #ef4444;
+	}
+
+	.power-modal h3 {
+		font-size: 17px;
+		font-weight: 600;
+		color: #1e293b;
+		margin-bottom: 8px;
+	}
+
+	.power-modal p {
+		font-size: 14px;
+		color: #64748b;
+		margin-bottom: 24px;
+		line-height: 1.5;
+	}
+
+	.power-modal-actions {
+		display: flex;
+		gap: 10px;
+	}
+
+	.pm-btn {
+		flex: 1;
+		padding: 10px 16px;
+		border-radius: 10px;
+		font-size: 14px;
+		font-weight: 500;
+		cursor: pointer;
+		border: none;
+		transition: all 0.15s ease;
+	}
+
+	.pm-cancel {
+		background: #f1f5f9;
+		color: #475569;
+	}
+
+	.pm-cancel:hover {
+		background: #e2e8f0;
+	}
+
+	.pm-restart {
+		background: #3b82f6;
+		color: white;
+	}
+
+	.pm-restart:hover {
+		background: #2563eb;
+	}
+
+	.pm-shutdown {
+		background: #ef4444;
+		color: white;
+	}
+
+	.pm-shutdown:hover {
+		background: #dc2626;
 	}
 </style>

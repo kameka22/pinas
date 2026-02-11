@@ -260,7 +260,13 @@ export default {
 		userMenu: {
 			profile: 'Profile',
 			settings: 'Settings',
-			logout: 'Logout'
+			logout: 'Logout',
+			restart: 'Restart',
+			shutdown: 'Shut Down',
+			confirmRestart: 'Are you sure you want to restart the system?',
+			confirmShutdown: 'Are you sure you want to shut down the system?',
+			restartingMessage: 'The system is restarting...',
+			shuttingDownMessage: 'The system is shutting down...',
 		}
 	},
 

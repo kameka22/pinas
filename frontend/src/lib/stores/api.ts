@@ -173,6 +173,14 @@ class ApiClient {
 		return this.post<{ success: boolean; message: string }>(`/system/processes/${pid}/kill`);
 	}
 
+	async rebootSystem(): Promise<void> {
+		await this.post('/system/reboot');
+	}
+
+	async shutdownSystem(): Promise<void> {
+		await this.post('/system/shutdown');
+	}
+
 	// Storage endpoints - Disks
 	async getDisks(): Promise<Disk[]> {
 		return this.get<Disk[]>('/storage/disks');

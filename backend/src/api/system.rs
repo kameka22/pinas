@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use sysinfo::{System, Signal, Pid};
 
 use crate::AppState;
+use crate::api::middleware::AdminUser;
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -157,19 +158,43 @@ async fn get_services(State(_state): State<AppState>) -> impl IntoResponse {
     Json(services)
 }
 
-/// Reboot the system
-async fn reboot(State(_state): State<AppState>) -> impl IntoResponse {
-    // TODO: Implement actual reboot
-    // nix::sys::reboot::reboot(nix::sys::reboot::RebootMode::RB_AUTOBOOT)
+/// Reboot the system (admin only)
+async fn reboot(
+    _admin: AdminUser,
+    State(state): State<AppState>,
+) -> impl IntoResponse {
     tracing::info!("Reboot requested");
+    if state.config.dev_mode {
+        tracing::info!("[DEV] Reboot skipped (dev_mode)");
+        return StatusCode::OK;
+    }
+    tokio::spawn(async {
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        let _ = tokio::process::Command::new("systemctl")
+            .arg("reboot")
+            .status()
+            .await;
+    });
     StatusCode::OK
 }
 
-/// Shutdown the system
-async fn shutdown(State(_state): State<AppState>) -> impl IntoResponse {
-    // TODO: Implement actual shutdown
-    // nix::sys::reboot::reboot(nix::sys::reboot::RebootMode::RB_POWER_OFF)
+/// Shutdown the system (admin only)
+async fn shutdown(
+    _admin: AdminUser,
+    State(state): State<AppState>,
+) -> impl IntoResponse {
     tracing::info!("Shutdown requested");
+    if state.config.dev_mode {
+        tracing::info!("[DEV] Shutdown skipped (dev_mode)");
+        return StatusCode::OK;
+    }
+    tokio::spawn(async {
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        let _ = tokio::process::Command::new("systemctl")
+            .arg("poweroff")
+            .status()
+            .await;
+    });
     StatusCode::OK
 }
 
