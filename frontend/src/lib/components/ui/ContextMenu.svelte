@@ -76,7 +76,7 @@
 <style>
 	.context-menu {
 		position: fixed;
-		z-index: 1000;
+		z-index: 9500;
 		min-width: 180px;
 		background: rgba(255, 255, 255, 0.95);
 		backdrop-filter: blur(20px);
