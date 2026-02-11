@@ -21,16 +21,18 @@
 	$: state = $updateScreen;
 	$: tUpdate = ($t as any).systemUpdate?.screen || {};
 
+	// Listen to WebSocket progress events (works while backend is alive)
 	const unsubProgress = taskProgress.subscribe((tasks) => {
 		const s = get(updateScreen);
 		if (!s.taskId || s.devTest) return;
 		const progress = tasks[s.taskId];
 		if (!progress) return;
 
-		if (phase === 'starting') return; // Wait for starting phase to finish
-
-		progressPercent = progress.progress_percent;
-		currentStep = progress.current_step || '';
+		// Accept WS events even during 'starting' phase — update progress immediately
+		if (progress.progress_percent > progressPercent) {
+			progressPercent = progress.progress_percent;
+		}
+		currentStep = progress.current_step || currentStep;
 
 		if (progress.status === 'completed') {
 			phase = 'completed';
@@ -39,23 +41,24 @@
 			phase = 'error';
 			errorMessage = progress.error_message || 'Unknown error';
 			stopPolling();
-		} else {
+		} else if (phase === 'starting') {
+			// WS event arrived during starting phase — switch to progress immediately
 			phase = 'progress';
 		}
 	});
 
 	onMount(() => {
 		const s = get(updateScreen);
-		// Phase 1: Starting (5 seconds)
+		// Phase 1: Starting countdown (3 seconds, then switch to progress + start polling)
 		startingTimer = setTimeout(() => {
 			if (s.devTest) {
 				startDevSimulation();
 			} else {
-				phase = 'progress';
-				// Start polling for server comeback (the WS broadcast is lost during restart)
+				if (phase === 'starting') phase = 'progress';
+				// Start enriched polling as fallback (survives backend restart)
 				startPolling();
 			}
-		}, 5000);
+		}, 3000);
 	});
 
 	onDestroy(() => {
@@ -67,24 +70,54 @@
 
 	function startPolling() {
 		if (pollInterval) return;
-		// Poll every 3 seconds to detect when the server is back after restart
+		const s = get(updateScreen);
+		if (!s.taskId) return;
+		const taskId = s.taskId;
+
+		// Poll enriched endpoint every 2s — returns real progress from DB
 		pollInterval = setInterval(async () => {
 			try {
-				const resp = await api.get<{ just_updated: boolean; version?: string }>('/system/update/just-updated');
-				if (resp.just_updated) {
-					// Server is back and confirms the update was applied
+				const resp = await api.get<{
+					task_id: string;
+					status: string;
+					progress_percent: number;
+					current_step: string | null;
+					error_message: string | null;
+					version: string;
+					just_updated: boolean;
+				}>(`/system/update/progress/${taskId}`);
+
+				// Update progress (only forward, never go back)
+				if (resp.progress_percent > progressPercent) {
+					progressPercent = resp.progress_percent;
+				}
+				if (resp.current_step) {
+					currentStep = resp.current_step;
+				}
+
+				if (resp.status === 'completed' || resp.just_updated) {
 					progressPercent = 100;
 					currentStep = '';
 					phase = 'completed';
 					if (resp.version) {
-						updateScreen.update(s => ({ ...s, version: resp.version! }));
+						updateScreen.update(s => ({ ...s, version: resp.version }));
 					}
 					stopPolling();
+				} else if (resp.status === 'failed') {
+					phase = 'error';
+					errorMessage = resp.error_message || 'Unknown error';
+					stopPolling();
+				} else if (phase === 'starting') {
+					phase = 'progress';
 				}
 			} catch {
-				// Server still down — keep polling silently
+				// Server down (restarting) — keep polling silently
+				// Show a hint that the server is restarting
+				if (progressPercent >= 70 && phase === 'progress') {
+					currentStep = tUpdate.restarting || 'Restarting service...';
+				}
 			}
-		}, 3000);
+		}, 2000);
 	}
 
 	function stopPolling() {

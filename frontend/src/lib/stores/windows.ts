@@ -37,6 +37,15 @@ function createWindowsStore() {
 		subscribe,
 
 		openWindow: (config: Omit<WindowState, 'minimized' | 'maximized' | 'zIndex'> & { appConfig?: Record<string, unknown>; gradient?: string }) => {
+			// WebviewApp → open directly in a new browser tab (no window)
+			if (config.component === 'WebviewApp' || config.component === 'Webview') {
+				const port = (config.appConfig?.port as number) || 8080;
+				const path = (config.appConfig?.path as string) || '/';
+				const url = `http://${window.location.hostname}:${port}${path}`;
+				window.open(url, '_blank', 'noopener,noreferrer');
+				return;
+			}
+
 			update((state) => {
 				// Check if window already exists
 				const existing = state.windows.find((w) => w.id === config.id);

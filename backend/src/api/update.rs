@@ -1,5 +1,5 @@
 use axum::{
-    extract::State,
+    extract::{Path, State},
     http::StatusCode,
     response::IntoResponse,
     routing::{get, post},
@@ -15,6 +15,7 @@ pub fn router() -> Router<AppState> {
         .route("/check", get(check_for_update))
         .route("/install", post(install_update))
         .route("/status", get(get_update_status))
+        .route("/progress/{task_id}", get(get_task_progress))
         .route("/history", get(get_update_history))
         .route("/just-updated", get(get_just_updated))
         .route("/dismiss", post(dismiss_update))
@@ -100,6 +101,72 @@ async fn get_update_status(State(state): State<AppState>) -> impl IntoResponse {
         }
         Err(e) => {
             tracing::error!("Failed to get update status: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": e.to_string() })),
+            )
+                .into_response()
+        }
+    }
+}
+
+/// Get progress for a specific update task (enriched polling endpoint)
+/// Returns progress_percent, current_step, status from DB + just_updated flag
+async fn get_task_progress(
+    State(state): State<AppState>,
+    Path(task_id): Path<String>,
+) -> impl IntoResponse {
+    let service = UpdateService::new(state.db.clone(), state.task_tx.clone());
+
+    // Check if we just restarted after an update
+    let just_updated_info = state.just_updated.lock().await;
+    let just_updated = just_updated_info.is_some();
+    let updated_version = just_updated_info.as_ref().map(|i| i.version.clone());
+    drop(just_updated_info);
+
+    match service.get_task_progress(&task_id).await {
+        Ok(Some(progress)) => {
+            // If backend just restarted after update, override status to completed
+            let (status, percent) = if just_updated {
+                ("completed".to_string(), 100)
+            } else {
+                (progress.status.clone(), progress.progress_percent)
+            };
+
+            Json(serde_json::json!({
+                "task_id": progress.id,
+                "status": status,
+                "progress_percent": percent,
+                "current_step": progress.current_step,
+                "error_message": progress.error_message,
+                "version": updated_version.unwrap_or(progress.version),
+                "just_updated": just_updated
+            }))
+            .into_response()
+        }
+        Ok(None) => {
+            // Task not found — maybe just_updated is enough
+            if just_updated {
+                Json(serde_json::json!({
+                    "task_id": task_id,
+                    "status": "completed",
+                    "progress_percent": 100,
+                    "current_step": null,
+                    "error_message": null,
+                    "version": updated_version,
+                    "just_updated": true
+                }))
+                .into_response()
+            } else {
+                (
+                    StatusCode::NOT_FOUND,
+                    Json(serde_json::json!({ "error": "Task not found" })),
+                )
+                    .into_response()
+            }
+        }
+        Err(e) => {
+            tracing::error!("Failed to get task progress: {}", e);
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(serde_json::json!({ "error": e.to_string() })),

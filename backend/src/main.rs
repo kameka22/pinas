@@ -157,6 +157,7 @@ fn create_router(state: AppState) -> Router {
         .nest("/api/kodi", api::kodi::router())
         .nest("/api/network", api::network::router())
         .nest("/api/permissions", api::permissions::router())
+        .nest("/api/preferences", api::preferences::router())
         .nest("/api/ssh", api::ssh::router())
         .nest("/api/cups", api::cups::router())
         // WebSocket

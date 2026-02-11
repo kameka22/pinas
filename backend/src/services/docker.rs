@@ -6,6 +6,8 @@ use bollard::container::{
 };
 use bollard::image::{ListImagesOptions, RemoveImageOptions};
 use bollard::models::{ContainerSummary, HostConfig, ImageSummary, PortBinding};
+use bollard::network::ListNetworksOptions;
+use bollard::volume::{ListVolumesOptions, RemoveVolumeOptions};
 use bollard::Docker;
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
@@ -58,6 +60,32 @@ pub struct ImageInfo {
     pub repo_tags: Vec<String>,
     pub size: i64,
     pub created: i64,
+}
+
+/// Volume info for API response
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VolumeInfo {
+    pub name: String,
+    pub driver: String,
+    pub mount_point: String,
+    pub created: String,
+}
+
+/// Network info for API response
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NetworkInfo {
+    pub id: String,
+    pub name: String,
+    pub driver: String,
+    pub scope: String,
+    pub containers: Vec<String>,
+}
+
+/// Result of a prune operation
+#[derive(Debug, Clone, Serialize)]
+pub struct PruneResult {
+    pub deleted: u64,
+    pub space_reclaimed: u64,
 }
 
 /// Container stats
@@ -380,6 +408,99 @@ impl DockerService {
 
         client.remove_image(image, Some(options), None).await?;
         Ok(())
+    }
+
+    /// List all volumes
+    pub async fn list_volumes(&self) -> Result<Vec<VolumeInfo>> {
+        let client = self.client()?;
+
+        let options = ListVolumesOptions::<String> {
+            ..Default::default()
+        };
+
+        let response = client.list_volumes(Some(options)).await?;
+        let volumes = response.volumes.unwrap_or_default();
+
+        Ok(volumes
+            .into_iter()
+            .map(|v| VolumeInfo {
+                name: v.name,
+                driver: v.driver,
+                mount_point: v.mountpoint,
+                created: v.created_at.unwrap_or_default(),
+            })
+            .collect())
+    }
+
+    /// Remove a volume
+    pub async fn remove_volume(&self, name: &str, force: bool) -> Result<()> {
+        let client = self.client()?;
+        client.remove_volume(name, Some(RemoveVolumeOptions { force })).await?;
+        Ok(())
+    }
+
+    /// List all networks
+    pub async fn list_networks(&self) -> Result<Vec<NetworkInfo>> {
+        let client = self.client()?;
+
+        let options = ListNetworksOptions::<String> {
+            ..Default::default()
+        };
+
+        let networks = client.list_networks(Some(options)).await?;
+
+        Ok(networks
+            .into_iter()
+            .map(|n| {
+                let containers: Vec<String> = n
+                    .containers
+                    .unwrap_or_default()
+                    .values()
+                    .filter_map(|c| c.name.clone())
+                    .collect();
+
+                NetworkInfo {
+                    id: n.id.unwrap_or_default(),
+                    name: n.name.unwrap_or_default(),
+                    driver: n.driver.unwrap_or_default(),
+                    scope: n.scope.unwrap_or_default(),
+                    containers,
+                }
+            })
+            .collect())
+    }
+
+    /// Remove a network
+    pub async fn remove_network(&self, id: &str) -> Result<()> {
+        let client = self.client()?;
+        client.remove_network(id).await?;
+        Ok(())
+    }
+
+    /// Prune unused images (dangling by default, all if `all` is true)
+    pub async fn prune_images(&self, all: bool) -> Result<PruneResult> {
+        let client = self.client()?;
+        let mut filters = HashMap::new();
+        if !all {
+            filters.insert("dangling", vec!["true"]);
+        }
+        let options = bollard::image::PruneImagesOptions { filters };
+        let result = client.prune_images(Some(options)).await?;
+        let deleted = result.images_deleted.map(|v| v.len() as u64).unwrap_or(0);
+        let space = result.space_reclaimed.unwrap_or(0) as u64;
+        Ok(PruneResult { deleted, space_reclaimed: space })
+    }
+
+    /// Prune unused volumes
+    pub async fn prune_volumes(&self) -> Result<PruneResult> {
+        let client = self.client()?;
+        let options = bollard::volume::PruneVolumesOptions::<String> {
+            filters: Default::default(),
+        };
+        let result = client.prune_volumes(Some(options)).await?;
+        let deleted = result.volumes_deleted.map(|v| v.len() as u64).unwrap_or(0);
+        let space = result.space_reclaimed.unwrap_or(0) as u64;
+        Ok(PruneResult { deleted, space_reclaimed: space })
     }
 
     /// Create a container from config

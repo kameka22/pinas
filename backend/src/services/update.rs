@@ -620,7 +620,7 @@ impl UpdateService {
         Ok(())
     }
 
-    /// Broadcast a progress event via WebSocket
+    /// Broadcast a progress event via WebSocket AND persist to DB
     fn broadcast_progress(
         &self,
         task_id: &str,
@@ -644,7 +644,46 @@ impl UpdateService {
         };
 
         let _ = self.task_tx.send(event);
+
+        // Persist progress to DB so frontend can poll it after backend restart
+        let db = self.db.clone();
+        let task_id = task_id.to_string();
+        let step = current_step.map(|s| s.to_string());
+        tokio::spawn(async move {
+            let _ = sqlx::query(
+                "UPDATE system_updates SET progress_percent = ?, current_step = ? WHERE id = ?"
+            )
+            .bind(progress_percent)
+            .bind(&step)
+            .bind(&task_id)
+            .execute(&db)
+            .await;
+        });
     }
+
+    /// Get progress for a specific task from DB (survives backend restart)
+    pub async fn get_task_progress(&self, task_id: &str) -> Result<Option<UpdateTaskProgress>> {
+        let row = sqlx::query_as::<_, UpdateTaskProgress>(
+            r#"SELECT id, status, progress_percent, current_step, error_message, version
+               FROM system_updates WHERE id = ?"#,
+        )
+        .bind(task_id)
+        .fetch_optional(&self.db)
+        .await?;
+
+        Ok(row)
+    }
+}
+
+/// Progress info returned by the polling endpoint
+#[derive(Debug, Serialize, sqlx::FromRow)]
+pub struct UpdateTaskProgress {
+    pub id: String,
+    pub status: String,
+    pub progress_percent: i32,
+    pub current_step: Option<String>,
+    pub error_message: Option<String>,
+    pub version: String,
 }
 
 /// Compare version strings (simple numeric comparison)

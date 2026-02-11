@@ -61,6 +61,7 @@
 	let selectedCategory = 'all';
 	let selectedPackage: AppPackage | null = null;
 	let installError: string | null = null;
+	let catalogVersion: string | null = null;
 
 	// Installation progress tracking
 	let activeTaskId: string | null = null;
@@ -128,6 +129,7 @@
 			const catalogRes = await fetch('/api/packages/catalog');
 			if (catalogRes.ok) {
 				const catalog = await catalogRes.json();
+				catalogVersion = catalog.version || null;
 				packages = (catalog.apps || []).map((app: CatalogApp) => {
 					const installed = installedPackages.find((p) => p.id === app.id);
 					return {
@@ -512,6 +514,9 @@
 				<span class="stat-value">{packages.filter((p) => p.status === 'installed').length}</span>
 				<span class="stat-label">{$t.appCenter.installedCount}</span>
 			</button>
+			{#if catalogVersion}
+				<div class="catalog-version">Catalog v{catalogVersion}</div>
+			{/if}
 		</div>
 	</aside>
 
@@ -892,6 +897,13 @@
 	.stat-label {
 		font-size: 12px;
 		color: #64748b;
+	}
+
+	.catalog-version {
+		text-align: center;
+		font-size: 11px;
+		color: #94a3b8;
+		margin-top: 8px;
 	}
 
 	/* Main Content */

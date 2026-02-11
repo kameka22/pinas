@@ -621,6 +621,19 @@ class ApiClient {
 	async dismissUpdate(): Promise<void> {
 		return this.post<void>('/system/update/dismiss');
 	}
+
+	// Preferences endpoints
+	async getPreferences(): Promise<Record<string, string>> {
+		return this.get<Record<string, string>>('/preferences');
+	}
+
+	async getPreference(key: string): Promise<{ value: string }> {
+		return this.get<{ value: string }>(`/preferences/${encodeURIComponent(key)}`);
+	}
+
+	async setPreference(key: string, value: string): Promise<void> {
+		return this.put<void>(`/preferences/${encodeURIComponent(key)}`, { value });
+	}
 }
 
 // File item type

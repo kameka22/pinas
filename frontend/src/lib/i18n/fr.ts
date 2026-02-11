@@ -27,6 +27,9 @@ export default {
 		open: 'Ouvrir',
 		removeFromDesktop: 'Retirer du bureau',
 		addToDesktop: 'Ajouter au bureau',
+		addToDock: 'Ajouter au dock',
+		removeFromDock: 'Retirer du dock',
+		pinToDock: 'Épingler au dock',
 		noApplicationsFound: 'Aucune application trouvée',
 		searchApplications: 'Rechercher des applications...',
 		refresh: 'Actualiser',
@@ -1093,6 +1096,8 @@ export default {
 
 	// Docker App
 	docker: {
+		search: 'Rechercher...',
+		noResults: 'Aucun résultat',
 		serviceStatus: 'Service en cours',
 		status: {
 			normal: 'Normal',
@@ -1100,22 +1105,20 @@ export default {
 			error: 'Erreur'
 		},
 		stats: {
-			projects: 'Projets',
 			containers: 'Conteneurs',
-			local: 'Local',
-			data: 'Données'
+			images: 'Images',
+			volumes: 'Volumes',
+			networks: 'Réseaux'
 		},
 		cpuUsage: 'Utilisation CPU',
 		memoryCapacity: 'Capacité mémoire',
 		available: 'Disponible',
 		views: {
 			overview: 'Aperçu',
-			project: 'Projet',
-			container: 'Conteneur',
-			image: 'Image',
-			network: 'Réseau',
-			log: 'Journal',
-			management: 'Gestion'
+			container: 'Conteneurs',
+			image: 'Images',
+			volume: 'Volumes',
+			network: 'Réseaux'
 		},
 		table: {
 			name: 'Nom',
@@ -1126,12 +1129,61 @@ export default {
 			repository: 'Dépôt',
 			tag: 'Tag',
 			imageId: 'ID Image',
+			id: 'ID',
 			size: 'Taille',
-			created: 'Créé'
+			created: 'Créé',
+			driver: 'Pilote',
+			mountPoint: 'Point de montage',
+			scope: 'Portée'
 		},
 		noContainers: 'Aucun conteneur trouvé',
 		noImages: 'Aucune image trouvée',
-		underDevelopment: 'Cette section est en cours de développement'
+		confirm: {
+			stopTitle: 'Arrêter le conteneur',
+			stopMessage: 'Êtes-vous sûr de vouloir arrêter le conteneur "{name}" ?',
+			stopBtn: 'Arrêter',
+			startTitle: 'Démarrer le conteneur',
+			startMessage: 'Êtes-vous sûr de vouloir démarrer le conteneur "{name}" ?',
+			startBtn: 'Démarrer',
+			restartTitle: 'Redémarrer le conteneur',
+			restartMessage: 'Êtes-vous sûr de vouloir redémarrer le conteneur "{name}" ?',
+			restartBtn: 'Redémarrer',
+			removeContainerTitle: 'Supprimer le conteneur',
+			removeContainerMessage: 'Êtes-vous sûr de vouloir supprimer le conteneur "{name}" ? Cette action est irréversible.',
+			removeImageTitle: 'Supprimer l\'image',
+			removeImageMessage: 'Êtes-vous sûr de vouloir supprimer l\'image "{name}" ? Cette action est irréversible.',
+			removeVolumeTitle: 'Supprimer le volume',
+			removeVolumeMessage: 'Êtes-vous sûr de vouloir supprimer le volume "{name}" ? Toutes les données seront perdues.',
+			removeNetworkTitle: 'Supprimer le réseau',
+			removeNetworkMessage: 'Êtes-vous sûr de vouloir supprimer le réseau "{name}" ?',
+			removeBtn: 'Supprimer',
+			pruneImagesTitle: 'Nettoyer les images',
+			pruneImagesMessage: 'Cela supprimera toutes les images inutilisées. Cette action est irréversible.',
+			pruneImagesBtn: 'Nettoyer',
+			pruneVolumesTitle: 'Nettoyer les volumes',
+			pruneVolumesMessage: 'Cela supprimera tous les volumes inutilisés. Toutes les données de ces volumes seront perdues.',
+			pruneVolumesBtn: 'Nettoyer'
+		},
+		logs: {
+			title: 'Journaux',
+			noLogs: 'Aucun journal disponible',
+			refresh: 'Actualiser',
+			lines: 'lignes'
+		},
+		volumes: {
+			title: 'Volumes',
+			noVolumes: 'Aucun volume trouvé'
+		},
+		networks: {
+			title: 'Réseaux',
+			noNetworks: 'Aucun réseau trouvé',
+			builtIn: 'intégré'
+		},
+		pull: {
+			placeholder: 'Nom de l\'image (ex: nginx:latest)',
+			button: 'Télécharger',
+			pulling: 'Téléchargement...'
+		}
 	},
 
 	// Mise à jour système
@@ -1172,6 +1224,7 @@ export default {
 			failed: 'La mise à jour a échoué',
 			reboot: 'Redémarrer',
 			reloadDesktop: 'Recharger le bureau',
+			restarting: 'Redémarrage du service...',
 			close: 'Fermer',
 			confirm: {
 				title: 'Installer la mise à jour v{version} ?',

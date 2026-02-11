@@ -11,6 +11,7 @@ pub mod network;
 pub mod middleware;
 pub mod packages;
 pub mod permissions;
+pub mod preferences;
 pub mod services;
 pub mod setup;
 pub mod shares;

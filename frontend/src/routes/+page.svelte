@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { openWindow } from '$stores/windows';
-	import { desktopApps, removeFromDesktop, initDesktop, loadInstalledApps, installedApps, type DesktopApp } from '$stores/desktop';
+	import { desktopApps, removeFromDesktop, initDesktop, initDock, loadInstalledApps, installedApps, type DesktopApp } from '$stores/desktop';
 	import { loadAllAppTranslations, t } from '$lib/i18n';
 	import Icon from '@iconify/svelte';
 	import { gradientStyle } from '$lib/utils/gradient';
@@ -16,6 +16,7 @@
 
 	onMount(async () => {
 		initDesktop();
+		initDock();
 		// Load installed apps from the backend registry
 		await loadInstalledApps();
 	});

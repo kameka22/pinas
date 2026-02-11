@@ -1,7 +1,7 @@
 <script lang="ts">
 	import Icon from '@iconify/svelte';
 	import { openWindow } from '$stores/windows';
-	import { allApps, addToDesktop, removeFromDesktop, pinnedAppIds, type DesktopApp } from '$stores/desktop';
+	import { allApps, addToDesktop, removeFromDesktop, pinnedAppIds, dockPinnedIds, addToDock, removeFromDock, type DesktopApp } from '$stores/desktop';
 	import { createEventDispatcher, tick } from 'svelte';
 	import ContextMenu from '$lib/components/ui/ContextMenu.svelte';
 	import { t } from '$lib/i18n';
@@ -113,9 +113,10 @@
 		contextMenu = { ...contextMenu, visible: false, targetApp: null };
 	}
 
-	function getContextMenuItems(app: DesktopApp | null, pinnedIds: string[], translations: typeof $t) {
+	function getContextMenuItems(app: DesktopApp | null, pinnedIds: string[], dockIds: string[], translations: typeof $t) {
 		if (!app) return [];
 		const isOnDesktop = pinnedIds.includes(app.id);
+		const isInDock = dockIds.includes(app.id);
 		return [
 			{
 				label: translations.common.open,
@@ -133,11 +134,23 @@
 						label: translations.common.addToDesktop,
 						icon: 'mdi:monitor-screenshot',
 						action: () => { if (app) addToDesktop(app.id); }
+					},
+			isInDock
+				? {
+						label: translations.common.removeFromDock,
+						icon: 'mdi:dock-bottom',
+						action: () => { if (app) removeFromDock(app.id); },
+						danger: true
+					}
+				: {
+						label: translations.common.addToDock,
+						icon: 'mdi:dock-bottom',
+						action: () => { if (app) addToDock(app.id); }
 					}
 		];
 	}
 
-	$: contextMenuItems = getContextMenuItems(contextMenu.targetApp, $pinnedAppIds, $t);
+	$: contextMenuItems = getContextMenuItems(contextMenu.targetApp, $pinnedAppIds, $dockPinnedIds, $t);
 
 	// Reset state when opening
 	$: if (visible) {
@@ -215,11 +228,13 @@
 									>
 										<div class="app-icon" style={gradientStyle(app.gradient)}>
 											<Icon icon={app.icon} class="w-7 h-7 text-white" />
+											{#if app.component === 'WebviewApp'}
+												<span class="external-badge">
+													<Icon icon="mdi:open-in-new" class="w-2.5 h-2.5" />
+												</span>
+											{/if}
 										</div>
 										<span class="app-label">{getAppLabel(app)}</span>
-										{#if $pinnedAppIds.includes(app.id)}
-											<div class="desktop-dot"></div>
-										{/if}
 									</button>
 								{/each}
 							</div>
@@ -249,7 +264,7 @@
 		position: fixed;
 		inset: 0;
 		background: rgba(0, 0, 0, 0.3);
-		z-index: 200;
+		z-index: 9000;
 	}
 
 	.launcher {
@@ -264,7 +279,7 @@
 		box-shadow:
 			0 25px 50px -12px rgba(0, 0, 0, 0.2),
 			0 0 0 1px rgba(0, 0, 0, 0.05);
-		z-index: 201;
+		z-index: 9001;
 		display: flex;
 		overflow: hidden;
 	}
@@ -464,6 +479,7 @@
 	}
 
 	.app-icon {
+		position: relative;
 		width: 48px;
 		height: 48px;
 		border-radius: 13px;
@@ -472,6 +488,21 @@
 		justify-content: center;
 		box-shadow: 0 3px 10px rgba(0, 0, 0, 0.1);
 		transition: all 0.15s ease;
+	}
+
+	.external-badge {
+		position: absolute;
+		bottom: -3px;
+		right: -3px;
+		width: 16px;
+		height: 16px;
+		border-radius: 50%;
+		background: white;
+		color: #64748b;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
 	}
 
 	.app-item:hover .app-icon {
@@ -490,16 +521,6 @@
 		display: -webkit-box;
 		-webkit-line-clamp: 2;
 		-webkit-box-orient: vertical;
-	}
-
-	.desktop-dot {
-		position: absolute;
-		top: 10px;
-		right: 10px;
-		width: 6px;
-		height: 6px;
-		border-radius: 50%;
-		background: #3b82f6;
 	}
 
 	.empty-state {

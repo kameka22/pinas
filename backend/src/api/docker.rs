@@ -5,7 +5,7 @@ use axum::{
     routing::{delete, get, post},
     Json, Router,
 };
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 use crate::models::manifest::ContainerConfig;
 use crate::services::docker::DockerService;
@@ -28,7 +28,15 @@ pub fn router() -> Router<AppState> {
         // Images
         .route("/images", get(list_images))
         .route("/images/pull", post(pull_image))
+        .route("/images/prune", post(prune_images))
         .route("/images/:id", delete(remove_image))
+        // Volumes
+        .route("/volumes", get(list_volumes))
+        .route("/volumes/prune", post(prune_volumes))
+        .route("/volumes/:name", delete(remove_volume))
+        // Networks
+        .route("/networks", get(list_networks))
+        .route("/networks/:id", delete(remove_network))
 }
 
 /// Get Docker status
@@ -265,6 +273,91 @@ async fn remove_image(
         Ok(_) => StatusCode::NO_CONTENT.into_response(),
         Err(e) => {
             tracing::error!("Failed to remove image: {}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+        }
+    }
+}
+
+/// List volumes
+async fn list_volumes(State(_state): State<AppState>) -> impl IntoResponse {
+    let service = DockerService::new().await;
+
+    match service.list_volumes().await {
+        Ok(volumes) => Json(volumes).into_response(),
+        Err(e) => {
+            tracing::error!("Failed to list volumes: {}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+        }
+    }
+}
+
+/// Remove a volume
+async fn remove_volume(
+    State(_state): State<AppState>,
+    Path(name): Path<String>,
+    Query(query): Query<RemoveQuery>,
+) -> impl IntoResponse {
+    let service = DockerService::new().await;
+
+    match service.remove_volume(&name, query.force).await {
+        Ok(_) => StatusCode::NO_CONTENT.into_response(),
+        Err(e) => {
+            tracing::error!("Failed to remove volume: {}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+        }
+    }
+}
+
+/// List networks
+async fn list_networks(State(_state): State<AppState>) -> impl IntoResponse {
+    let service = DockerService::new().await;
+
+    match service.list_networks().await {
+        Ok(networks) => Json(networks).into_response(),
+        Err(e) => {
+            tracing::error!("Failed to list networks: {}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+        }
+    }
+}
+
+/// Remove a network
+async fn remove_network(
+    State(_state): State<AppState>,
+    Path(id): Path<String>,
+) -> impl IntoResponse {
+    let service = DockerService::new().await;
+
+    match service.remove_network(&id).await {
+        Ok(_) => StatusCode::NO_CONTENT.into_response(),
+        Err(e) => {
+            tracing::error!("Failed to remove network: {}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+        }
+    }
+}
+
+/// Prune unused images
+async fn prune_images(State(_state): State<AppState>) -> impl IntoResponse {
+    let service = DockerService::new().await;
+
+    match service.prune_images(true).await {
+        Ok(result) => Json(result).into_response(),
+        Err(e) => {
+            tracing::error!("Failed to prune images: {}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+        }
+    }
+}
+
+/// Prune unused volumes
+async fn prune_volumes(State(_state): State<AppState>) -> impl IntoResponse {
+    let service = DockerService::new().await;
+
+    match service.prune_volumes().await {
+        Ok(result) => Json(result).into_response(),
+        Err(e) => {
+            tracing::error!("Failed to prune volumes: {}", e);
             (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
         }
     }

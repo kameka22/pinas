@@ -27,6 +27,9 @@ export default {
 		open: 'Open',
 		removeFromDesktop: 'Remove from Desktop',
 		addToDesktop: 'Add to Desktop',
+		addToDock: 'Add to Dock',
+		removeFromDock: 'Remove from Dock',
+		pinToDock: 'Pin to Dock',
 		noApplicationsFound: 'No applications found',
 		searchApplications: 'Search applications...',
 		refresh: 'Refresh',
@@ -1093,6 +1096,8 @@ export default {
 
 	// Docker App
 	docker: {
+		search: 'Search...',
+		noResults: 'No results',
 		serviceStatus: 'Service running',
 		status: {
 			normal: 'Normal',
@@ -1100,22 +1105,20 @@ export default {
 			error: 'Error'
 		},
 		stats: {
-			projects: 'Projects',
 			containers: 'Containers',
-			local: 'Local',
-			data: 'Data'
+			images: 'Images',
+			volumes: 'Volumes',
+			networks: 'Networks'
 		},
 		cpuUsage: 'CPU usage',
 		memoryCapacity: 'Memory capacity',
 		available: 'Available',
 		views: {
 			overview: 'Overview',
-			project: 'Project',
-			container: 'Container',
-			image: 'Image',
-			network: 'Network',
-			log: 'Log',
-			management: 'Management'
+			container: 'Containers',
+			image: 'Images',
+			volume: 'Volumes',
+			network: 'Networks'
 		},
 		table: {
 			name: 'Name',
@@ -1126,12 +1129,61 @@ export default {
 			repository: 'Repository',
 			tag: 'Tag',
 			imageId: 'Image ID',
+			id: 'ID',
 			size: 'Size',
-			created: 'Created'
+			created: 'Created',
+			driver: 'Driver',
+			mountPoint: 'Mount Point',
+			scope: 'Scope'
 		},
 		noContainers: 'No containers found',
 		noImages: 'No images found',
-		underDevelopment: 'This section is under development'
+		confirm: {
+			stopTitle: 'Stop Container',
+			stopMessage: 'Are you sure you want to stop the container "{name}"?',
+			stopBtn: 'Stop',
+			startTitle: 'Start Container',
+			startMessage: 'Are you sure you want to start the container "{name}"?',
+			startBtn: 'Start',
+			restartTitle: 'Restart Container',
+			restartMessage: 'Are you sure you want to restart the container "{name}"?',
+			restartBtn: 'Restart',
+			removeContainerTitle: 'Remove Container',
+			removeContainerMessage: 'Are you sure you want to remove the container "{name}"? This action cannot be undone.',
+			removeImageTitle: 'Remove Image',
+			removeImageMessage: 'Are you sure you want to remove the image "{name}"? This action cannot be undone.',
+			removeVolumeTitle: 'Remove Volume',
+			removeVolumeMessage: 'Are you sure you want to remove the volume "{name}"? All data will be lost.',
+			removeNetworkTitle: 'Remove Network',
+			removeNetworkMessage: 'Are you sure you want to remove the network "{name}"?',
+			removeBtn: 'Remove',
+			pruneImagesTitle: 'Prune Images',
+			pruneImagesMessage: 'This will remove all unused images. This action cannot be undone.',
+			pruneImagesBtn: 'Prune',
+			pruneVolumesTitle: 'Prune Volumes',
+			pruneVolumesMessage: 'This will remove all unused volumes. All data in these volumes will be lost.',
+			pruneVolumesBtn: 'Prune'
+		},
+		logs: {
+			title: 'Logs',
+			noLogs: 'No logs available',
+			refresh: 'Refresh',
+			lines: 'lines'
+		},
+		volumes: {
+			title: 'Volumes',
+			noVolumes: 'No volumes found'
+		},
+		networks: {
+			title: 'Networks',
+			noNetworks: 'No networks found',
+			builtIn: 'built-in'
+		},
+		pull: {
+			placeholder: 'Image name (e.g. nginx:latest)',
+			button: 'Pull',
+			pulling: 'Pulling...'
+		}
 	},
 
 	// System Update
@@ -1172,6 +1224,7 @@ export default {
 			failed: 'Update failed',
 			reboot: 'Reboot',
 			reloadDesktop: 'Reload desktop',
+			restarting: 'Restarting service...',
 			close: 'Close',
 			confirm: {
 				title: 'Install update v{version}?',

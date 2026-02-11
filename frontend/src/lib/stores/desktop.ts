@@ -1,4 +1,5 @@
 import { writable, derived, get } from 'svelte/store';
+import { api } from './api';
 
 export interface DesktopApp {
 	id: string;
@@ -153,47 +154,65 @@ export function getAppById(appId: string): DesktopApp | undefined {
 	return $allApps.find((app) => app.id === appId);
 }
 
+// ==================== Desktop Icons Store ====================
+
+const DEFAULT_DESKTOP_ICONS = ['control-panel', 'file-manager'];
+const DESKTOP_STORAGE_KEY = 'pinas-desktop-icons';
+
 interface DesktopStore {
 	pinnedAppIds: string[];
 }
 
-const STORAGE_KEY = 'pinas-desktop-icons';
-
-function loadFromStorage(): string[] {
-	if (typeof window === 'undefined') return ['control-panel', 'file-manager'];
-	const stored = localStorage.getItem(STORAGE_KEY);
+function loadDesktopFromLocalStorage(): string[] {
+	if (typeof window === 'undefined') return DEFAULT_DESKTOP_ICONS;
+	const stored = localStorage.getItem(DESKTOP_STORAGE_KEY);
 	if (stored) {
 		try {
 			return JSON.parse(stored);
 		} catch {
-			return ['control-panel', 'file-manager'];
+			return DEFAULT_DESKTOP_ICONS;
 		}
 	}
-	return ['control-panel', 'file-manager']; // Par défaut, Control Panel et Files sont sur le bureau
+	return DEFAULT_DESKTOP_ICONS;
 }
 
-function saveToStorage(pinnedIds: string[]) {
+function saveDesktopToLocalStorage(pinnedIds: string[]) {
 	if (typeof window === 'undefined') return;
-	localStorage.setItem(STORAGE_KEY, JSON.stringify(pinnedIds));
+	localStorage.setItem(DESKTOP_STORAGE_KEY, JSON.stringify(pinnedIds));
+}
+
+function persistDesktopToApi(pinnedIds: string[]) {
+	api.setPreference('desktop_icons', JSON.stringify(pinnedIds)).catch((e) => {
+		console.warn('Failed to persist desktop icons to API:', e);
+	});
 }
 
 function createDesktopStore() {
 	const { subscribe, set, update } = writable<DesktopStore>({
-		pinnedAppIds: loadFromStorage()
+		pinnedAppIds: loadDesktopFromLocalStorage()
 	});
 
 	return {
 		subscribe,
 
-		init: () => {
-			set({ pinnedAppIds: loadFromStorage() });
+		init: async () => {
+			try {
+				const pref = await api.getPreference('desktop_icons');
+				const ids: string[] = JSON.parse(pref.value);
+				set({ pinnedAppIds: ids });
+				saveDesktopToLocalStorage(ids);
+			} catch {
+				// API not available or pref not found — use localStorage fallback
+				set({ pinnedAppIds: loadDesktopFromLocalStorage() });
+			}
 		},
 
 		addToDesktop: (appId: string) => {
 			update((state) => {
 				if (state.pinnedAppIds.includes(appId)) return state;
 				const newPinned = [...state.pinnedAppIds, appId];
-				saveToStorage(newPinned);
+				saveDesktopToLocalStorage(newPinned);
+				persistDesktopToApi(newPinned);
 				return { pinnedAppIds: newPinned };
 			});
 		},
@@ -201,7 +220,8 @@ function createDesktopStore() {
 		removeFromDesktop: (appId: string) => {
 			update((state) => {
 				const newPinned = state.pinnedAppIds.filter((id) => id !== appId);
-				saveToStorage(newPinned);
+				saveDesktopToLocalStorage(newPinned);
+				persistDesktopToApi(newPinned);
 				return { pinnedAppIds: newPinned };
 			});
 		},
@@ -226,3 +246,65 @@ export const pinnedAppIds = derived(desktopStore, ($store) => $store.pinnedAppId
 
 // Actions
 export const { addToDesktop, removeFromDesktop, init: initDesktop } = desktopStore;
+
+// ==================== Dock Store ====================
+
+const DEFAULT_DOCK_ITEMS = ['file-manager', 'app-center', 'control-panel'];
+const DOCK_STORAGE_KEY = 'pinas-dock-items';
+
+function loadDockFromLocalStorage(): string[] {
+	if (typeof window === 'undefined') return DEFAULT_DOCK_ITEMS;
+	const stored = localStorage.getItem(DOCK_STORAGE_KEY);
+	if (stored) {
+		try {
+			return JSON.parse(stored);
+		} catch {
+			return DEFAULT_DOCK_ITEMS;
+		}
+	}
+	return DEFAULT_DOCK_ITEMS;
+}
+
+function saveDockToLocalStorage(ids: string[]) {
+	if (typeof window === 'undefined') return;
+	localStorage.setItem(DOCK_STORAGE_KEY, JSON.stringify(ids));
+}
+
+function persistDockToApi(ids: string[]) {
+	api.setPreference('dock_items', JSON.stringify(ids)).catch((e) => {
+		console.warn('Failed to persist dock items to API:', e);
+	});
+}
+
+export const dockPinnedIds = writable<string[]>(loadDockFromLocalStorage());
+
+export async function initDock() {
+	try {
+		const pref = await api.getPreference('dock_items');
+		const ids: string[] = JSON.parse(pref.value);
+		dockPinnedIds.set(ids);
+		saveDockToLocalStorage(ids);
+	} catch {
+		// API not available or pref not found — use localStorage fallback
+		dockPinnedIds.set(loadDockFromLocalStorage());
+	}
+}
+
+export function addToDock(appId: string) {
+	dockPinnedIds.update((ids) => {
+		if (ids.includes(appId)) return ids;
+		const newIds = [...ids, appId];
+		saveDockToLocalStorage(newIds);
+		persistDockToApi(newIds);
+		return newIds;
+	});
+}
+
+export function removeFromDock(appId: string) {
+	dockPinnedIds.update((ids) => {
+		const newIds = ids.filter((id) => id !== appId);
+		saveDockToLocalStorage(newIds);
+		persistDockToApi(newIds);
+		return newIds;
+	});
+}
