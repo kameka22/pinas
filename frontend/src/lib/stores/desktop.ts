@@ -156,7 +156,7 @@ export function getAppById(appId: string): DesktopApp | undefined {
 
 // ==================== Desktop Icons Store ====================
 
-const DEFAULT_DESKTOP_ICONS = ['control-panel', 'file-manager'];
+const DEFAULT_DESKTOP_ICONS = ['control-panel', 'file-manager', 'app-center'];
 const DESKTOP_STORAGE_KEY = 'pinas-desktop-icons';
 
 interface DesktopStore {
