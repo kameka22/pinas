@@ -1,7 +1,9 @@
-import { writable } from 'svelte/store';
+import { writable, get } from 'svelte/store';
 import { systemStats } from './system';
 import { fileTasks } from './taskManager';
 import type { FileTaskType, FileTaskStatus } from './taskManager';
+import { updateScreen } from './update';
+import { getWsToken } from './api';
 
 export interface TaskProgress {
 	task_id: string;
@@ -25,13 +27,22 @@ let isConnecting = false;
 const INITIAL_RECONNECT_DELAY = 2000;
 const MAX_RECONNECT_DELAY = 30000;
 const MAX_RECONNECT_ATTEMPTS = 10;
+// During an update the server restarts — allow many more reconnection attempts
+const MAX_RECONNECT_ATTEMPTS_UPDATE = 60;
 
 export function connectWebSocket(): () => void {
 	const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
 
 	function getWsUrl(): string {
-		// Auth cookie is sent automatically by the browser during WS handshake
-		return `${protocol}//${window.location.host}/api/ws`;
+		// Auth: cookie is sent automatically, but also pass token as query param
+		// as fallback (some browsers don't send cookies for WS handshake)
+		const base = `${protocol}//${window.location.host}/api/ws`;
+		const token = getWsToken();
+		return token ? `${base}?token=${encodeURIComponent(token)}` : base;
+	}
+
+	function isUpdateActive(): boolean {
+		return get(updateScreen).active;
 	}
 
 	function connect() {
@@ -70,7 +81,6 @@ export function connectWebSocket(): () => void {
 
 			ws.onerror = () => {
 				isConnecting = false;
-				// Error is logged by onclose, no need to duplicate
 			};
 		} catch (error) {
 			console.error('[WS] Failed to connect:', error);
@@ -84,19 +94,24 @@ export function connectWebSocket(): () => void {
 
 		reconnectAttempts++;
 
-		if (reconnectAttempts > MAX_RECONNECT_ATTEMPTS) {
+		const updating = isUpdateActive();
+		const maxAttempts = updating ? MAX_RECONNECT_ATTEMPTS_UPDATE : MAX_RECONNECT_ATTEMPTS;
+
+		if (reconnectAttempts > maxAttempts) {
 			console.warn('[WS] Max reconnection attempts reached, giving up');
 			return;
 		}
 
-		// Exponential backoff with jitter
-		const delay = Math.min(
-			INITIAL_RECONNECT_DELAY * Math.pow(2, reconnectAttempts - 1) + Math.random() * 1000,
-			MAX_RECONNECT_DELAY
-		);
+		// Shorter delay during update (server restart is temporary)
+		const delay = updating
+			? Math.min(3000 + Math.random() * 1000, 5000)
+			: Math.min(
+					INITIAL_RECONNECT_DELAY * Math.pow(2, reconnectAttempts - 1) + Math.random() * 1000,
+					MAX_RECONNECT_DELAY
+				);
 
-		if (reconnectAttempts <= 3) {
-			console.log(`[WS] Reconnecting in ${Math.round(delay / 1000)}s (attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})`);
+		if (!updating && reconnectAttempts <= 3) {
+			console.log(`[WS] Reconnecting in ${Math.round(delay / 1000)}s (attempt ${reconnectAttempts}/${maxAttempts})`);
 		}
 
 		reconnectTimeout = setTimeout(() => {

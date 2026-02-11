@@ -17,6 +17,11 @@ export const auth = writable<AuthState>({
 	user: null
 });
 
+// In-memory token for WebSocket auth (not persisted — cookies handle HTTP requests)
+let wsToken: string | null = null;
+export function getWsToken(): string | null { return wsToken; }
+export function setWsToken(token: string | null) { wsToken = token; }
+
 // Initialize auth from localStorage (user info only, token is in httpOnly cookie)
 if (typeof window !== 'undefined') {
 	// Migration: clean up legacy token from localStorage
@@ -123,7 +128,9 @@ class ApiClient {
 			role: response.user.is_admin ? 'admin' : 'user'
 		};
 
-		// Token is now stored in httpOnly cookie by the server
+		// Token is stored in httpOnly cookie by the server for HTTP requests.
+		// Keep a copy in memory for WebSocket auth (query param fallback).
+		wsToken = response.token;
 		localStorage.setItem('user', JSON.stringify(user));
 
 		auth.set({
@@ -141,6 +148,7 @@ class ApiClient {
 			console.warn('Logout API call failed:', e);
 		}
 
+		wsToken = null;
 		localStorage.removeItem('user');
 
 		auth.set({

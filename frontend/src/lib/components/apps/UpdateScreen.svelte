@@ -15,6 +15,7 @@
 	let errorMessage = '';
 	let startingTimer: ReturnType<typeof setTimeout> | null = null;
 	let devSimInterval: ReturnType<typeof setInterval> | null = null;
+	let pollInterval: ReturnType<typeof setInterval> | null = null;
 
 	// Read store values reactively for template
 	$: state = $updateScreen;
@@ -33,9 +34,11 @@
 
 		if (progress.status === 'completed') {
 			phase = 'completed';
+			stopPolling();
 		} else if (progress.status === 'failed') {
 			phase = 'error';
 			errorMessage = progress.error_message || 'Unknown error';
+			stopPolling();
 		} else {
 			phase = 'progress';
 		}
@@ -49,6 +52,8 @@
 				startDevSimulation();
 			} else {
 				phase = 'progress';
+				// Start polling for server comeback (the WS broadcast is lost during restart)
+				startPolling();
 			}
 		}, 5000);
 	});
@@ -57,7 +62,37 @@
 		unsubProgress();
 		if (startingTimer) clearTimeout(startingTimer);
 		if (devSimInterval) clearInterval(devSimInterval);
+		stopPolling();
 	});
+
+	function startPolling() {
+		if (pollInterval) return;
+		// Poll every 3 seconds to detect when the server is back after restart
+		pollInterval = setInterval(async () => {
+			try {
+				const resp = await api.get<{ just_updated: boolean; version?: string }>('/system/update/just-updated');
+				if (resp.just_updated) {
+					// Server is back and confirms the update was applied
+					progressPercent = 100;
+					currentStep = '';
+					phase = 'completed';
+					if (resp.version) {
+						updateScreen.update(s => ({ ...s, version: resp.version! }));
+					}
+					stopPolling();
+				}
+			} catch {
+				// Server still down — keep polling silently
+			}
+		}, 3000);
+	}
+
+	function stopPolling() {
+		if (pollInterval) {
+			clearInterval(pollInterval);
+			pollInterval = null;
+		}
+	}
 
 	function startDevSimulation() {
 		phase = 'progress';
