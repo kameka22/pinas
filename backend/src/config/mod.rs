@@ -148,15 +148,13 @@ impl AppConfig {
             )?;
         }
 
-        // TLS: disabled in dev_mode, otherwise check env or default to true
-        if app_config.dev_mode {
+        // TLS: only enabled if explicitly set via PINAS_TLS_ENABLED=true
+        app_config.tls_enabled = std::env::var("PINAS_TLS_ENABLED")
+            .map(|v| v == "true" || v == "1")
+            .unwrap_or(false);
+        if app_config.dev_mode && app_config.tls_enabled {
             app_config.tls_enabled = false;
             tracing::info!("TLS disabled (dev_mode)");
-        } else {
-            // Check PINAS_TLS_ENABLED env var, default to true in production
-            app_config.tls_enabled = std::env::var("PINAS_TLS_ENABLED")
-                .map(|v| v != "false" && v != "0")
-                .unwrap_or(true);
         }
 
         // Setup TLS cert/key paths and generate if needed
