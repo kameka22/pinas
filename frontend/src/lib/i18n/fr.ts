@@ -267,6 +267,11 @@ export default {
 			confirmShutdown: 'Êtes-vous sûr de vouloir éteindre le système ?',
 			restartingMessage: 'Le système redémarre...',
 			shuttingDownMessage: 'Le système s\'éteint...',
+			restartingSubtitle: 'Veuillez patienter, cela peut prendre un moment',
+			shuttingDownSubtitle: 'Vous pouvez débrancher l\'appareil en toute sécurité',
+			systemRestarted: 'Système redémarré avec succès',
+			systemShutDown: 'Le système s\'éteint',
+			reloadDesktop: 'Recharger le bureau',
 		}
 	},
 

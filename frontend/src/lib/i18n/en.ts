@@ -267,6 +267,11 @@ export default {
 			confirmShutdown: 'Are you sure you want to shut down the system?',
 			restartingMessage: 'The system is restarting...',
 			shuttingDownMessage: 'The system is shutting down...',
+			restartingSubtitle: 'Please wait, this may take a moment',
+			shuttingDownSubtitle: 'You can safely unplug the device',
+			systemRestarted: 'System restarted successfully',
+			systemShutDown: 'System is shutting down',
+			reloadDesktop: 'Reload desktop',
 		}
 	},
 

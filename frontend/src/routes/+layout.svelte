@@ -12,12 +12,14 @@
 	import ChangePasswordModal from '$components/modals/ChangePasswordModal.svelte';
 	import UpdateSuccessModal from '$components/modals/UpdateSuccessModal.svelte';
 	import UpdateScreen from '$components/apps/UpdateScreen.svelte';
+	import PowerScreen from '$components/desktop/PowerScreen.svelte';
 	import TaskManager from '$components/desktop/TaskManager.svelte';
 	import { connectWebSocket } from '$stores/websocket';
 	import { isSetupComplete, isLoading, initOnboarding } from '$stores/onboarding';
 	import { auth, api } from '$stores/api';
 	import { systemInfo } from '$stores/system';
 	import { updateScreen } from '$stores/update';
+	import { powerScreen } from '$stores/power';
 	import type { JustUpdatedResult } from '$stores/api';
 
 	let showNotifications = false;
@@ -155,6 +157,11 @@
 	<!-- Fullscreen Update Screen -->
 	{#if $updateScreen.active}
 		<UpdateScreen />
+	{/if}
+
+	<!-- Fullscreen Power Screen (restart/shutdown) -->
+	{#if $powerScreen.active}
+		<PowerScreen />
 	{/if}
 
 	<!-- Version label -->

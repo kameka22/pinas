@@ -7,6 +7,7 @@
 	import { createEventDispatcher, onMount, onDestroy } from 'svelte';
 	import { t, locale } from '$lib/i18n';
 	import { get } from 'svelte/store';
+	import { powerScreen } from '$stores/power';
 
 	const dispatch = createEventDispatcher();
 
@@ -82,6 +83,8 @@
 			} else {
 				await api.shutdownSystem();
 			}
+			// Show fullscreen power screen
+			powerScreen.set({ active: true, action });
 		} catch (e) {
 			console.error(`Failed to ${action}:`, e);
 		}
