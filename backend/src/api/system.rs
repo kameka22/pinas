@@ -10,6 +10,7 @@ use sysinfo::{System, Signal, Pid};
 
 use crate::AppState;
 use crate::api::middleware::AdminUser;
+use crate::services::share::ShareService;
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -135,13 +136,19 @@ async fn get_info(State(state): State<AppState>) -> impl IntoResponse {
 }
 
 /// Get services status
-async fn get_services(State(_state): State<AppState>) -> impl IntoResponse {
-    // TODO: Implement actual service status check
+async fn get_services(State(state): State<AppState>) -> impl IntoResponse {
+    let share_svc = ShareService::new(state.db.clone());
+    let samba_status = share_svc.get_samba_status().await.ok();
+
     let services = vec![
         ServiceStatus {
             name: "samba".to_string(),
-            status: "running".to_string(),
-            enabled: true,
+            status: if samba_status.as_ref().map_or(false, |s| s.running) {
+                "running".to_string()
+            } else {
+                "stopped".to_string()
+            },
+            enabled: samba_status.as_ref().map_or(false, |s| s.enabled),
         },
         ServiceStatus {
             name: "nfs".to_string(),

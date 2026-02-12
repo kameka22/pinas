@@ -1021,7 +1021,24 @@ export default {
 			connectionInfo: 'Se connecter avec :'
 		},
 		smb: {
-			description: 'Protocole de partage de fichiers Windows'
+			description: 'Protocole de partage de fichiers Windows',
+			enable: 'Activer SMB/CIFS',
+			enableHint: 'Démarrer le service Samba pour partager des dossiers sur le réseau',
+			status: 'État',
+			running: 'En cours',
+			stopped: 'Arrêté',
+			connectedUsers: 'Utilisateurs connectés',
+			version: 'Version Samba',
+			workgroup: 'Groupe de travail',
+			serverDescription: 'Description du serveur',
+			minProtocol: 'Protocole minimum',
+			maxProtocol: 'Protocole maximum',
+			apply: 'Appliquer',
+			applying: 'Application...',
+			configUpdated: 'Configuration SMB mise à jour',
+			manageShares: 'Gérer les dossiers partagés',
+			globalSettings: 'Paramètres globaux',
+			activeShares: 'Partages actifs'
 		},
 		nfs: {
 			description: 'Système de fichiers réseau pour Unix/Linux'
@@ -1082,13 +1099,20 @@ export default {
 		createShare: 'Créer un partage',
 		editShare: 'Modifier le partage',
 		deleteShare: 'Supprimer le partage',
+		permissions: 'Permissions',
 		fields: {
 			name: 'Nom du partage',
 			namePlaceholder: 'Entrez le nom du partage',
 			path: 'Chemin',
 			protocol: 'Protocole',
 			enabled: 'Activé',
-			users: 'Utilisateurs'
+			users: 'Utilisateurs',
+			description: 'Description',
+			descriptionPlaceholder: 'Description optionnelle',
+			guestAccess: 'Autoriser l\'accès invité',
+			browseable: 'Visible sur le réseau',
+			readOnly: 'Lecture seule',
+			advanced: 'Options avancées'
 		},
 		protocols: {
 			smb: 'SMB/CIFS',
@@ -1097,7 +1121,15 @@ export default {
 		},
 		messages: {
 			noShares: 'Aucun dossier partagé configuré',
-			deleteConfirm: 'Êtes-vous sûr de vouloir supprimer ce partage ?'
+			noSharesHint: 'Créez un dossier partagé pour commencer à partager des fichiers sur votre réseau',
+			deleteConfirm: 'Êtes-vous sûr de vouloir supprimer ce partage ?',
+			deleteHint: 'Le partage sera supprimé mais les fichiers seront conservés.',
+			shareCreated: 'Partage créé avec succès',
+			shareUpdated: 'Partage modifié avec succès',
+			shareDeleted: 'Partage supprimé avec succès',
+			sambaNotRunning: 'Le service Samba n\'est pas démarré. Activez-le dans les paramètres Service de fichiers.',
+			loading: 'Chargement des partages...',
+			error: 'Échec du chargement des partages'
 		}
 	},
 

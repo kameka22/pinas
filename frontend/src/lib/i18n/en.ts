@@ -1021,7 +1021,24 @@ export default {
 			connectionInfo: 'Connect using:'
 		},
 		smb: {
-			description: 'Windows file sharing protocol'
+			description: 'Windows file sharing protocol',
+			enable: 'Enable SMB/CIFS',
+			enableHint: 'Start Samba service to share folders on the network',
+			status: 'Status',
+			running: 'Running',
+			stopped: 'Stopped',
+			connectedUsers: 'Connected Users',
+			version: 'Samba Version',
+			workgroup: 'Workgroup',
+			serverDescription: 'Server Description',
+			minProtocol: 'Minimum Protocol',
+			maxProtocol: 'Maximum Protocol',
+			apply: 'Apply',
+			applying: 'Applying...',
+			configUpdated: 'SMB configuration updated',
+			manageShares: 'Manage Shared Folders',
+			globalSettings: 'Global Settings',
+			activeShares: 'Active Shares'
 		},
 		nfs: {
 			description: 'Network File System for Unix/Linux'
@@ -1082,13 +1099,20 @@ export default {
 		createShare: 'Create Share',
 		editShare: 'Edit Share',
 		deleteShare: 'Delete Share',
+		permissions: 'Permissions',
 		fields: {
 			name: 'Share Name',
 			namePlaceholder: 'Enter share name',
 			path: 'Path',
 			protocol: 'Protocol',
 			enabled: 'Enabled',
-			users: 'Users'
+			users: 'Users',
+			description: 'Description',
+			descriptionPlaceholder: 'Optional description',
+			guestAccess: 'Allow Guest Access',
+			browseable: 'Browseable',
+			readOnly: 'Read Only',
+			advanced: 'Advanced Options'
 		},
 		protocols: {
 			smb: 'SMB/CIFS',
@@ -1097,7 +1121,15 @@ export default {
 		},
 		messages: {
 			noShares: 'No shared folders configured',
-			deleteConfirm: 'Are you sure you want to delete this share?'
+			noSharesHint: 'Create a shared folder to start sharing files on your network',
+			deleteConfirm: 'Are you sure you want to delete this share?',
+			deleteHint: 'The shared folder will be removed but files will be preserved.',
+			shareCreated: 'Share created successfully',
+			shareUpdated: 'Share updated successfully',
+			shareDeleted: 'Share deleted successfully',
+			sambaNotRunning: 'Samba service is not running. Enable it in File Service settings.',
+			loading: 'Loading shares...',
+			error: 'Failed to load shares'
 		}
 	},
 

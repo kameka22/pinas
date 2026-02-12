@@ -209,6 +209,8 @@ ls -la /storage/.pinas/
 | `PINAS_FILES_ROOT` | `./data/files` | Racine du gestionnaire de fichiers |
 | `PINAS_STATIC_DIR` | _(none)_ | Dossier des fichiers frontend |
 | `PINAS_LOG_LEVEL` | `info` | Niveau de log |
+| `PINAS_SHARES_ROOT` | `/storage/shares` | Racine des dossiers partagés SMB |
+| `PINAS_DEV_MODE` | `false` | Simuler les opérations système (Samba, CUPS, SSH) |
 
 Sur LibreELEC, les valeurs sont configurées dans `/usr/lib/systemd/system/pinas.service` :
 - `PINAS_FILES_ROOT=/storage/.pinas/files`

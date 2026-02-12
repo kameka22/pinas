@@ -80,7 +80,7 @@
   - [x] CPU model, cores, usage
   - [x] RAM total, used, available
   - [x] Load average
-- [ ] `GET /api/system/services` - État des services
+- [x] `GET /api/system/services` - État des services (Samba réel, NFS/SSH stubs)
 - [ ] `POST /api/system/reboot` - Redémarrer
 - [ ] `POST /api/system/shutdown` - Éteindre
 - [ ] `POST /api/system/hostname` - Changer hostname
@@ -119,12 +119,22 @@
 - [x] RAID 0, 1, 5, 10
 - [x] Btrfs RAID (single, raid0, raid1, raid10 natif)
 
-### 2.3 Share Service
-- [ ] `GET /api/shares` - Liste des partages
-- [ ] `POST /api/shares` - Créer partage
-- [ ] `GET /api/shares/:id` - Détails partage
-- [ ] `PUT /api/shares/:id` - Modifier partage
-- [ ] `DELETE /api/shares/:id` - Supprimer partage
+### 2.3 Share Service ✅ NOUVEAU
+- [x] `GET /api/shares` - Liste des partages (enrichie avec config + permissions)
+- [x] `POST /api/shares` - Créer partage (+ création dossier physique + smb.conf)
+- [x] `GET /api/shares/:id` - Détails partage
+- [x] `PUT /api/shares/:id` - Modifier partage (+ régénération smb.conf)
+- [x] `DELETE /api/shares/:id` - Supprimer partage (+ nettoyage permissions + smb.conf)
+- [x] `POST /api/shares/:id/toggle` - Activer/désactiver partage
+- [x] `GET /api/shares/samba/status` - Statut service Samba (enabled, running, version, users connectés)
+- [x] `POST /api/shares/samba/enable` - Activer Samba (systemctl enable --now smbd nmbd)
+- [x] `POST /api/shares/samba/disable` - Désactiver Samba
+- [x] `GET /api/shares/samba/config` - Config globale SMB (workgroup, protocols)
+- [x] `PUT /api/shares/samba/config` - Modifier config globale SMB
+- [x] Génération automatique `smb.conf` avec résolution permissions utilisateurs/groupes
+- [x] Sync utilisateurs Samba (smbpasswd) lors création/suppression/changement mot de passe
+- [x] Mode dev avec AtomicBool (pattern CupsService)
+- [x] Types : `SmbShareConfig`, `SmbGlobalConfig`, `SambaStatus`, `ShareInfo`, `SharePermissionEntry`
 
 ### 2.4 User Service ✅
 - [x] `GET /api/users` - Liste utilisateurs
@@ -318,7 +328,7 @@
 ### 5.1-5.6 Applications existantes
 - [x] Storage Manager (complet - pools, volumes, disks, partitions, S.M.A.R.T., wipe)
 - [x] File Manager (complet - sidebar dynamique avec home/shares/volumes)
-- [x] Share Manager (UI mockup)
+- [x] Share Manager (complet - CRUD API, create/edit/delete modals, toggle, permissions)
 - [x] User Manager (complet style UGOS)
 - [x] Control Panel (complet style UGOS)
 - [x] System Settings (UI mockup)
@@ -395,7 +405,7 @@
 - [x] Interface avec onglets (SMB, NFS, FTP)
 - [x] Intégration dans Control Panel (section "File Service")
 - [x] i18n complet (EN/FR)
-- [ ] Onglet SMB (placeholder)
+- [x] Onglet SMB (complet - enable/disable toggle, statut, config globale, liste partages actifs, bouton "Gérer les partages")
 - [ ] Onglet NFS (placeholder)
 - [ ] Onglet FTP (placeholder)
 
@@ -543,6 +553,8 @@
 - **User Dropdown** : Menu utilisateur dans TopBar (profil, mot de passe, logout)
 - **Modales** : ProfileModal, ChangePasswordModal
 - **Storage Manager** : Complet avec pools, volumes, disks, partitions, S.M.A.R.T., wipe, scrub
+- **Share Manager** : Complet avec CRUD API, modals create/edit/delete, toggle enable/disable, permissions
+- **File Service (SMB)** : Onglet SMB complet (enable/disable, statut, config globale workgroup/protocols, liste partages actifs)
 - **File Manager** : Sidebar dynamique avec home/shares/volumes et navigation multi-locations
 - **Control Panel** : SSH déplacé dans catégorie Terminal (`TerminalSettings.svelte`)
 - **Mise à jour système** : Écran fullscreen (UpdateScreen) avec modal confirmation, progression WebSocket, mode dev test
@@ -564,6 +576,7 @@
 - **Permissions API** : CRUD permissions par dossier/utilisateur/groupe
 - **Network Service** : Configuration interfaces, DNS, hostname (connman)
 - **CUPS Service** : Partage imprimantes USB via IPP/AirPrint
+- **Share Service (SMB)** : CRUD partages, génération smb.conf, sync smbpasswd, contrôle smbd/nmbd, config globale
 - **Docker Compose** : Support apps multi-container (ComposeUp/ComposeDown)
 - **Variables étendues** : `${APP_DATA_DIR}`, `${DEVICE_HOSTNAME}`
 
@@ -583,6 +596,16 @@
 ## Prochaines étapes
 
 ### Terminé récemment ✅
+- [x] **Service SMB / Partages de fichiers** (workflow Synology-like complet)
+  - [x] Backend: ShareService complet (~900 lignes) avec CRUD, smb.conf, smbpasswd, smbd/nmbd
+  - [x] Backend: API 11 endpoints (CRUD shares + samba status/enable/disable/config)
+  - [x] Backend: Model enrichi (SmbShareConfig, SmbGlobalConfig, SambaStatus, ShareInfo)
+  - [x] Backend: Sync utilisateurs Samba (create/delete/change password → smbpasswd)
+  - [x] Backend: Fix get_services avec statut Samba réel (plus de stub hardcodé)
+  - [x] Frontend: ShareManager complet (CRUD, modals create/edit/delete, toggle, loading states)
+  - [x] Frontend: FileService onglet SMB (enable/disable, statut, config globale, partages actifs)
+  - [x] Frontend: API client TypeScript (interfaces + méthodes pour tous les endpoints)
+  - [x] i18n EN/FR complet pour SMB et partages
 - [x] **Écran fullscreen de mise à jour** (style Synology DSM)
   - [x] Backend: `dev_mode` exposé dans SystemInfo (`/api/system/info`)
   - [x] Store `update.ts` pour état écran fullscreen
@@ -619,7 +642,7 @@
 ### Moyen terme
 - [ ] Connexion complète UI ↔ Backend pour toutes les apps
 - [x] Gestion utilisateurs fonctionnelle
-- [ ] Partages SMB via interface
+- [x] Partages SMB via interface (complet avec génération smb.conf + permissions)
 - [x] Storage Manager connecté au backend
 - [x] File Manager avec locations dynamiques
 - [ ] Volume resize
@@ -636,5 +659,5 @@
 
 ---
 
-*Dernière mise à jour : 10 Février 2026*
+*Dernière mise à jour : 12 Février 2026*
 *Cible OS : LibreELEC 12.x (package intégré à l'image)*

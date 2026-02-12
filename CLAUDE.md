@@ -61,7 +61,9 @@ PiNAS est un système d'exploitation NAS moderne, inspiré de Synology DSM, con�
 
 ## Dev Mode
 
-`PINAS_DEV_MODE=true` simule toutes les opérations système (stockage, packages, services) pour le développement local sans Raspberry Pi. Exposé via `/api/system/info` → `dev_mode: bool` → store `devMode`.
+`PINAS_DEV_MODE=true` simule toutes les opérations système (stockage, packages, services, Samba) pour le développement local sans Raspberry Pi. Exposé via `/api/system/info` → `dev_mode: bool` → store `devMode`.
+
+En dev mode, les services système (CUPS, Samba, SSH) utilisent des `AtomicBool` pour simuler l'état enabled/disabled sans appels systemctl. Les opérations fichiers (smb.conf, smbpasswd) sont loguées via `tracing::info!("[DEV MODE] Would ...")`. Les opérations DB (CRUD shares, settings, permissions) fonctionnent normalement.
 
 ---
 

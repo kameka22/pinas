@@ -110,8 +110,12 @@ const DEFAULT_KODI_PASSWORD_MARKER: &str = "auto-generate";
 impl AppConfig {
     /// Load configuration from environment variables
     pub fn load() -> anyhow::Result<Self> {
-        // Load .env file if present
-        dotenvy::dotenv().ok();
+        // Load .env.dev first (dev overrides), then .env as fallback
+        if dotenvy::from_filename(".env.dev").is_ok() {
+            tracing::debug!("Loaded .env.dev configuration");
+        } else {
+            dotenvy::dotenv().ok();
+        }
 
         let config = config::Config::builder()
             .add_source(config::Environment::with_prefix("PINAS"))

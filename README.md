@@ -13,7 +13,7 @@ PiNAS transforms your Raspberry Pi into a full-featured NAS with a modern web in
 - **Desktop-like web interface** — Windows, dock, topbar, and widgets
 - **File management** — Browse, upload, download, rename, create folders across locations
 - **Storage management** — Pools (RAID 0/1/5/10, JBOD, Btrfs), volumes, S.M.A.R.T. monitoring
-- **Share management** — SMB/Samba shares configuration
+- **Share management** — SMB/Samba shares with smb.conf generation, user permissions, and service control
 - **User & group management** — Multi-user with RBAC permissions per folder
 - **App Center** — Install 28+ apps from catalog (Docker-based)
 - **Docker Compose** — Multi-container apps (Nextcloud, PhotoPrism, etc.)
@@ -151,7 +151,7 @@ See [app-catalog/README.md](app-catalog/README.md) for details.
 | Storage | `/api/storage/disks`, `/pools`, `/volumes` |
 | Files | `/api/files` (browse, upload, download) |
 | Locations | `/api/locations` (home, shares, volumes) |
-| Shares | `/api/shares` (CRUD) |
+| Shares | `/api/shares` (CRUD), `/samba/status`, `/samba/enable`, `/samba/disable`, `/samba/config` |
 | Docker | `/api/docker/status`, `/containers`, `/images` |
 | Packages | `/api/packages/catalog`, `/install`, `/task/:id` |
 | Apps | `/api/apps/registry`, `/api/apps/:id/i18n/:locale` |
@@ -182,10 +182,11 @@ See [app-catalog/README.md](app-catalog/README.md) for details.
 - [x] i18n (English + French)
 - [x] LibreELEC package + ARM64 build pipeline
 - [x] Umbrel app conversion script (Python)
+- [x] SMB share management (CRUD, smb.conf generation, smbpasswd sync, service control UI)
 
 ### In Progress
 
-- [ ] SMB/NFS/FTP share configuration UI (placeholders exist)
+- [ ] NFS/FTP share configuration UI (placeholders exist)
 - [ ] Real-time Storage Manager updates via WebSocket
 - [ ] Upload files in File Manager
 - [ ] Drag & drop in File Manager

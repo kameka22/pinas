@@ -37,6 +37,72 @@ if (typeof window !== 'undefined') {
 	}
 }
 
+// ─── Share & Samba Types ─────────────────────────────────────────
+
+export interface SmbShareConfig {
+	guest_ok: boolean;
+	browseable: boolean;
+	read_only: boolean;
+	create_mask: string;
+	directory_mask: string;
+	veto_files: string;
+	recycle_bin: boolean;
+}
+
+export interface SharePermissionEntry {
+	user_id: string | null;
+	username: string | null;
+	group_id: string | null;
+	group_name: string | null;
+	permission: string; // "none" | "read" | "write"
+}
+
+export interface ShareInfo {
+	id: string;
+	name: string;
+	path: string;
+	share_type: string;
+	enabled: boolean;
+	description: string | null;
+	config: SmbShareConfig;
+	permissions: SharePermissionEntry[];
+	created_at: string;
+	updated_at: string;
+}
+
+export interface CreateShareRequest {
+	name: string;
+	path: string;
+	share_type?: string;
+	description?: string;
+	guest_ok?: boolean;
+	browseable?: boolean;
+	read_only?: boolean;
+}
+
+export interface UpdateShareRequest {
+	name?: string;
+	description?: string;
+	guest_ok?: boolean;
+	browseable?: boolean;
+	read_only?: boolean;
+}
+
+export interface SambaStatus {
+	enabled: boolean;
+	running: boolean;
+	share_count: number;
+	connected_users: number;
+	version: string | null;
+}
+
+export interface SmbGlobalConfig {
+	workgroup: string;
+	server_string: string;
+	min_protocol: string;
+	max_protocol: string;
+}
+
 // API client
 class ApiClient {
 	private baseUrl: string;
@@ -261,23 +327,50 @@ class ApiClient {
 		return this.get<VolumeInfo[]>('/storage/filesystems');
 	}
 
-	// Shares endpoints
-	async getShares() {
-		return this.get<Array<{
-			id: string;
-			name: string;
-			path: string;
-			protocol: string;
-			enabled: boolean;
-		}>>('/shares');
+	// ─── Shares & Samba endpoints ─────────────────────────────────
+
+	async getShares(): Promise<ShareInfo[]> {
+		return this.get<ShareInfo[]>('/shares');
 	}
 
-	async createShare(share: { name: string; path: string; protocol: string }) {
-		return this.post('/shares', share);
+	async getShare(id: string): Promise<ShareInfo> {
+		return this.get<ShareInfo>(`/shares/${id}`);
 	}
 
-	async deleteShare(id: string) {
+	async createShare(data: CreateShareRequest): Promise<ShareInfo> {
+		return this.post<ShareInfo>('/shares', data);
+	}
+
+	async updateShare(id: string, data: UpdateShareRequest): Promise<ShareInfo> {
+		return this.put<ShareInfo>(`/shares/${id}`, data);
+	}
+
+	async deleteShare(id: string): Promise<void> {
 		return this.delete(`/shares/${id}`);
+	}
+
+	async toggleShare(id: string, enabled: boolean): Promise<ShareInfo> {
+		return this.post<ShareInfo>(`/shares/${id}/toggle`, { enabled });
+	}
+
+	async getSambaStatus(): Promise<SambaStatus> {
+		return this.get<SambaStatus>('/shares/samba/status');
+	}
+
+	async enableSamba(): Promise<void> {
+		return this.post('/shares/samba/enable');
+	}
+
+	async disableSamba(): Promise<void> {
+		return this.post('/shares/samba/disable');
+	}
+
+	async getSmbConfig(): Promise<SmbGlobalConfig> {
+		return this.get<SmbGlobalConfig>('/shares/samba/config');
+	}
+
+	async updateSmbConfig(config: SmbGlobalConfig): Promise<void> {
+		return this.put('/shares/samba/config', config);
 	}
 
 	// Users endpoints
