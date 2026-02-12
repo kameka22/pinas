@@ -1,0 +1,89 @@
+[package]
+name = "pinas"
+version = "0.1.0"
+edition = "2021"
+description = "PiNAS - Modern NAS OS Backend"
+authors = ["PiNAS Team"]
+license = "GPL-3.0"
+
+[dependencies]
+# Web framework
+axum = { version = "0.7", features = ["ws", "multipart", "macros"] }
+axum-extra = { version = "0.9", features = ["typed-header"] }
+tower = "0.4"
+tower-http = { version = "0.5", features = ["cors", "fs", "trace", "compression-gzip", "set-header"] }
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+futures-util = "0.3"
+
+# Database
+sqlx = { version = "0.7", features = ["runtime-tokio", "sqlite", "migrate"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Auth
+jsonwebtoken = "9"
+argon2 = "0.5"
+
+# System
+nix = { version = "0.27", features = ["fs", "mount", "user", "process", "signal"] }
+sysinfo = "0.30"
+tokio-process = "0.2"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
+
+# Utils
+uuid = { version = "1", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+thiserror = "1"
+anyhow = "1"
+dotenvy = "0.15"
+
+# Config
+config = "0.14"
+
+# Docker
+bollard = "0.16"
+
+# HTTP client (for fetching manifests)
+reqwest = { version = "0.11", features = ["json", "rustls-tls"], default-features = false }
+
+# Archive extraction
+flate2 = "1.0"
+tar = "0.4"
+
+# Async utilities
+tokio-stream = "0.1"
+async-trait = "0.1"
+
+# SHA256 verification
+sha2 = "0.10"
+hex = "0.4"
+
+# Secure random number generation
+getrandom = "0.2"
+
+# TLS (HTTPS)
+axum-server = { version = "0.7", features = ["tls-rustls"] }
+rcgen = "0.13"
+rustls = "0.23"
+rustls-pemfile = "2"
+
+# Base64
+base64 = "0.21"
+
+# Hostname
+hostname = "0.4"
+
+[dev-dependencies]
+tokio-test = "0.4"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true

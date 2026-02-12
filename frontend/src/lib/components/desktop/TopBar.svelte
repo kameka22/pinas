@@ -1,0 +1,686 @@
+<script lang="ts">
+	import Icon from '@iconify/svelte';
+	import { systemStats, systemInfo } from '$stores/system';
+	import { hasActiveTask, activeTaskCount } from '$stores/taskManager';
+	import { auth, api } from '$stores/api';
+	import { openWindow } from '$stores/windows';
+	import { createEventDispatcher, onMount, onDestroy } from 'svelte';
+	import { t, locale } from '$lib/i18n';
+	import { get } from 'svelte/store';
+	import { powerScreen } from '$stores/power';
+
+	const dispatch = createEventDispatcher();
+
+	function getLocaleCode(loc: string) {
+		return loc === 'fr' ? 'fr-FR' : 'en-US';
+	}
+
+	$: localeCode = getLocaleCode($locale);
+
+	$: time = new Date().toLocaleTimeString(localeCode, {
+		hour: '2-digit',
+		minute: '2-digit'
+	});
+
+	$: date = new Date().toLocaleDateString(localeCode, {
+		weekday: 'short',
+		day: 'numeric',
+		month: 'short'
+	});
+
+	setInterval(() => {
+		time = new Date().toLocaleTimeString(localeCode, {
+			hour: '2-digit',
+			minute: '2-digit'
+		});
+	}, 60000);
+
+	let showNotifications = false;
+	let showUserMenu = false;
+	let userMenuRef: HTMLDivElement;
+
+	// Power confirmation modal
+	let powerModal: { visible: boolean; action: 'restart' | 'shutdown' } = { visible: false, action: 'restart' };
+
+	function toggleAppLauncher() {
+		dispatch('toggleLauncher');
+	}
+
+	function toggleTaskManager() {
+		dispatch('toggleTaskManager');
+	}
+
+	function toggleUserMenu() {
+		showUserMenu = !showUserMenu;
+	}
+
+	async function handleLogout() {
+		showUserMenu = false;
+		await api.logout();
+		// No need to reload - the layout will detect auth change and show login
+	}
+
+	function openPowerModal(action: 'restart' | 'shutdown') {
+		showUserMenu = false;
+		powerModal = { visible: true, action };
+	}
+
+	function closePowerModal() {
+		powerModal = { ...powerModal, visible: false };
+	}
+
+	async function confirmPowerAction() {
+		const action = powerModal.action;
+		closePowerModal();
+		const info = get(systemInfo);
+		if (info.devMode) {
+			console.log(`[DEV] ${action} requested (no-op in dev mode)`);
+			return;
+		}
+		try {
+			if (action === 'restart') {
+				await api.rebootSystem();
+			} else {
+				await api.shutdownSystem();
+			}
+			// Show fullscreen power screen
+			powerScreen.set({ active: true, action });
+		} catch (e) {
+			console.error(`Failed to ${action}:`, e);
+		}
+	}
+
+	function openProfileModal() {
+		dispatch('openProfile');
+		showUserMenu = false;
+	}
+
+	function openChangePasswordModal() {
+		dispatch('openChangePassword');
+		showUserMenu = false;
+	}
+
+	function handleClickOutside(event: MouseEvent) {
+		if (userMenuRef && !userMenuRef.contains(event.target as Node)) {
+			showUserMenu = false;
+		}
+	}
+
+	onMount(async () => {
+		document.addEventListener('click', handleClickOutside);
+		try {
+			const info = await api.getSystemInfo();
+			systemInfo.set({
+				version: info.version,
+				hostname: info.hostname,
+				osName: info.os_name,
+				osVersion: info.os_version,
+				kernelVersion: info.kernel_version,
+				uptime: info.uptime,
+				cpu: info.cpu,
+				memory: info.memory,
+				loadAverage: info.load_average,
+				devMode: info.dev_mode ?? false,
+			});
+		} catch (e) {
+			// Ignore - version just won't show
+		}
+		// Check for updates silently
+		checkForUpdates();
+	});
+
+	onDestroy(() => {
+		document.removeEventListener('click', handleClickOutside);
+	});
+
+	$: userInitial = $auth.user?.username?.[0]?.toUpperCase() || 'U';
+	$: userName = $auth.user?.username || 'User';
+	$: userRole = $auth.user?.role === 'admin' ? 'Administrator' : 'User';
+
+	// Update check
+	let updateAvailable = false;
+	let updateVersion = '';
+
+	async function checkForUpdates() {
+		try {
+			const result = await api.checkForUpdate();
+			updateAvailable = result.available;
+			updateVersion = result.latest_version;
+		} catch (_) {
+			// Silently ignore
+		}
+	}
+
+	function openSettingsUpdates() {
+		openWindow({
+			id: 'control-panel-update',
+			title: 'Control Panel',
+			icon: 'mdi:cog',
+			component: 'ControlPanel',
+			x: 150,
+			y: 60,
+			width: 950,
+			height: 650,
+			appConfig: { section: 'update' }
+		});
+	}
+</script>
+
+<header class="topbar">
+	<!-- Left: App launcher + task manager -->
+	<div class="flex items-center gap-1">
+		<button class="topbar-btn" on:click={toggleAppLauncher} title={$t.desktop.appLauncher.title}>
+			<Icon icon="mdi:apps" class="w-5 h-5" />
+		</button>
+		<button class="topbar-btn relative" on:click={toggleTaskManager} title={$t.taskManager?.title || 'Tasks'}>
+			{#if $hasActiveTask}
+				<Icon icon="mdi:tray-arrow-down" class="w-5 h-5 task-icon-active" />
+				<span class="task-badge">{$activeTaskCount}</span>
+			{:else}
+				<Icon icon="mdi:tray-arrow-down" class="w-5 h-5" />
+			{/if}
+		</button>
+	</div>
+
+	<!-- Right: System indicators -->
+	<div class="flex items-center gap-1">
+		<!-- System stats -->
+		<div class="stats-group">
+			<div class="stat-item" title={$t.widgets.cpu}>
+				<Icon icon="mdi:chip" class="w-4 h-4 opacity-60" />
+				<span>{$systemStats.cpuUsage.toFixed(0)}%</span>
+			</div>
+			<div class="stat-item" title={$t.widgets.memory}>
+				<Icon icon="mdi:memory" class="w-4 h-4 opacity-60" />
+				<span>{$systemStats.memoryUsage.toFixed(0)}%</span>
+			</div>
+		</div>
+
+		<div class="divider"></div>
+
+		<!-- Network stats -->
+		<div class="stats-group">
+			<div class="stat-item text-xs" title={$t.widgets.upload}>
+				<Icon icon="mdi:arrow-up" class="w-3 h-3 text-green-500" />
+				<span>432.2 KB/s</span>
+			</div>
+			<div class="stat-item text-xs" title={$t.widgets.download}>
+				<Icon icon="mdi:arrow-down" class="w-3 h-3 text-blue-500" />
+				<span>323.4 KB/s</span>
+			</div>
+		</div>
+
+		<div class="divider"></div>
+
+		<!-- Quick actions -->
+		<button class="topbar-btn" title="Widgets">
+			<Icon icon="mdi:widgets-outline" class="w-5 h-5" />
+		</button>
+
+		{#if updateAvailable}
+			<button class="topbar-btn update-btn" title="Update available: v{updateVersion}" on:click={openSettingsUpdates}>
+				<Icon icon="mdi:arrow-up-circle" class="w-5 h-5" />
+				<span class="update-badge"></span>
+			</button>
+		{/if}
+
+		<button class="topbar-btn relative" title={$t.topBar.notifications} on:click={() => showNotifications = !showNotifications}>
+			<Icon icon="mdi:bell-outline" class="w-5 h-5" />
+			<span class="notification-badge">3</span>
+		</button>
+
+		<button class="topbar-btn" title={$t.common.search}>
+			<Icon icon="mdi:magnify" class="w-5 h-5" />
+		</button>
+
+		<div class="divider"></div>
+
+		<!-- User dropdown -->
+		<div class="user-dropdown" bind:this={userMenuRef}>
+			<button class="user-btn" on:click={toggleUserMenu}>
+				<div class="avatar">
+					<span>{userInitial}</span>
+				</div>
+			</button>
+
+			{#if showUserMenu}
+				<div class="dropdown-menu">
+					<div class="dropdown-header">
+						<div class="dropdown-avatar">
+							<span>{userInitial}</span>
+						</div>
+						<div class="dropdown-user-info">
+							<span class="dropdown-username">{userName}</span>
+							<span class="dropdown-role">{userRole}</span>
+						</div>
+					</div>
+
+					<div class="dropdown-divider"></div>
+
+					<button class="dropdown-item" on:click={openProfileModal}>
+						<Icon icon="mdi:account" class="w-4 h-4" />
+						<span>{$t.topBar?.profile || 'Profile'}</span>
+					</button>
+
+					<button class="dropdown-item" on:click={openChangePasswordModal}>
+						<Icon icon="mdi:key-variant" class="w-4 h-4" />
+						<span>{$t.topBar?.changePassword || 'Change Password'}</span>
+					</button>
+
+					<div class="dropdown-divider"></div>
+
+					<div class="power-row">
+						<button class="power-row-btn" on:click={handleLogout} title={$t.topBar?.logout || 'Logout'}>
+							<Icon icon="mdi:logout" class="w-5 h-5" />
+							<span>{$t.topBar?.logout || 'Logout'}</span>
+						</button>
+						<div class="power-row-sep"></div>
+						<button class="power-row-btn" on:click={() => openPowerModal('restart')} title={$t.topBar?.userMenu?.restart || 'Restart'}>
+							<Icon icon="mdi:restart" class="w-5 h-5" />
+							<span>{$t.topBar?.userMenu?.restart || 'Restart'}</span>
+						</button>
+						<div class="power-row-sep"></div>
+						<button class="power-row-btn power-row-danger" on:click={() => openPowerModal('shutdown')} title={$t.topBar?.userMenu?.shutdown || 'Shut Down'}>
+							<Icon icon="mdi:power" class="w-5 h-5" />
+							<span>{$t.topBar?.userMenu?.shutdown || 'Shut Down'}</span>
+						</button>
+					</div>
+				</div>
+			{/if}
+		</div>
+	</div>
+</header>
+
+<!-- Power confirmation modal -->
+{#if powerModal.visible}
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
+	<div class="power-overlay" on:click={closePowerModal}></div>
+	<div class="power-modal">
+		<div class="power-modal-icon" class:shutdown={powerModal.action === 'shutdown'}>
+			<Icon icon={powerModal.action === 'restart' ? 'mdi:restart' : 'mdi:power'} class="w-8 h-8" />
+		</div>
+		<h3>{powerModal.action === 'restart'
+			? ($t.topBar?.userMenu?.restart || 'Restart')
+			: ($t.topBar?.userMenu?.shutdown || 'Shut Down')}</h3>
+		<p>{powerModal.action === 'restart'
+			? ($t.topBar?.userMenu?.confirmRestart || 'Are you sure you want to restart the system?')
+			: ($t.topBar?.userMenu?.confirmShutdown || 'Are you sure you want to shut down the system?')}</p>
+		<div class="power-modal-actions">
+			<button class="pm-btn pm-cancel" on:click={closePowerModal}>
+				{$t.common?.cancel || 'Cancel'}
+			</button>
+			<button class="pm-btn" class:pm-restart={powerModal.action === 'restart'} class:pm-shutdown={powerModal.action === 'shutdown'} on:click={confirmPowerAction}>
+				{powerModal.action === 'restart'
+					? ($t.topBar?.userMenu?.restart || 'Restart')
+					: ($t.topBar?.userMenu?.shutdown || 'Shut Down')}
+			</button>
+		</div>
+	</div>
+{/if}
+
+<style>
+	.topbar {
+		height: 40px;
+		background: rgba(30, 41, 59, 0.85);
+		backdrop-filter: blur(20px);
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 0 12px;
+		z-index: 100;
+		border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+	}
+
+	.task-icon-active {
+		animation: task-pulse 1.5s ease-in-out infinite;
+	}
+
+	@keyframes task-pulse {
+		0%, 100% { opacity: 0.8; }
+		50% { opacity: 1; color: #3b82f6; }
+	}
+
+	.task-badge {
+		position: absolute;
+		top: 2px;
+		right: 2px;
+		min-width: 16px;
+		height: 16px;
+		background: #3b82f6;
+		border-radius: 50%;
+		font-size: 10px;
+		font-weight: 600;
+		color: white;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding: 0 3px;
+	}
+
+	.topbar-btn {
+		width: 32px;
+		height: 32px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		border-radius: 8px;
+		color: rgba(255, 255, 255, 0.8);
+		transition: all 0.2s;
+	}
+
+	.topbar-btn:hover {
+		background: rgba(255, 255, 255, 0.1);
+		color: white;
+	}
+
+	.stats-group {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		padding: 0 8px;
+	}
+
+	.stat-item {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+		font-size: 12px;
+		color: rgba(255, 255, 255, 0.7);
+	}
+
+	.divider {
+		width: 1px;
+		height: 20px;
+		background: rgba(255, 255, 255, 0.15);
+		margin: 0 4px;
+	}
+
+	.notification-badge {
+		position: absolute;
+		top: 4px;
+		right: 4px;
+		width: 16px;
+		height: 16px;
+		background: #ef4444;
+		border-radius: 50%;
+		font-size: 10px;
+		font-weight: 600;
+		color: white;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+	}
+
+	.user-dropdown {
+		position: relative;
+	}
+
+	.user-btn {
+		padding: 4px;
+		border-radius: 8px;
+		transition: all 0.2s;
+	}
+
+	.user-btn:hover {
+		background: rgba(255, 255, 255, 0.1);
+	}
+
+	.avatar {
+		width: 28px;
+		height: 28px;
+		border-radius: 50%;
+		background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		font-size: 12px;
+		font-weight: 600;
+		color: white;
+	}
+
+	.dropdown-menu {
+		position: absolute;
+		top: calc(100% + 8px);
+		right: 0;
+		width: 260px;
+		background: white;
+		border-radius: 12px;
+		box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+		overflow: hidden;
+		z-index: 1000;
+		animation: dropdown-fade-in 0.15s ease-out;
+	}
+
+	@keyframes dropdown-fade-in {
+		from {
+			opacity: 0;
+			transform: translateY(-8px);
+		}
+		to {
+			opacity: 1;
+			transform: translateY(0);
+		}
+	}
+
+	.dropdown-header {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		padding: 16px;
+		background: linear-gradient(135deg, #f8fafc, #f1f5f9);
+	}
+
+	.dropdown-avatar {
+		width: 40px;
+		height: 40px;
+		border-radius: 50%;
+		background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		font-size: 16px;
+		font-weight: 600;
+		color: white;
+	}
+
+	.dropdown-user-info {
+		display: flex;
+		flex-direction: column;
+	}
+
+	.dropdown-username {
+		font-size: 14px;
+		font-weight: 600;
+		color: #1e293b;
+	}
+
+	.dropdown-role {
+		font-size: 12px;
+		color: #64748b;
+	}
+
+	.dropdown-divider {
+		height: 1px;
+		background: #e2e8f0;
+	}
+
+	.dropdown-item {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		width: 100%;
+		padding: 12px 16px;
+		text-align: left;
+		font-size: 14px;
+		color: #475569;
+		transition: background 0.15s;
+	}
+
+	.dropdown-item:hover {
+		background: #f1f5f9;
+	}
+
+	.power-row {
+		display: flex;
+		align-items: stretch;
+		padding: 8px 10px;
+	}
+
+	.power-row-btn {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 6px;
+		padding: 14px 6px;
+		border-radius: 10px;
+		font-size: 13px;
+		color: #64748b;
+		cursor: pointer;
+		transition: all 0.15s ease;
+		border: none;
+		background: transparent;
+	}
+
+	.power-row-btn:hover {
+		background: #f1f5f9;
+		color: #334155;
+	}
+
+	.power-row-danger:hover {
+		background: #fef2f2;
+		color: #dc2626;
+	}
+
+	.power-row-sep {
+		width: 1px;
+		background: #e2e8f0;
+		margin: 4px 0;
+	}
+
+	.update-btn {
+		color: #60a5fa !important;
+		animation: update-bounce 2s ease-in-out infinite;
+	}
+
+	@keyframes update-bounce {
+		0%, 100% { transform: translateY(0); color: #60a5fa; }
+		10% { transform: translateY(-4px); color: #93c5fd; }
+		20% { transform: translateY(0); }
+		30% { transform: translateY(-2px); color: #93c5fd; }
+		40% { transform: translateY(0); color: #60a5fa; }
+	}
+
+	.update-badge {
+		position: absolute;
+		top: 5px;
+		right: 5px;
+		width: 8px;
+		height: 8px;
+		background: #3b82f6;
+		border-radius: 50%;
+		border: 1.5px solid rgba(30, 41, 59, 0.85);
+	}
+
+	/* Power confirmation modal */
+	.power-overlay {
+		position: fixed;
+		inset: 0;
+		background: rgba(0, 0, 0, 0.4);
+		z-index: 2000;
+	}
+
+	.power-modal {
+		position: fixed;
+		top: 50%;
+		left: 50%;
+		transform: translate(-50%, -50%);
+		width: 360px;
+		background: white;
+		border-radius: 16px;
+		padding: 32px;
+		text-align: center;
+		z-index: 2001;
+		box-shadow: 0 25px 60px rgba(0, 0, 0, 0.25);
+		animation: modal-pop 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+	}
+
+	@keyframes modal-pop {
+		from { opacity: 0; transform: translate(-50%, -50%) scale(0.95); }
+		to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+	}
+
+	.power-modal-icon {
+		width: 56px;
+		height: 56px;
+		border-radius: 50%;
+		background: rgba(59, 130, 246, 0.1);
+		color: #3b82f6;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		margin: 0 auto 16px;
+	}
+
+	.power-modal-icon.shutdown {
+		background: rgba(239, 68, 68, 0.1);
+		color: #ef4444;
+	}
+
+	.power-modal h3 {
+		font-size: 17px;
+		font-weight: 600;
+		color: #1e293b;
+		margin-bottom: 8px;
+	}
+
+	.power-modal p {
+		font-size: 14px;
+		color: #64748b;
+		margin-bottom: 24px;
+		line-height: 1.5;
+	}
+
+	.power-modal-actions {
+		display: flex;
+		gap: 10px;
+	}
+
+	.pm-btn {
+		flex: 1;
+		padding: 10px 16px;
+		border-radius: 10px;
+		font-size: 14px;
+		font-weight: 500;
+		cursor: pointer;
+		border: none;
+		transition: all 0.15s ease;
+	}
+
+	.pm-cancel {
+		background: #f1f5f9;
+		color: #475569;
+	}
+
+	.pm-cancel:hover {
+		background: #e2e8f0;
+	}
+
+	.pm-restart {
+		background: #3b82f6;
+		color: white;
+	}
+
+	.pm-restart:hover {
+		background: #2563eb;
+	}
+
+	.pm-shutdown {
+		background: #ef4444;
+		color: white;
+	}
+
+	.pm-shutdown:hover {
+		background: #dc2626;
+	}
+</style>

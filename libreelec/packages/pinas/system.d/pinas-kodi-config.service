@@ -1,0 +1,15 @@
+[Unit]
+Description=PiNAS - Configure Kodi webserver
+DefaultDependencies=no
+Before=kodi.service
+After=systemd-remount-fs.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/pinas-kodi-config.sh
+RemainAfterExit=yes
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

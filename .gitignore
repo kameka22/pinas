@@ -1,0 +1,64 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+backend/target/
+frontend/build/
+frontend/.svelte-kit/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+build.log
+
+# External sources (not part of this project)
+extra/*
+
+# Remote build outputs and config
+target/
+.vm-config
+
+backend/data
+app-catalog/
+exemple/
+
+# Generated package files (built by scripts/build-arm64.sh)
+libreelec/packages/pinas/www/
+libreelec/packages/pinas/bin/pinas
+
+# Database
+*.db
+*.db-journal
+
+# Auto Claude data directory
+.auto-claude/
+
+# Auto Claude generated files
+.auto-claude-security.json
+.auto-claude-status
+.claude_settings.json
+.worktrees/
+.security-key
+logs/security/
+
+# Claude-mem context files (subdirectories only, root CLAUDE.md is tracked)
+*/CLAUDE.md
+*/*/CLAUDE.md
+*/*/*/CLAUDE.md
+*/*/*/*/CLAUDE.md
+*/*/*/*/*/CLAUDE.md
+PLAN.md
