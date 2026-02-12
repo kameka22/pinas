@@ -5,6 +5,7 @@
 	import { api, auth } from '$lib/stores/api';
 	import type { FolderPermissions, PermissionLevel, PermissionEntry } from '$lib/stores/api';
 	import FolderPicker from '$lib/components/ui/FolderPicker.svelte';
+	import PasswordRules from '$lib/components/ui/PasswordRules.svelte';
 
 	// Types - matches API response from /users
 	interface User {
@@ -144,7 +145,7 @@
 		requireUpperLower: true,
 		requireNumber: false,
 		requireSpecialChar: false,
-		minLength: 6,
+		minLength: 8,
 		expiryEnabled: false,
 		validityDays: 90,
 		reminderDays: 7,
@@ -257,8 +258,8 @@
 			actionError = 'Passwords do not match';
 			return;
 		}
-		if (newUser.password.length < 6) {
-			actionError = 'Password must be at least 6 characters';
+		if (newUser.password.length < 8) {
+			actionError = 'Password must be at least 8 characters';
 			return;
 		}
 
@@ -967,6 +968,7 @@
 					<label>{$t.userManager.fields.confirmPassword} <span class="required">*</span></label>
 					<input type="password" bind:value={newUser.confirmPassword} placeholder="" disabled={actionLoading} />
 				</div>
+				<PasswordRules password={newUser.password} confirmPassword={newUser.confirmPassword} showMatch={true} />
 				<label class="checkbox-row">
 					<input type="checkbox" bind:checked={newUser.is_admin} disabled={actionLoading} />
 					<span>{$t.userManager.roles.administrator}</span>

@@ -37,6 +37,12 @@ export default {
 		copy: 'Copier'
 	},
 
+	// Password validation rules
+	passwordRules: {
+		minLength: 'Au moins 8 caractères',
+		passwordsMatch: 'Les mots de passe correspondent'
+	},
+
 	// Control Panel
 	controlPanel: {
 		title: 'Panneau de configuration',
@@ -406,9 +412,9 @@ export default {
 			usernameMinLength: "Le nom d'utilisateur doit contenir au moins 3 caractères",
 			usernameInvalid: 'Seuls les lettres, chiffres et underscores sont autorisés',
 			passwordRequired: 'Le mot de passe est requis',
-			passwordMinLength: 'Le mot de passe doit contenir au moins 6 caractères',
+			passwordMinLength: 'Le mot de passe doit contenir au moins 8 caractères',
 			passwordMismatch: 'Les mots de passe ne correspondent pas',
-			sshPasswordMinLength: 'Le mot de passe SSH doit contenir au moins 4 caractères',
+			sshPasswordMinLength: 'Le mot de passe SSH doit contenir au moins 8 caractères',
 			sshPasswordMismatch: 'Les mots de passe SSH ne correspondent pas'
 		}
 	},
@@ -995,7 +1001,7 @@ export default {
 			newPassword: 'Nouveau mot de passe',
 			confirmPassword: 'Confirmer le mot de passe',
 			passwordDescription: 'Ce mot de passe est utilisé pour se connecter via SSH en tant qu\'utilisateur root.',
-			passwordTooShort: 'Le mot de passe doit contenir au moins 4 caractères',
+			passwordTooShort: 'Le mot de passe doit contenir au moins 8 caractères',
 			passwordMismatch: 'Les mots de passe ne correspondent pas',
 			connectionInfo: 'Se connecter avec :'
 		},

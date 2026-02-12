@@ -11,6 +11,7 @@
 		clearError
 	} from '$stores/onboarding';
 	import { t, locale, languages, type Locale } from '$lib/i18n';
+	import PasswordRules from '$lib/components/ui/PasswordRules.svelte';
 
 	// Local form values
 	let selectedLanguage: Locale = $locale;
@@ -89,7 +90,7 @@
 			passwordError = $t.onboarding.validation.passwordRequired;
 			return false;
 		}
-		if (adminPassword.length < 6) {
+		if (adminPassword.length < 8) {
 			passwordError = $t.onboarding.validation.passwordMinLength;
 			return false;
 		}
@@ -107,7 +108,7 @@
 			sshPasswordError = $t.onboarding.validation.passwordRequired;
 			return false;
 		}
-		if (sshPassword.length < 4) {
+		if (sshPassword.length < 8) {
 			sshPasswordError = $t.onboarding.validation.sshPasswordMinLength;
 			return false;
 		}
@@ -317,6 +318,7 @@
 							<span class="error-message">{passwordError}</span>
 						{/if}
 					</div>
+					<PasswordRules password={adminPassword} confirmPassword={confirmPassword} showMatch={true} />
 				</div>
 
 			{:else if $currentStep === 6}
@@ -369,6 +371,7 @@
 									<span class="error-message">{sshPasswordError}</span>
 								{/if}
 							</div>
+							<PasswordRules password={sshPassword} confirmPassword={sshConfirmPassword} showMatch={true} />
 							<p class="ssh-hint">{$t.onboarding.ssh.passwordHint}</p>
 						</div>
 					{:else}

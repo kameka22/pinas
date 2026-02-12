@@ -3,6 +3,7 @@
 	import Icon from '@iconify/svelte';
 	import { t } from '$lib/i18n';
 	import { api, type SshStatus } from '$lib/stores/api';
+	import PasswordRules from '$lib/components/ui/PasswordRules.svelte';
 
 	// SSH state
 	let sshStatus: SshStatus | null = null;
@@ -67,8 +68,8 @@
 	async function savePassword() {
 		passwordError = null;
 
-		if (newPassword.length < 4) {
-			passwordError = $t.fileService?.ssh?.passwordTooShort || 'Password must be at least 4 characters';
+		if (newPassword.length < 8) {
+			passwordError = $t.fileService?.ssh?.passwordTooShort || 'Password must be at least 8 characters';
 			return;
 		}
 
@@ -220,6 +221,7 @@
 						autocomplete="new-password"
 					/>
 				</div>
+				<PasswordRules password={newPassword} confirmPassword={confirmPassword} showMatch={true} />
 			</div>
 
 			<div class="modal-footer">

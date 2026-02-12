@@ -132,11 +132,11 @@ async fn create_user(
             .into_response();
     }
 
-    if payload.password.len() < 6 {
+    if payload.password.len() < 8 {
         return (
             StatusCode::BAD_REQUEST,
             Json(ErrorResponse {
-                error: "Password must be at least 6 characters".to_string(),
+                error: "Password must be at least 8 characters".to_string(),
                 code: "VALIDATION_ERROR".to_string(),
             }),
         )
@@ -282,11 +282,11 @@ async fn change_user_password(
     Path(id): Path<String>,
     Json(payload): Json<ChangePasswordRequest>,
 ) -> impl IntoResponse {
-    if payload.password.len() < 6 {
+    if payload.password.len() < 8 {
         return (
             StatusCode::BAD_REQUEST,
             Json(ErrorResponse {
-                error: "Password must be at least 6 characters".to_string(),
+                error: "Password must be at least 8 characters".to_string(),
                 code: "VALIDATION_ERROR".to_string(),
             }),
         )

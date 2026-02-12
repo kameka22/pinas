@@ -313,6 +313,18 @@ async fn change_password(
         }
     }
 
+    // Validate new password length
+    if payload.new_password.len() < 8 {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(AuthErrorResponse {
+                error: "Password must be at least 8 characters".to_string(),
+                code: "VALIDATION_ERROR".to_string(),
+            }),
+        )
+            .into_response();
+    }
+
     // Change password
     if let Err(e) = change_user_password(&state.db, &user.id, &payload.new_password).await {
         tracing::error!("Password change error: {}", e);

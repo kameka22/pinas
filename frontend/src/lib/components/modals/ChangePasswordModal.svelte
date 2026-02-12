@@ -2,6 +2,7 @@
 	import Icon from '@iconify/svelte';
 	import { api } from '$stores/api';
 	import { t } from '$lib/i18n';
+	import PasswordRules from '$lib/components/ui/PasswordRules.svelte';
 
 	export let show = false;
 
@@ -39,8 +40,8 @@
 			return;
 		}
 
-		if (newPassword.length < 6) {
-			error = 'Password must be at least 6 characters';
+		if (newPassword.length < 8) {
+			error = 'Password must be at least 8 characters';
 			return;
 		}
 
@@ -137,6 +138,7 @@
 							disabled={saving}
 						/>
 					</div>
+					<PasswordRules password={newPassword} confirmPassword={confirmPassword} showMatch={true} />
 				{/if}
 			</div>
 

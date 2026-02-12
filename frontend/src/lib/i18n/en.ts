@@ -37,6 +37,12 @@ export default {
 		copy: 'Copy'
 	},
 
+	// Password validation rules
+	passwordRules: {
+		minLength: 'At least 8 characters',
+		passwordsMatch: 'Passwords match'
+	},
+
 	// Control Panel
 	controlPanel: {
 		title: 'Control Panel',
@@ -406,9 +412,9 @@ export default {
 			usernameMinLength: 'Username must be at least 3 characters',
 			usernameInvalid: 'Only letters, numbers and underscores allowed',
 			passwordRequired: 'Password is required',
-			passwordMinLength: 'Password must be at least 6 characters',
+			passwordMinLength: 'Password must be at least 8 characters',
 			passwordMismatch: 'Passwords do not match',
-			sshPasswordMinLength: 'SSH password must be at least 4 characters',
+			sshPasswordMinLength: 'SSH password must be at least 8 characters',
 			sshPasswordMismatch: 'SSH passwords do not match'
 		}
 	},
@@ -995,7 +1001,7 @@ export default {
 			newPassword: 'New Password',
 			confirmPassword: 'Confirm Password',
 			passwordDescription: 'This password is used to connect via SSH as the root user.',
-			passwordTooShort: 'Password must be at least 4 characters',
+			passwordTooShort: 'Password must be at least 8 characters',
 			passwordMismatch: 'Passwords do not match',
 			connectionInfo: 'Connect using:'
 		},
