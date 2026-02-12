@@ -1,0 +1,21 @@
+[Unit]
+Description=CUPS Printing Service
+After=network.target avahi-daemon.service
+Wants=avahi-daemon.service
+
+[Service]
+Type=simple
+
+# First run: copy default config to persistent storage
+ExecStartPre=/bin/sh -c 'mkdir -p /storage/.config/cups && [ -f /storage/.config/cups/cupsd.conf ] || cp /usr/etc/cups/cupsd.conf /storage/.config/cups/'
+ExecStartPre=/bin/sh -c 'mkdir -p /var/spool/cups/tmp /run/cups /storage/.pinas/logs/cups'
+
+ExecStart=/usr/sbin/cupsd -f -c /storage/.config/cups/cupsd.conf
+Restart=on-failure
+RestartSec=5
+
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
