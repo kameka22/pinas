@@ -1023,7 +1023,25 @@ export default {
 			connectionInfo: 'Connect using:'
 		},
 		smb: {
-			description: 'Windows file sharing protocol'
+			title: 'SMB/CIFS',
+			description: 'Windows file sharing protocol',
+			enable: 'Enable SMB',
+			disable: 'Disable SMB',
+			status: 'Status',
+			running: 'Running',
+			stopped: 'Stopped',
+			workgroup: 'Workgroup',
+			serverDescription: 'Server Description',
+			minProtocol: 'Minimum Protocol',
+			maxProtocol: 'Maximum Protocol',
+			apply: 'Apply',
+			applySuccess: 'SMB configuration updated',
+			applyError: 'Failed to update SMB configuration',
+			activeShares: 'Active Shares',
+			manageShares: 'Manage Shares',
+			connectedUsers: 'Connected Users',
+			version: 'Version',
+			globalConfig: 'Global Configuration'
 		},
 		nfs: {
 			description: 'Network File System for Unix/Linux'
@@ -1084,6 +1102,19 @@ export default {
 		createShare: 'Create Share',
 		editShare: 'Edit Share',
 		deleteShare: 'Delete Share',
+		description: 'Description',
+		descriptionPlaceholder: 'Enter share description',
+		advancedOptions: 'Advanced Options',
+		guestAccess: 'Guest Access',
+		browseable: 'Browseable',
+		readOnly: 'Read Only',
+		createMask: 'File Permission Mask',
+		directoryMask: 'Directory Permission Mask',
+		recycleBin: 'Recycle Bin',
+		sambaNotRunning: 'Samba service is not running. Enable it in File Service settings.',
+		permissions: 'Permissions',
+		toggleEnabled: 'Enable',
+		toggleDisabled: 'Disable',
 		fields: {
 			name: 'Share Name',
 			namePlaceholder: 'Enter share name',
@@ -1099,7 +1130,13 @@ export default {
 		},
 		messages: {
 			noShares: 'No shared folders configured',
-			deleteConfirm: 'Are you sure you want to delete this share?'
+			deleteConfirm: 'Are you sure you want to delete this share?',
+			createSuccess: 'Share created successfully',
+			updateSuccess: 'Share updated successfully',
+			deleteSuccess: 'Share deleted successfully',
+			createError: 'Failed to create share',
+			updateError: 'Failed to update share',
+			deleteError: 'Failed to delete share'
 		}
 	},
 

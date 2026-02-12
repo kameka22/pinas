@@ -12,6 +12,6 @@ pub use manifest::*;
 pub use package::*;
 pub use permission::*;
 pub use session::Session;
-pub use share::Share;
+pub use share::*;
 pub use storage::*;
 pub use user::User;

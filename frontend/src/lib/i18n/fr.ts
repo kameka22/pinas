@@ -1023,7 +1023,25 @@ export default {
 			connectionInfo: 'Se connecter avec :'
 		},
 		smb: {
-			description: 'Protocole de partage de fichiers Windows'
+			title: 'SMB/CIFS',
+			description: 'Protocole de partage de fichiers Windows',
+			enable: 'Activer SMB',
+			disable: 'Désactiver SMB',
+			status: 'Statut',
+			running: 'En cours d\'exécution',
+			stopped: 'Arrêté',
+			workgroup: 'Groupe de travail',
+			serverDescription: 'Description du serveur',
+			minProtocol: 'Protocole minimum',
+			maxProtocol: 'Protocole maximum',
+			apply: 'Appliquer',
+			applySuccess: 'Configuration SMB mise à jour',
+			applyError: 'Erreur lors de la mise à jour de la configuration SMB',
+			activeShares: 'Partages actifs',
+			manageShares: 'Gérer les partages',
+			connectedUsers: 'Utilisateurs connectés',
+			version: 'Version',
+			globalConfig: 'Configuration globale'
 		},
 		nfs: {
 			description: 'Système de fichiers réseau pour Unix/Linux'
@@ -1084,6 +1102,19 @@ export default {
 		createShare: 'Créer un partage',
 		editShare: 'Modifier le partage',
 		deleteShare: 'Supprimer le partage',
+		description: 'Description',
+		descriptionPlaceholder: 'Entrer la description du partage',
+		advancedOptions: 'Options avancées',
+		guestAccess: 'Accès invité',
+		browseable: 'Navigable',
+		readOnly: 'Lecture seule',
+		createMask: 'Masque de permissions fichiers',
+		directoryMask: 'Masque de permissions dossiers',
+		recycleBin: 'Corbeille',
+		sambaNotRunning: 'Le service Samba n\'est pas actif. Activez-le dans les paramètres du Service de fichiers.',
+		permissions: 'Permissions',
+		toggleEnabled: 'Activer',
+		toggleDisabled: 'Désactiver',
 		fields: {
 			name: 'Nom du partage',
 			namePlaceholder: 'Entrez le nom du partage',
@@ -1099,7 +1130,13 @@ export default {
 		},
 		messages: {
 			noShares: 'Aucun dossier partagé configuré',
-			deleteConfirm: 'Êtes-vous sûr de vouloir supprimer ce partage ?'
+			deleteConfirm: 'Êtes-vous sûr de vouloir supprimer ce partage ?',
+			createSuccess: 'Partage créé avec succès',
+			updateSuccess: 'Partage mis à jour avec succès',
+			deleteSuccess: 'Partage supprimé avec succès',
+			createError: 'Erreur lors de la création du partage',
+			updateError: 'Erreur lors de la mise à jour du partage',
+			deleteError: 'Erreur lors de la suppression du partage'
 		}
 	},
 

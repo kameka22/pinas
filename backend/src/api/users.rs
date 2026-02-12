@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::api::middleware::{AdminUser, AuthErrorResponse, AuthUser};
 use crate::services::home::HomeService;
+use crate::services::share::ShareService;
 use crate::services::user::{
     self, change_password, create_user_with_home, delete_user_with_home,
     get_user_by_id, list_users as list_users_service, update_user as update_user_service,
@@ -157,6 +158,12 @@ async fn create_user(
     .await
     {
         Ok(user) => {
+            // Sync Samba user (non-blocking)
+            let share_svc = ShareService::new(state.db.clone());
+            if let Err(e) = share_svc.sync_samba_user(&payload.username, &payload.password).await {
+                tracing::warn!("Failed to sync Samba user: {}", e);
+            }
+
             let response: UserResponse = user.into();
             (StatusCode::CREATED, Json(response)).into_response()
         }
@@ -262,11 +269,27 @@ async fn delete_user(
     admin: AdminUser,
     Path(id): Path<String>,
 ) -> impl IntoResponse {
+    // Look up username for Samba cleanup
+    let username = get_user_by_id(&state.db, &id)
+        .await
+        .ok()
+        .flatten()
+        .map(|u| u.username.clone());
+
     // Create HomeService to handle user's home directory cleanup
     let home_service = HomeService::new(&state.config);
 
     match delete_user_with_home(&state.db, &id, &admin.id, &home_service).await {
-        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Ok(()) => {
+            // Remove Samba user (non-blocking)
+            if let Some(username) = username {
+                let share_svc = ShareService::new(state.db.clone());
+                if let Err(e) = share_svc.remove_samba_user(&username).await {
+                    tracing::warn!("Failed to remove Samba user: {}", e);
+                }
+            }
+            StatusCode::NO_CONTENT.into_response()
+        }
         Err(e) => {
             tracing::error!("Failed to delete user: {}", e);
             let (status, json) = e.into();
@@ -294,7 +317,16 @@ async fn change_user_password(
     }
 
     match change_password(&state.db, &id, &payload.password).await {
-        Ok(()) => StatusCode::NO_CONTENT.into_response(),
+        Ok(()) => {
+            // Sync Samba password (non-blocking)
+            if let Ok(Some(user)) = get_user_by_id(&state.db, &id).await {
+                let share_svc = ShareService::new(state.db.clone());
+                if let Err(e) = share_svc.sync_samba_user(&user.username, &payload.password).await {
+                    tracing::warn!("Failed to sync Samba password: {}", e);
+                }
+            }
+            StatusCode::NO_CONTENT.into_response()
+        }
         Err(e) => {
             tracing::error!("Failed to change password: {}", e);
             let (status, json) = e.into();
