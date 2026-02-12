@@ -94,9 +94,9 @@ export const builtInApps: DesktopApp[] = [
 	},
 	{
 		id: 'display',
-		label: 'Display',
+		label: 'External Display',
 		labelKey: 'display',
-		icon: 'mdi:monitor',
+		icon: 'mdi:monitor-screenshot',
 		component: 'DisplayApp',
 		gradient: 'from-indigo-500 to-purple-500'
 	}

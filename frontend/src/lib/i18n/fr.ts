@@ -258,7 +258,7 @@ export default {
 		users: 'Utilisateurs',
 		processManager: 'Gestionnaire de processus',
 		kodi: 'Kodi',
-		display: 'Affichage'
+		display: 'Affichage Externe'
 	},
 
 	// Top Bar
@@ -818,16 +818,18 @@ export default {
 
 	// Display App
 	display: {
-		title: 'Affichage',
+		title: 'Affichage Externe',
 		description: "Gérer les services d'affichage HDMI",
-		services: "Services d'affichage",
-		noActiveService: "Aucun service d'affichage actif",
-		splashActive: "L'écran d'accueil PiNAS est affiché",
+		services: 'Services disponibles',
+		noActiveService: 'Aucun service actif',
+		splashActive: "L'écran d'accueil PiNAS est affiché sur la sortie HDMI",
 		splashDescription: 'Accédez à PiNAS sur :',
-		activate: 'Activer',
-		deactivate: 'Désactiver',
+		activeService: 'Service actif',
+		configure: 'Configurer',
+		back: 'Retour',
 		activating: 'Démarrage...',
-		deactivating: 'Arrêt...'
+		deactivating: 'Arrêt...',
+		hdmiOutput: 'Sortie HDMI'
 	},
 
 	// Kodi App
