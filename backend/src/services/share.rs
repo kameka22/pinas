@@ -3,10 +3,13 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use thiserror::Error;
 use tokio::process::Command as AsyncCommand;
 
+use std::collections::HashSet;
+
 use crate::models::{
     PermissionEntry, SambaStatus, Share, ShareInfo, SmbGlobalConfig, SmbShareConfig,
 };
 use crate::services::permission::PermissionService;
+use crate::services::service_access::ServiceAccessService;
 
 /// Share service errors
 #[derive(Debug, Error)]
@@ -286,8 +289,8 @@ impl ShareService {
             });
         }
 
-        let running = self.is_service_active("smbd").await;
-        let enabled = self.is_service_enabled("smbd").await || running;
+        let running = self.is_service_active("pinas-smbd").await;
+        let enabled = self.is_service_enabled("pinas-smbd").await || running;
         let version = self.get_samba_version().await;
         let connected_users = self.count_samba_connections().await;
 
@@ -308,7 +311,10 @@ impl ShareService {
             return Ok(());
         }
 
-        for svc in &["smbd", "nmbd"] {
+        // Regenerate smb.conf before enabling services
+        self.regenerate_and_reload().await;
+
+        for svc in &["pinas-smbd", "pinas-nmbd"] {
             let output = AsyncCommand::new("systemctl")
                 .args(["enable", "--now", svc])
                 .output()
@@ -321,10 +327,7 @@ impl ShareService {
             }
         }
 
-        // Regenerate smb.conf after enabling
-        self.regenerate_and_reload().await;
-
-        tracing::info!("Samba services enabled and started");
+        tracing::info!("PiNAS Samba services enabled and started");
         Ok(())
     }
 
@@ -336,7 +339,7 @@ impl ShareService {
             return Ok(());
         }
 
-        for svc in &["smbd", "nmbd"] {
+        for svc in &["pinas-smbd", "pinas-nmbd"] {
             let output = AsyncCommand::new("systemctl")
                 .args(["disable", "--now", svc])
                 .output()
@@ -349,7 +352,7 @@ impl ShareService {
             }
         }
 
-        tracing::info!("Samba services disabled");
+        tracing::info!("PiNAS Samba services disabled");
         Ok(())
     }
 
@@ -468,6 +471,91 @@ impl ShareService {
         Ok(())
     }
 
+    /// Enable a Samba user account (smbpasswd -e)
+    pub async fn enable_samba_user(&self, username: &str) -> Result<(), ShareError> {
+        if self.dev_mode {
+            tracing::info!("[DEV MODE] Would enable Samba user: {}", username);
+            return Ok(());
+        }
+
+        let output = AsyncCommand::new("smbpasswd")
+            .args(["-e", username])
+            .output()
+            .await
+            .map_err(|e| ShareError::SystemError(format!("Failed to run smbpasswd -e: {}", e)))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            tracing::warn!("smbpasswd enable failed for {}: {}", username, stderr);
+        } else {
+            tracing::info!("Samba user enabled: {}", username);
+        }
+
+        Ok(())
+    }
+
+    /// Disable a Samba user account (smbpasswd -d)
+    pub async fn disable_samba_user(&self, username: &str) -> Result<(), ShareError> {
+        if self.dev_mode {
+            tracing::info!("[DEV MODE] Would disable Samba user: {}", username);
+            return Ok(());
+        }
+
+        let output = AsyncCommand::new("smbpasswd")
+            .args(["-d", username])
+            .output()
+            .await
+            .map_err(|e| ShareError::SystemError(format!("Failed to run smbpasswd -d: {}", e)))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            tracing::warn!("smbpasswd disable failed for {}: {}", username, stderr);
+        } else {
+            tracing::info!("Samba user disabled: {}", username);
+        }
+
+        Ok(())
+    }
+
+    /// Initialize Samba on backend startup
+    /// Ensures LibreELEC default Samba is disabled and PiNAS smb.conf is generated
+    pub async fn initialize_samba(&self) {
+        if self.dev_mode {
+            tracing::info!("[DEV MODE] Samba initialization skipped");
+            return;
+        }
+
+        // Ensure LibreELEC default Samba is disabled
+        let disabled_marker = "/storage/.cache/services/samba.disabled";
+        if tokio::fs::metadata(disabled_marker).await.is_err() {
+            tracing::info!("Creating samba.disabled marker to prevent LibreELEC default Samba");
+            if let Err(e) = tokio::fs::create_dir_all("/storage/.cache/services").await {
+                tracing::warn!("Failed to create services dir: {}", e);
+            }
+            if let Err(e) = tokio::fs::write(disabled_marker, "").await {
+                tracing::warn!("Failed to create samba.disabled: {}", e);
+            }
+        }
+
+        // Stop LibreELEC default Samba services
+        for svc in &["smbd", "nmbd", "samba-config"] {
+            let _ = AsyncCommand::new("systemctl")
+                .args(["stop", svc])
+                .output()
+                .await;
+        }
+
+        // Create PiNAS Samba config directory
+        if let Err(e) = tokio::fs::create_dir_all("/storage/.pinas/data/samba").await {
+            tracing::warn!("Failed to create samba dir: {}", e);
+        }
+
+        // Regenerate smb.conf from database state
+        self.regenerate_and_reload().await;
+
+        tracing::info!("PiNAS Samba initialization complete");
+    }
+
     // ─── smb.conf Generation ─────────────────────────────────────────
 
     /// Generate smb.conf content from DB state
@@ -481,6 +569,13 @@ impl ShareService {
         .await?;
 
         let perm_svc = PermissionService::new(self.db.clone());
+        let sa_svc = ServiceAccessService::new(self.db.clone());
+        let smb_authorized: HashSet<String> = sa_svc
+            .get_smb_authorized_usernames()
+            .await
+            .unwrap_or_default()
+            .into_iter()
+            .collect();
 
         let mut conf = String::new();
 
@@ -553,6 +648,19 @@ impl ShareService {
                 }
             }
 
+            // Filter lists to only include users with SMB access enabled
+            // Groups (prefixed with @) pass through as they are checked separately
+            let filter_by_smb = |users: Vec<String>| -> Vec<String> {
+                users
+                    .into_iter()
+                    .filter(|u| u.starts_with('@') || smb_authorized.contains(u))
+                    .collect()
+            };
+
+            let valid_users = filter_by_smb(valid_users);
+            let read_list = filter_by_smb(read_list);
+            let write_list = filter_by_smb(write_list);
+
             if !smb_cfg.guest_ok && !valid_users.is_empty() {
                 conf.push_str(&format!("   valid users = {}\n", valid_users.join(" ")));
             }
@@ -576,8 +684,8 @@ impl ShareService {
             return Ok(());
         }
 
-        let conf_path = "/etc/samba/smb.conf";
-        let tmp_path = "/etc/samba/smb.conf.tmp";
+        let conf_path = "/storage/.pinas/data/samba/smb.conf";
+        let tmp_path = "/storage/.pinas/data/samba/smb.conf.tmp";
 
         tokio::fs::write(tmp_path, content)
             .await
@@ -612,19 +720,24 @@ impl ShareService {
                 // Fallback: restart smbd
                 tracing::info!("smbcontrol failed, falling back to systemctl restart");
                 let output = AsyncCommand::new("systemctl")
-                    .args(["restart", "smbd"])
+                    .args(["restart", "pinas-smbd"])
                     .output()
                     .await
-                    .map_err(|e| ShareError::SystemError(format!("Failed to restart smbd: {}", e)))?;
+                    .map_err(|e| ShareError::SystemError(format!("Failed to restart pinas-smbd: {}", e)))?;
 
                 if !output.status.success() {
                     let stderr = String::from_utf8_lossy(&output.stderr);
-                    tracing::warn!("Failed to restart smbd: {}", stderr);
+                    tracing::warn!("Failed to restart pinas-smbd: {}", stderr);
                 }
             }
         }
 
         Ok(())
+    }
+
+    /// Public method to regenerate smb.conf and reload Samba
+    pub async fn regenerate_and_reload_public(&self) {
+        self.regenerate_and_reload().await;
     }
 
     /// Regenerate smb.conf and reload Samba (convenience method)

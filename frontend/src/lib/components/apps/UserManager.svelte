@@ -3,7 +3,7 @@
 	import Icon from '@iconify/svelte';
 	import { t } from '$lib/i18n';
 	import { api, auth } from '$lib/stores/api';
-	import type { FolderPermissions, PermissionLevel, PermissionEntry } from '$lib/stores/api';
+	import type { FolderPermissions, PermissionLevel, PermissionEntry, UserServiceAccess } from '$lib/stores/api';
 	import FolderPicker from '$lib/components/ui/FolderPicker.svelte';
 	import PasswordRules from '$lib/components/ui/PasswordRules.svelte';
 
@@ -68,6 +68,7 @@
 	// Data from API
 	let users: User[] = [];
 	let groups: UserGroup[] = [];
+	let serviceAccess: UserServiceAccess[] = [];
 
 	// Permissions state
 	let folderPermissions: FolderPermissions[] = [];
@@ -172,17 +173,40 @@
 		loading = true;
 		error = null;
 		try {
-			const [usersData, groupsData] = await Promise.all([
+			const [usersData, groupsData, accessData] = await Promise.all([
 				api.getUsers(),
-				api.getGroups()
+				api.getGroups(),
+				api.getServiceAccess().catch(() => [] as UserServiceAccess[])
 			]);
 			users = usersData;
 			groups = groupsData;
+			serviceAccess = accessData;
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'Failed to load data';
 			console.error('Failed to load user manager data:', e);
 		} finally {
 			loading = false;
+		}
+	}
+
+	function getUserServiceAccess(userId: string): UserServiceAccess | undefined {
+		return serviceAccess.find(sa => sa.user_id === userId);
+	}
+
+	async function toggleServiceAccess(userId: string, service: 'smb' | 'nfs' | 'ftp', enabled: boolean) {
+		try {
+			const result = await api.updateUserServiceAccess(userId, { [service]: enabled });
+			// Update local state
+			const idx = serviceAccess.findIndex(sa => sa.user_id === userId);
+			if (idx >= 0) {
+				serviceAccess[idx] = result;
+			} else {
+				serviceAccess = [...serviceAccess, result];
+			}
+			serviceAccess = serviceAccess; // trigger reactivity
+		} catch (e) {
+			console.error('Failed to update service access:', e);
+			alert(e instanceof Error ? e.message : 'Failed to update service access');
 		}
 	}
 
@@ -566,6 +590,7 @@
 								{$t.userManager.table.role}
 								<Icon icon="mdi:unfold-more-horizontal" class="w-4 h-4" />
 							</th>
+							<th>{$t.userManager.table.services}</th>
 							<th>{$t.userManager.table.edit}</th>
 						</tr>
 					</thead>
@@ -585,6 +610,34 @@
 								</td>
 								<td class="text-secondary">{user.email}</td>
 								<td>{user.role}</td>
+								<td>
+									<div class="service-toggles">
+										<label class="service-toggle" title={$t.userManager.serviceAccess.smb}>
+											<input
+												type="checkbox"
+												checked={getUserServiceAccess(user.id)?.smb || false}
+												on:change={(e) => toggleServiceAccess(user.id, 'smb', e.currentTarget.checked)}
+											/>
+											<span class="service-label">SMB</span>
+										</label>
+										<label class="service-toggle" title={$t.userManager.serviceAccess.nfs}>
+											<input
+												type="checkbox"
+												checked={getUserServiceAccess(user.id)?.nfs || false}
+												on:change={(e) => toggleServiceAccess(user.id, 'nfs', e.currentTarget.checked)}
+											/>
+											<span class="service-label">NFS</span>
+										</label>
+										<label class="service-toggle" title={$t.userManager.serviceAccess.ftp}>
+											<input
+												type="checkbox"
+												checked={getUserServiceAccess(user.id)?.ftp || false}
+												on:change={(e) => toggleServiceAccess(user.id, 'ftp', e.currentTarget.checked)}
+											/>
+											<span class="service-label">FTP</span>
+										</label>
+									</div>
+								</td>
 								<td>
 									<div class="action-cell">
 										<button
@@ -611,7 +664,7 @@
 						{/each}
 						{#if filteredUsers.length === 0}
 							<tr>
-								<td colspan="4" class="text-center text-secondary">{$t.userManager.messages.noUsersFound}</td>
+								<td colspan="5" class="text-center text-secondary">{$t.userManager.messages.noUsersFound}</td>
 							</tr>
 						{/if}
 					</tbody>
@@ -2038,5 +2091,43 @@
 		display: flex;
 		align-items: center;
 		gap: 6px;
+	}
+
+	/* Service Access Toggles */
+	.service-toggles {
+		display: flex;
+		gap: 8px;
+	}
+
+	.service-toggle {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+		cursor: pointer;
+		padding: 2px 6px;
+		border-radius: 4px;
+		transition: background 0.15s ease;
+	}
+
+	.service-toggle:hover {
+		background: #f3f4f6;
+	}
+
+	.service-toggle input[type="checkbox"] {
+		width: 14px;
+		height: 14px;
+		accent-color: #3b82f6;
+	}
+
+	.service-label {
+		font-size: 11px;
+		font-weight: 500;
+		color: #6b7280;
+		text-transform: uppercase;
+		letter-spacing: 0.02em;
+	}
+
+	.service-toggle input:checked + .service-label {
+		color: #3b82f6;
 	}
 </style>

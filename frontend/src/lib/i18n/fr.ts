@@ -137,6 +137,7 @@ export default {
 			description: 'Description',
 			role: 'Rôle',
 			status: 'Statut',
+			services: 'Services',
 			edit: 'Modifier',
 			groupName: 'Nom du groupe',
 			members: 'Membres'
@@ -182,6 +183,13 @@ export default {
 			newPassword: 'Nouveau mot de passe',
 			groupName: 'Nom du groupe',
 			selectMembers: 'Sélectionner les membres'
+		},
+		serviceAccess: {
+			title: 'Accès services',
+			smb: 'SMB (Windows)',
+			nfs: 'NFS (Linux)',
+			ftp: 'FTP',
+			noAccess: 'Aucun accès'
 		},
 		permissions: {
 			title: 'Permissions',

@@ -118,6 +118,16 @@ if [ -f /usr/bin/pinas-init.sh ]; then
     fi
 fi
 
+# Disable LibreELEC's insecure default Samba (guest access to all /storage)
+# LibreELEC's smbd.service has ConditionPathExists=!/storage/.cache/services/samba.disabled
+# Creating this file prevents the default Samba from starting
+touch /storage/.cache/services/samba.disabled
+systemctl stop smbd.service 2>/dev/null || true
+systemctl stop nmbd.service 2>/dev/null || true
+systemctl stop samba-config.service 2>/dev/null || true
+mkdir -p /storage/.pinas/data/samba
+log "PiNAS: LibreELEC default Samba disabled, PiNAS Samba directory created"
+
 # Disable Kodi on first boot (PiNAS defaults to NAS-only mode)
 KODI_DISABLED_MARKER="/storage/.pinas/.kodi-disabled-by-pinas"
 if [ ! -f "$KODI_DISABLED_MARKER" ]; then

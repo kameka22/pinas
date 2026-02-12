@@ -61,6 +61,8 @@ makeinstall_target() {
   cp ${PKG_DIR}/system.d/pinas-resize-storage.service ${INSTALL}/usr/lib/systemd/system/
   cp ${PKG_DIR}/system.d/pinas-splash.service ${INSTALL}/usr/lib/systemd/system/
   cp ${PKG_DIR}/system.d/pinas-kodi-config.service ${INSTALL}/usr/lib/systemd/system/
+  cp ${PKG_DIR}/system.d/pinas-smbd.service ${INSTALL}/usr/lib/systemd/system/
+  cp ${PKG_DIR}/system.d/pinas-nmbd.service ${INSTALL}/usr/lib/systemd/system/
 
   # Activer le service pinas au démarrage
   mkdir -p ${INSTALL}/usr/lib/systemd/system/default.target.wants

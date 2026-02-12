@@ -648,6 +648,19 @@ class ApiClient {
 		return this.post<void>('/system/update/dismiss');
 	}
 
+	// Service Access endpoints
+	async getServiceAccess(): Promise<UserServiceAccess[]> {
+		return this.get<UserServiceAccess[]>('/service-access');
+	}
+
+	async getUserServiceAccess(userId: string): Promise<UserServiceAccess> {
+		return this.get<UserServiceAccess>(`/service-access/${userId}`);
+	}
+
+	async updateUserServiceAccess(userId: string, data: { smb?: boolean; nfs?: boolean; ftp?: boolean }): Promise<UserServiceAccess> {
+		return this.put<UserServiceAccess>(`/service-access/${userId}`, data);
+	}
+
 	// Preferences endpoints
 	async getPreferences(): Promise<Record<string, string>> {
 		return this.get<Record<string, string>>('/preferences');
@@ -1049,6 +1062,15 @@ export interface JustUpdatedResult {
 	version: string | null;
 	previous_version: string | null;
 	changelog: Record<string, string> | null;
+}
+
+// Service Access types
+export interface UserServiceAccess {
+	user_id: string;
+	username: string;
+	smb: boolean;
+	nfs: boolean;
+	ftp: boolean;
 }
 
 export const api = new ApiClient(API_BASE);

@@ -73,6 +73,10 @@ async fn main() -> anyhow::Result<()> {
         tracing::info!("System was just updated: {} -> {}", info.previous_version, info.version);
     }
 
+    // Initialize Samba (disable LibreELEC default, generate smb.conf)
+    let share_svc = services::share::ShareService::new(db.clone());
+    share_svc.initialize_samba().await;
+
     let tls_enabled = config.tls_enabled;
 
     // Create app state
@@ -159,6 +163,7 @@ fn create_router(state: AppState) -> Router {
         .nest("/api/network", api::network::router())
         .nest("/api/permissions", api::permissions::router())
         .nest("/api/preferences", api::preferences::router())
+        .nest("/api/service-access", api::service_access::router())
         .nest("/api/ssh", api::ssh::router())
         .nest("/api/cups", api::cups::router())
         // WebSocket

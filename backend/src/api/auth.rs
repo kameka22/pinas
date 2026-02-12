@@ -15,6 +15,7 @@ use crate::api::cookies;
 use crate::api::middleware::{AuthErrorResponse, AuthUser};
 use crate::services::auth::{extract_bearer_token, generate_jwt, verify_password, AuthError};
 use crate::services::session::{create_session, delete_session};
+use crate::services::share::ShareService;
 use crate::services::user::{change_password as change_user_password, get_user_by_id, get_user_by_username};
 use crate::AppState;
 
@@ -336,6 +337,14 @@ async fn change_password(
             }),
         )
             .into_response();
+    }
+
+    // Sync Samba password (non-blocking)
+    if let Ok(Some(db_user2)) = get_user_by_id(&state.db, &user.id).await {
+        let share_svc = ShareService::new(state.db.clone());
+        if let Err(e) = share_svc.sync_samba_user(&db_user2.username, &payload.new_password).await {
+            tracing::warn!("Failed to sync Samba password: {}", e);
+        }
     }
 
     StatusCode::NO_CONTENT.into_response()

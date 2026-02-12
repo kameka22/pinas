@@ -8,6 +8,7 @@ pub mod network;
 pub mod package;
 pub mod permission;
 pub mod service;
+pub mod service_access;
 pub mod session;
 pub mod share;
 pub mod ssh;

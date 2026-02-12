@@ -291,7 +291,7 @@ echo -e "${GREEN}done${NC}"
 
 # Step 3: Pull latest changes
 echo "    [3/4] Pulling latest changes..."
-run_remote "cd $REMOTE_PROJECT_DIR && git pull"
+run_remote "cd $REMOTE_PROJECT_DIR && git fetch origin && git reset --hard origin/master && git pull"
 
 # Step 4: Clean previous builds
 echo -n "    [4/4] Cleaning previous builds in target/... "

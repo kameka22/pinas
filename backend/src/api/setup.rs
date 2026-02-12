@@ -13,6 +13,7 @@ use crate::services::auth::generate_jwt;
 use crate::services::group::{add_member, get_group_by_name};
 use crate::services::home::HomeService;
 use crate::services::session::create_session;
+use crate::services::share::ShareService;
 use crate::services::user::{create_user_with_home, has_any_users};
 use crate::AppState;
 
@@ -188,6 +189,12 @@ async fn complete_setup(
             tracing::warn!("Failed to add admin to administrators group: {}", e);
             // Continue anyway - user is still admin
         }
+    }
+
+    // Sync admin user to Samba
+    let share_svc = ShareService::new(state.db.clone());
+    if let Err(e) = share_svc.sync_samba_user(&payload.admin_username, &payload.admin_password).await {
+        tracing::warn!("Failed to sync admin Samba user: {}", e);
     }
 
     // TODO: Save machine_name to settings table (for future use)

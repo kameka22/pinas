@@ -13,6 +13,7 @@ pub mod middleware;
 pub mod packages;
 pub mod permissions;
 pub mod preferences;
+pub mod service_access;
 pub mod services;
 pub mod setup;
 pub mod shares;
