@@ -1,0 +1,2042 @@
+<script lang="ts">
+	import { onMount } from 'svelte';
+	import Icon from '@iconify/svelte';
+	import { t } from '$lib/i18n';
+	import { api, auth } from '$lib/stores/api';
+	import type { FolderPermissions, PermissionLevel, PermissionEntry } from '$lib/stores/api';
+	import FolderPicker from '$lib/components/ui/FolderPicker.svelte';
+	import PasswordRules from '$lib/components/ui/PasswordRules.svelte';
+
+	// Types - matches API response from /users
+	interface User {
+		id: string;
+		username: string;
+		email: string | null;
+		is_admin: boolean;
+		created_at: string;
+		updated_at: string;
+	}
+
+	interface UserGroup {
+		id: string;
+		name: string;
+		description: string | null;
+		member_count: number;
+		is_system: boolean;
+		created_at: string;
+		updated_at: string;
+	}
+
+	// Display types (for UI)
+	interface DisplayUser {
+		id: string;
+		username: string;
+		email: string;
+		role: 'Administrator' | 'User';
+		isCurrentUser: boolean;
+	}
+
+	interface DisplayGroup {
+		id: string;
+		name: string;
+		description: string;
+		memberCount: number;
+		isSystem: boolean;
+	}
+
+	// State
+	let activeTab: 'user' | 'group' | 'settings' = 'user';
+	let filterQuery = '';
+	let showAddDropdown = false;
+	let showActionMenu: string | null = null;
+	let showPermissionViewer = false;
+	let showAddUserModal = false;
+	let showEditUserModal = false;
+	let showDeleteConfirm = false;
+	let showAddGroupModal = false;
+	let showEditGroupModal = false;
+	let showDeleteGroupConfirm = false;
+	let selectedUser: DisplayUser | null = null;
+	let selectedGroup: DisplayGroup | null = null;
+
+	// Loading and error states
+	let loading = true;
+	let error: string | null = null;
+	let actionLoading = false;
+	let actionError: string | null = null;
+
+	// Data from API
+	let users: User[] = [];
+	let groups: UserGroup[] = [];
+
+	// Permissions state
+	let folderPermissions: FolderPermissions[] = [];
+	let permissionsLoading = false;
+	let showAddFolderModal = false;
+	let newFolderPath = '';
+	let editingPermission: { folderId: string; userId?: string; groupId?: string; permission: PermissionLevel } | null = null;
+
+	// Form state for add user
+	let newUser = {
+		username: '',
+		email: '',
+		password: '',
+		confirmPassword: '',
+		is_admin: false
+	};
+
+	// Form state for edit user
+	let editUserData = {
+		email: '',
+		is_admin: false
+	};
+
+	// Form state for groups
+	let newGroup = {
+		name: '',
+		description: ''
+	};
+
+	let editGroupData = {
+		name: '',
+		description: ''
+	};
+
+	// Sort state
+	let sortColumn: string = 'username';
+	let sortDirection: 'asc' | 'desc' = 'asc';
+
+	// Current user from auth
+	let currentUserId: string | null = null;
+	auth.subscribe(state => {
+		currentUserId = state.user?.id || null;
+	});
+
+	// Transform API users to display format
+	function transformUser(user: User): DisplayUser {
+		return {
+			id: user.id,
+			username: user.username,
+			email: user.email || '-',
+			role: user.is_admin ? 'Administrator' : 'User',
+			isCurrentUser: user.id === currentUserId
+		};
+	}
+
+	// Transform API groups to display format
+	function transformGroup(group: UserGroup): DisplayGroup {
+		return {
+			id: group.id,
+			name: group.name,
+			description: group.description || '',
+			memberCount: group.member_count,
+			isSystem: group.is_system
+		};
+	}
+
+	// Computed display data
+	$: displayUsers = users.map(transformUser);
+	$: displayGroups = groups.map(transformGroup);
+
+	// Password settings state
+	let passwordSettings = {
+		noUserNames: false,
+		noCommonPasswords: false,
+		requireUpperLower: true,
+		requireNumber: false,
+		requireSpecialChar: false,
+		minLength: 8,
+		expiryEnabled: false,
+		validityDays: 90,
+		reminderDays: 7,
+		forceChangeAfterExpiry: false
+	};
+
+	// Computed - filtered display data
+	$: filteredUsers = displayUsers.filter(u =>
+		u.username.toLowerCase().includes(filterQuery.toLowerCase()) ||
+		u.email.toLowerCase().includes(filterQuery.toLowerCase())
+	);
+
+	$: filteredGroups = displayGroups.filter(g =>
+		g.name.toLowerCase().includes(filterQuery.toLowerCase()) ||
+		g.description.toLowerCase().includes(filterQuery.toLowerCase())
+	);
+
+	// Load data on mount
+	onMount(async () => {
+		await loadData();
+	});
+
+	async function loadData() {
+		loading = true;
+		error = null;
+		try {
+			const [usersData, groupsData] = await Promise.all([
+				api.getUsers(),
+				api.getGroups()
+			]);
+			users = usersData;
+			groups = groupsData;
+		} catch (e) {
+			error = e instanceof Error ? e.message : 'Failed to load data';
+			console.error('Failed to load user manager data:', e);
+		} finally {
+			loading = false;
+		}
+	}
+
+	// Functions
+	function toggleSort(column: string) {
+		if (sortColumn === column) {
+			sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+		} else {
+			sortColumn = column;
+			sortDirection = 'asc';
+		}
+	}
+
+	function handleAddUser() {
+		showAddDropdown = false;
+		newUser = { username: '', email: '', password: '', confirmPassword: '', is_admin: false };
+		actionError = null;
+		showAddUserModal = true;
+	}
+
+	function handleEditUser(user: DisplayUser) {
+		selectedUser = user;
+		const apiUser = users.find(u => u.id === user.id);
+		if (apiUser) {
+			editUserData = {
+				email: apiUser.email || '',
+				is_admin: apiUser.is_admin
+			};
+		}
+		showActionMenu = null;
+		actionError = null;
+		showEditUserModal = true;
+	}
+
+	function handleDeleteUser(user: DisplayUser) {
+		selectedUser = user;
+		showActionMenu = null;
+		actionError = null;
+		showDeleteConfirm = true;
+	}
+
+	function handleAddGroup() {
+		showAddDropdown = false;
+		newGroup = { name: '', description: '' };
+		actionError = null;
+		showAddGroupModal = true;
+	}
+
+	function handleEditGroup(group: DisplayGroup) {
+		selectedGroup = group;
+		editGroupData = {
+			name: group.name,
+			description: group.description
+		};
+		showActionMenu = null;
+		actionError = null;
+		showEditGroupModal = true;
+	}
+
+	function handleDeleteGroup(group: DisplayGroup) {
+		selectedGroup = group;
+		showActionMenu = null;
+		actionError = null;
+		showDeleteGroupConfirm = true;
+	}
+
+	async function submitCreateUser() {
+		if (!newUser.username || !newUser.password) {
+			actionError = 'Username and password are required';
+			return;
+		}
+		if (newUser.password !== newUser.confirmPassword) {
+			actionError = 'Passwords do not match';
+			return;
+		}
+		if (newUser.password.length < 8) {
+			actionError = 'Password must be at least 8 characters';
+			return;
+		}
+
+		actionLoading = true;
+		actionError = null;
+		try {
+			await api.createUser({
+				username: newUser.username,
+				password: newUser.password,
+				email: newUser.email || undefined,
+				is_admin: newUser.is_admin
+			});
+			showAddUserModal = false;
+			await loadData();
+		} catch (e) {
+			actionError = e instanceof Error ? e.message : 'Failed to create user';
+		} finally {
+			actionLoading = false;
+		}
+	}
+
+	async function submitEditUser() {
+		if (!selectedUser) return;
+
+		actionLoading = true;
+		actionError = null;
+		try {
+			await api.updateUser(selectedUser.id, {
+				email: editUserData.email || undefined,
+				is_admin: editUserData.is_admin
+			});
+
+			showEditUserModal = false;
+			await loadData();
+		} catch (e) {
+			actionError = e instanceof Error ? e.message : 'Failed to update user';
+		} finally {
+			actionLoading = false;
+		}
+	}
+
+	async function submitDeleteUser() {
+		if (!selectedUser) return;
+
+		actionLoading = true;
+		actionError = null;
+		try {
+			await api.deleteUser(selectedUser.id);
+			showDeleteConfirm = false;
+			selectedUser = null;
+			await loadData();
+		} catch (e) {
+			actionError = e instanceof Error ? e.message : 'Failed to delete user';
+		} finally {
+			actionLoading = false;
+		}
+	}
+
+	async function submitCreateGroup() {
+		if (!newGroup.name) {
+			actionError = 'Group name is required';
+			return;
+		}
+
+		actionLoading = true;
+		actionError = null;
+		try {
+			await api.createGroup({
+				name: newGroup.name,
+				description: newGroup.description || undefined
+			});
+			showAddGroupModal = false;
+			await loadData();
+		} catch (e) {
+			actionError = e instanceof Error ? e.message : 'Failed to create group';
+		} finally {
+			actionLoading = false;
+		}
+	}
+
+	async function submitEditGroup() {
+		if (!selectedGroup) return;
+
+		actionLoading = true;
+		actionError = null;
+		try {
+			await api.updateGroup(selectedGroup.id, {
+				name: editGroupData.name !== selectedGroup.name ? editGroupData.name : undefined,
+				description: editGroupData.description
+			});
+			showEditGroupModal = false;
+			await loadData();
+		} catch (e) {
+			actionError = e instanceof Error ? e.message : 'Failed to update group';
+		} finally {
+			actionLoading = false;
+		}
+	}
+
+	async function submitDeleteGroup() {
+		if (!selectedGroup) return;
+
+		actionLoading = true;
+		actionError = null;
+		try {
+			await api.deleteGroup(selectedGroup.id);
+			showDeleteGroupConfirm = false;
+			selectedGroup = null;
+			await loadData();
+		} catch (e) {
+			actionError = e instanceof Error ? e.message : 'Failed to delete group';
+		} finally {
+			actionLoading = false;
+		}
+	}
+
+	function closeAllMenus() {
+		showAddDropdown = false;
+		showActionMenu = null;
+	}
+
+	// Permissions functions
+	async function loadPermissions() {
+		permissionsLoading = true;
+		try {
+			folderPermissions = await api.getPermissions();
+		} catch (e) {
+			console.error('Failed to load permissions:', e);
+		} finally {
+			permissionsLoading = false;
+		}
+	}
+
+	async function handlePermissionChange(folderId: string, userId: string | undefined, groupId: string | undefined, oldPermId: string | undefined, newPermission: PermissionLevel) {
+		try {
+			if (newPermission === 'none' && oldPermId) {
+				// Delete the permission
+				await api.deletePermission(oldPermId);
+			} else if (oldPermId) {
+				// Update existing
+				await api.updatePermission(oldPermId, newPermission);
+			} else {
+				// Create new
+				await api.createPermission({
+					path: folderId,
+					user_id: userId,
+					group_id: groupId,
+					permission: newPermission
+				});
+			}
+			await loadPermissions();
+		} catch (e) {
+			console.error('Failed to update permission:', e);
+			alert(e instanceof Error ? e.message : 'Failed to update permission');
+		}
+	}
+
+	async function addFolderForPermissions() {
+		if (!newFolderPath.trim()) return;
+
+		// Create a default permission to establish the folder
+		try {
+			// Add to the first user as no-access to create the folder entry
+			if (users.length > 0) {
+				await api.createPermission({
+					path: newFolderPath.trim(),
+					user_id: users[0].id,
+					permission: 'none'
+				});
+			}
+			showAddFolderModal = false;
+			newFolderPath = '';
+			await loadPermissions();
+		} catch (e) {
+			console.error('Failed to add folder:', e);
+			alert(e instanceof Error ? e.message : 'Failed to add folder');
+		}
+	}
+
+	async function removeFolderPermissions(path: string) {
+		if (!confirm($t.userManager.permissions.confirmRemoveFolder?.replace('{path}', path) || `Remove all permissions for ${path}?`)) return;
+
+		const folder = folderPermissions.find(f => f.path === path);
+		if (!folder) return;
+
+		try {
+			for (const perm of folder.permissions) {
+				await api.deletePermission(perm.id);
+			}
+			await loadPermissions();
+		} catch (e) {
+			console.error('Failed to remove folder permissions:', e);
+		}
+	}
+
+	function getPermissionForUser(folder: FolderPermissions, userId: string): PermissionEntry | undefined {
+		return folder.permissions.find(p => p.user_id === userId);
+	}
+
+	function getPermissionForGroup(folder: FolderPermissions, groupId: string): PermissionEntry | undefined {
+		return folder.permissions.find(p => p.group_id === groupId);
+	}
+
+	function openPermissionViewer() {
+		showPermissionViewer = true;
+		loadPermissions();
+	}
+</script>
+
+<svelte:window on:click={closeAllMenus} />
+
+<div class="user-manager">
+	<!-- Tabs -->
+	<nav class="tabs">
+		<button
+			class="tab"
+			class:active={activeTab === 'user'}
+			on:click={() => activeTab = 'user'}
+		>
+			{$t.userManager.tabs.user}
+		</button>
+		<button
+			class="tab"
+			class:active={activeTab === 'group'}
+			on:click={() => activeTab = 'group'}
+		>
+			{$t.userManager.tabs.userGroup}
+		</button>
+		<button
+			class="tab"
+			class:active={activeTab === 'settings'}
+			on:click={() => activeTab = 'settings'}
+		>
+			{$t.userManager.tabs.advancedSettings}
+		</button>
+	</nav>
+
+	<!-- Content -->
+	<div class="content">
+		{#if loading}
+			<div class="loading-state">
+				<Icon icon="mdi:loading" class="w-8 h-8 animate-spin" />
+				<p>Loading...</p>
+			</div>
+		{:else if error}
+			<div class="error-state">
+				<Icon icon="mdi:alert-circle" class="w-8 h-8" />
+				<p>{error}</p>
+				<button class="btn-secondary" on:click={loadData}>Retry</button>
+			</div>
+		{:else if activeTab === 'user'}
+			<!-- User Tab -->
+			<div class="toolbar">
+				<div class="toolbar-left">
+					<div class="dropdown-container">
+						<button
+							class="btn-primary"
+							on:click|stopPropagation={() => showAddDropdown = !showAddDropdown}
+						>
+							{$t.common.add}
+							<Icon icon="mdi:chevron-down" class="w-4 h-4" />
+						</button>
+						{#if showAddDropdown}
+							<div class="dropdown-menu">
+								<button class="dropdown-item" on:click={handleAddUser}>
+									<Icon icon="mdi:account-plus" class="w-4 h-4" />
+									{$t.userManager.actions.addUser}
+								</button>
+							</div>
+						{/if}
+					</div>
+				</div>
+				<div class="toolbar-right">
+					<button
+						class="btn-secondary permissions-btn"
+						title={$t.userManager.modals.permissionViewer}
+						on:click|stopPropagation={openPermissionViewer}
+					>
+						<Icon icon="mdi:shield-key" class="w-4 h-4" />
+						{$t.userManager.permissions.title}
+					</button>
+					<div class="filter-input">
+						<Icon icon="mdi:filter-variant" class="w-4 h-4 text-gray-400" />
+						<input
+							type="text"
+							placeholder={$t.common.filter}
+							bind:value={filterQuery}
+						/>
+					</div>
+				</div>
+			</div>
+
+			<!-- Users Table -->
+			<div class="table-container">
+				<table class="data-table">
+					<thead>
+						<tr>
+							<th class="sortable" on:click={() => toggleSort('username')}>
+								{$t.userManager.table.username}
+								<Icon icon="mdi:unfold-more-horizontal" class="w-4 h-4" />
+							</th>
+							<th>{$t.userManager.table.email}</th>
+							<th class="sortable" on:click={() => toggleSort('role')}>
+								{$t.userManager.table.role}
+								<Icon icon="mdi:unfold-more-horizontal" class="w-4 h-4" />
+							</th>
+							<th>{$t.userManager.table.edit}</th>
+						</tr>
+					</thead>
+					<tbody>
+						{#each filteredUsers as user}
+							<tr>
+								<td>
+									<div class="user-cell">
+										<div class="avatar">
+											<Icon icon="mdi:account" class="w-5 h-5" />
+										</div>
+										<span class="username">{user.username}</span>
+										{#if user.isCurrentUser}
+											<span class="badge-me">{$t.userManager.messages.me}</span>
+										{/if}
+									</div>
+								</td>
+								<td class="text-secondary">{user.email}</td>
+								<td>{user.role}</td>
+								<td>
+									<div class="action-cell">
+										<button
+											class="action-btn"
+											on:click|stopPropagation={() => showActionMenu = showActionMenu === user.id ? null : user.id}
+										>
+											<Icon icon="mdi:dots-horizontal" class="w-5 h-5" />
+										</button>
+										{#if showActionMenu === user.id}
+											<div class="action-menu">
+												<button class="action-item" on:click={() => handleEditUser(user)}>
+													{$t.common.edit}
+												</button>
+												{#if !user.isCurrentUser}
+													<button class="action-item danger" on:click={() => handleDeleteUser(user)}>
+														{$t.common.delete}
+													</button>
+												{/if}
+											</div>
+										{/if}
+									</div>
+								</td>
+							</tr>
+						{/each}
+						{#if filteredUsers.length === 0}
+							<tr>
+								<td colspan="4" class="text-center text-secondary">{$t.userManager.messages.noUsersFound}</td>
+							</tr>
+						{/if}
+					</tbody>
+				</table>
+			</div>
+
+		{:else if activeTab === 'group'}
+			<!-- User Group Tab -->
+			<div class="toolbar">
+				<div class="toolbar-left">
+					<div class="dropdown-container">
+						<button
+							class="btn-primary"
+							on:click|stopPropagation={() => showAddDropdown = !showAddDropdown}
+						>
+							{$t.common.add}
+							<Icon icon="mdi:chevron-down" class="w-4 h-4" />
+						</button>
+						{#if showAddDropdown}
+							<div class="dropdown-menu">
+								<button class="dropdown-item" on:click={handleAddGroup}>
+									<Icon icon="mdi:account-group-outline" class="w-4 h-4" />
+									{$t.userManager.actions.addGroup}
+								</button>
+							</div>
+						{/if}
+					</div>
+				</div>
+				<div class="toolbar-right">
+					<div class="filter-input">
+						<Icon icon="mdi:filter-variant" class="w-4 h-4 text-gray-400" />
+						<input
+							type="text"
+							placeholder={$t.common.filter}
+							bind:value={filterQuery}
+						/>
+					</div>
+				</div>
+			</div>
+
+			<!-- Groups Table -->
+			<div class="table-container">
+				<table class="data-table">
+					<thead>
+						<tr>
+							<th class="sortable">
+								{$t.userManager.table.groupName}
+								<Icon icon="mdi:unfold-more-horizontal" class="w-4 h-4" />
+							</th>
+							<th>{$t.userManager.table.description}</th>
+							<th class="sortable">
+								{$t.userManager.table.members}
+								<Icon icon="mdi:unfold-more-horizontal" class="w-4 h-4" />
+							</th>
+							<th>{$t.userManager.table.edit}</th>
+						</tr>
+					</thead>
+					<tbody>
+						{#each filteredGroups as group}
+							<tr>
+								<td>
+									<div class="group-cell">
+										<span class="group-name">{group.name}</span>
+										{#if group.isSystem}
+											<span class="badge-system">{$t.userManager.badges.system}</span>
+										{/if}
+									</div>
+								</td>
+								<td class="text-secondary">{group.description || '-'}</td>
+								<td>{group.memberCount}</td>
+								<td>
+									<div class="action-cell">
+										<button
+											class="action-btn"
+											on:click|stopPropagation={() => showActionMenu = showActionMenu === group.id ? null : group.id}
+										>
+											<Icon icon="mdi:dots-horizontal" class="w-5 h-5" />
+										</button>
+										{#if showActionMenu === group.id}
+											<div class="action-menu">
+												<button class="action-item" on:click={() => handleEditGroup(group)}>{$t.common.edit}</button>
+												{#if !group.isSystem}
+													<button class="action-item danger" on:click={() => handleDeleteGroup(group)}>{$t.common.delete}</button>
+												{/if}
+											</div>
+										{/if}
+									</div>
+								</td>
+							</tr>
+						{/each}
+						{#if filteredGroups.length === 0}
+							<tr>
+								<td colspan="4" class="text-center text-secondary">{$t.userManager.messages.noGroupsFound}</td>
+							</tr>
+						{/if}
+					</tbody>
+				</table>
+			</div>
+
+		{:else if activeTab === 'settings'}
+			<!-- Advanced Settings Tab -->
+			<div class="settings-content">
+				<section class="settings-section">
+					<h3>{$t.userManager.advancedSettings.passwordStrength.title}</h3>
+					<div class="settings-list">
+						<label class="checkbox-row">
+							<input type="checkbox" bind:checked={passwordSettings.noUserNames} />
+							<span>{$t.userManager.advancedSettings.passwordStrength.noUserNames}</span>
+						</label>
+						<label class="checkbox-row">
+							<input type="checkbox" bind:checked={passwordSettings.noCommonPasswords} />
+							<span>{$t.userManager.advancedSettings.passwordStrength.noCommonPasswords}</span>
+						</label>
+						<label class="checkbox-row">
+							<input type="checkbox" bind:checked={passwordSettings.requireUpperLower} />
+							<span>{$t.userManager.advancedSettings.passwordStrength.requireUpperLower}</span>
+						</label>
+						<label class="checkbox-row">
+							<input type="checkbox" bind:checked={passwordSettings.requireNumber} />
+							<span>{$t.userManager.advancedSettings.passwordStrength.requireNumber}</span>
+						</label>
+						<label class="checkbox-row">
+							<input type="checkbox" bind:checked={passwordSettings.requireSpecialChar} />
+							<span>{$t.userManager.advancedSettings.passwordStrength.requireSpecialChar}</span>
+						</label>
+						<label class="checkbox-row with-input">
+							<input type="checkbox" checked disabled />
+							<span class="text-disabled">{$t.userManager.advancedSettings.passwordStrength.minLength}</span>
+							<div class="number-input">
+								<input type="number" bind:value={passwordSettings.minLength} min="4" max="32" />
+								<span class="suffix">{$t.userManager.advancedSettings.passwordStrength.digits}</span>
+							</div>
+						</label>
+					</div>
+				</section>
+
+				<section class="settings-section">
+					<h3>{$t.userManager.advancedSettings.passwordExpiry.title}</h3>
+					<div class="settings-list">
+						<div class="toggle-row">
+							<span>{$t.userManager.advancedSettings.passwordExpiry.enabled}</span>
+							<label class="toggle">
+								<input type="checkbox" bind:checked={passwordSettings.expiryEnabled} />
+								<span class="toggle-slider"></span>
+							</label>
+						</div>
+
+						{#if passwordSettings.expiryEnabled}
+							<div class="input-row">
+								<span>{$t.userManager.advancedSettings.passwordExpiry.validityPeriod}</span>
+								<div class="number-input">
+									<input type="number" bind:value={passwordSettings.validityDays} min="1" max="365" />
+									<span class="suffix">{$t.userManager.advancedSettings.passwordExpiry.days}</span>
+								</div>
+							</div>
+							<div class="input-row">
+								<span>{$t.userManager.advancedSettings.passwordExpiry.reminderDays}</span>
+								<div class="number-input">
+									<input type="number" bind:value={passwordSettings.reminderDays} min="1" max="30" />
+									<span class="suffix">{$t.userManager.advancedSettings.passwordExpiry.days}</span>
+								</div>
+							</div>
+							<div class="toggle-row">
+								<span>{$t.userManager.advancedSettings.passwordExpiry.forceChange}</span>
+								<label class="toggle">
+									<input type="checkbox" bind:checked={passwordSettings.forceChangeAfterExpiry} />
+									<span class="toggle-slider"></span>
+								</label>
+							</div>
+						{/if}
+					</div>
+				</section>
+
+				<div class="settings-footer">
+					<button class="btn-primary">{$t.common.apply}</button>
+				</div>
+			</div>
+		{/if}
+	</div>
+</div>
+
+<!-- Permission Viewer Modal -->
+{#if showPermissionViewer}
+	<div class="modal-overlay" on:click={() => showPermissionViewer = false}>
+		<div class="modal modal-lg" on:click|stopPropagation>
+			<div class="modal-header">
+				<h2>
+					<Icon icon="mdi:shield-key" class="w-5 h-5" />
+					{$t.userManager.permissions.title}
+				</h2>
+				<button class="modal-close" on:click={() => showPermissionViewer = false}>
+					<Icon icon="mdi:close" class="w-5 h-5" />
+				</button>
+			</div>
+			<div class="modal-body permission-modal-body">
+				{#if permissionsLoading}
+					<div class="loading-state">
+						<Icon icon="mdi:loading" class="w-8 h-8 animate-spin" />
+					</div>
+				{:else}
+					<!-- Toolbar -->
+					<div class="permission-toolbar">
+						<button class="btn-primary" on:click={() => showAddFolderModal = true}>
+							<Icon icon="mdi:folder-plus" class="w-4 h-4" />
+							{$t.userManager.permissions.addFolder}
+						</button>
+					</div>
+
+					{#if folderPermissions.length === 0}
+						<div class="empty-permissions">
+							<Icon icon="mdi:shield-off-outline" class="w-16 h-16" />
+							<p>{$t.userManager.permissions.noPermissions}</p>
+							<p class="text-secondary">{$t.userManager.permissions.noPermissionsHint}</p>
+						</div>
+					{:else}
+						<!-- Permission Table by Folder -->
+						<div class="permission-list">
+							{#each folderPermissions as folder}
+								<div class="permission-folder-card">
+									<div class="folder-header">
+										<div class="folder-info">
+											<Icon icon="mdi:folder" class="w-5 h-5 folder-icon" />
+											<span class="folder-path">{folder.path}</span>
+										</div>
+										<button
+											class="btn-icon-danger"
+											title={$t.common.delete}
+											on:click={() => removeFolderPermissions(folder.path)}
+										>
+											<Icon icon="mdi:delete" class="w-4 h-4" />
+										</button>
+									</div>
+
+									<div class="permission-grid">
+										<!-- Users section -->
+										<div class="permission-section">
+											<h4><Icon icon="mdi:account-multiple" class="w-4 h-4" /> {$t.userManager.permissions.users}</h4>
+											<div class="permission-rows">
+												{#each users as user}
+													{@const perm = getPermissionForUser(folder, user.id)}
+													<div class="permission-row">
+														<div class="entity-info">
+															<div class="avatar-sm">
+																<Icon icon="mdi:account" class="w-3 h-3" />
+															</div>
+															<span>{user.username}</span>
+														</div>
+														<select
+															class="permission-select"
+															value={perm?.permission || 'none'}
+															on:change={(e) => handlePermissionChange(folder.path, user.id, undefined, perm?.id, e.currentTarget.value as PermissionLevel)}
+														>
+															<option value="none">{$t.userManager.permissions.noAccess}</option>
+															<option value="read">{$t.userManager.permissions.readOnly}</option>
+															<option value="write">{$t.userManager.permissions.readWrite}</option>
+														</select>
+													</div>
+												{/each}
+											</div>
+										</div>
+
+										<!-- Groups section -->
+										{#if groups.length > 0}
+											<div class="permission-section">
+												<h4><Icon icon="mdi:account-group" class="w-4 h-4" /> {$t.userManager.permissions.groups}</h4>
+												<div class="permission-rows">
+													{#each groups as group}
+														{@const perm = getPermissionForGroup(folder, group.id)}
+														<div class="permission-row">
+															<div class="entity-info">
+																<div class="avatar-sm group-avatar">
+																	<Icon icon="mdi:account-group" class="w-3 h-3" />
+																</div>
+																<span>{group.name}</span>
+															</div>
+															<select
+																class="permission-select"
+																value={perm?.permission || 'none'}
+																on:change={(e) => handlePermissionChange(folder.path, undefined, group.id, perm?.id, e.currentTarget.value as PermissionLevel)}
+															>
+																<option value="none">{$t.userManager.permissions.noAccess}</option>
+																<option value="read">{$t.userManager.permissions.readOnly}</option>
+																<option value="write">{$t.userManager.permissions.readWrite}</option>
+															</select>
+														</div>
+													{/each}
+												</div>
+											</div>
+										{/if}
+									</div>
+								</div>
+							{/each}
+						</div>
+					{/if}
+				{/if}
+			</div>
+		</div>
+	</div>
+{/if}
+
+<!-- Add Folder Modal -->
+{#if showAddFolderModal}
+	<div class="modal-overlay" on:click={() => showAddFolderModal = false}>
+		<div class="modal modal-sm" on:click|stopPropagation>
+			<div class="modal-header">
+				<h2>{$t.userManager.permissions.addFolder}</h2>
+				<button class="modal-close" on:click={() => showAddFolderModal = false}>
+					<Icon icon="mdi:close" class="w-5 h-5" />
+				</button>
+			</div>
+			<div class="modal-body">
+				<FolderPicker
+					bind:value={newFolderPath}
+					label={$t.userManager.permissions.folderPath}
+					hint={$t.userManager.permissions.folderPathHint}
+					placeholder="/storage/shares/documents"
+				/>
+			</div>
+			<div class="modal-footer">
+				<button class="btn-secondary" on:click={() => showAddFolderModal = false}>{$t.common.cancel}</button>
+				<button class="btn-primary" on:click={addFolderForPermissions}>{$t.common.add}</button>
+			</div>
+		</div>
+	</div>
+{/if}
+
+<!-- Add User Modal -->
+{#if showAddUserModal}
+	<div class="modal-overlay" on:click={() => showAddUserModal = false}>
+		<div class="modal modal-sm" on:click|stopPropagation>
+			<div class="modal-header">
+				<h2>{$t.userManager.modals.addUserTitle}</h2>
+				<button class="modal-close" on:click={() => showAddUserModal = false}>
+					<Icon icon="mdi:close" class="w-5 h-5" />
+				</button>
+			</div>
+			<div class="modal-body">
+				{#if actionError}
+					<div class="form-error">{actionError}</div>
+				{/if}
+				<div class="form-group">
+					<label>{$t.userManager.fields.username} <span class="required">*</span></label>
+					<input type="text" bind:value={newUser.username} placeholder="" disabled={actionLoading} />
+				</div>
+				<div class="form-group">
+					<label>{$t.userManager.fields.email}</label>
+					<input type="email" bind:value={newUser.email} placeholder="" disabled={actionLoading} />
+				</div>
+				<div class="form-group">
+					<label>{$t.userManager.fields.password} <span class="required">*</span></label>
+					<input type="password" bind:value={newUser.password} placeholder="" disabled={actionLoading} />
+				</div>
+				<div class="form-group">
+					<label>{$t.userManager.fields.confirmPassword} <span class="required">*</span></label>
+					<input type="password" bind:value={newUser.confirmPassword} placeholder="" disabled={actionLoading} />
+				</div>
+				<PasswordRules password={newUser.password} confirmPassword={newUser.confirmPassword} showMatch={true} />
+				<label class="checkbox-row">
+					<input type="checkbox" bind:checked={newUser.is_admin} disabled={actionLoading} />
+					<span>{$t.userManager.roles.administrator}</span>
+				</label>
+			</div>
+			<div class="modal-footer">
+				<button class="btn-secondary" on:click={() => showAddUserModal = false} disabled={actionLoading}>{$t.common.cancel}</button>
+				<button class="btn-primary" on:click={submitCreateUser} disabled={actionLoading}>
+					{#if actionLoading}
+						<Icon icon="mdi:loading" class="w-4 h-4 animate-spin" />
+					{/if}
+					{$t.common.create}
+				</button>
+			</div>
+		</div>
+	</div>
+{/if}
+
+<!-- Edit User Modal -->
+{#if showEditUserModal && selectedUser}
+	<div class="modal-overlay" on:click={() => showEditUserModal = false}>
+		<div class="modal modal-sm" on:click|stopPropagation>
+			<div class="modal-header">
+				<h2>{$t.userManager.modals.editUserTitle}</h2>
+				<button class="modal-close" on:click={() => showEditUserModal = false}>
+					<Icon icon="mdi:close" class="w-5 h-5" />
+				</button>
+			</div>
+			<div class="modal-body">
+				{#if actionError}
+					<div class="form-error">{actionError}</div>
+				{/if}
+				<div class="form-group">
+					<label>{$t.userManager.fields.username}</label>
+					<input type="text" value={selectedUser.username} disabled />
+				</div>
+				<div class="form-group">
+					<label>{$t.userManager.fields.email}</label>
+					<input type="email" bind:value={editUserData.email} placeholder="" disabled={actionLoading} />
+				</div>
+				<label class="checkbox-row">
+					<input type="checkbox" bind:checked={editUserData.is_admin} disabled={actionLoading || selectedUser.isCurrentUser} />
+					<span>{$t.userManager.roles.administrator}</span>
+				</label>
+				{#if selectedUser.isCurrentUser}
+					<span class="form-hint">{$t.userManager.messages.cannotChangeOwnRole}</span>
+				{/if}
+			</div>
+			<div class="modal-footer">
+				<button class="btn-secondary" on:click={() => showEditUserModal = false} disabled={actionLoading}>{$t.common.cancel}</button>
+				<button class="btn-primary" on:click={submitEditUser} disabled={actionLoading}>
+					{#if actionLoading}
+						<Icon icon="mdi:loading" class="w-4 h-4 animate-spin" />
+					{/if}
+					{$t.common.save}
+				</button>
+			</div>
+		</div>
+	</div>
+{/if}
+
+<!-- Delete Confirmation Modal -->
+{#if showDeleteConfirm && selectedUser}
+	<div class="modal-overlay" on:click={() => showDeleteConfirm = false}>
+		<div class="modal modal-sm" on:click|stopPropagation>
+			<div class="modal-header">
+				<h2>{$t.userManager.modals.deleteUserTitle}</h2>
+				<button class="modal-close" on:click={() => showDeleteConfirm = false}>
+					<Icon icon="mdi:close" class="w-5 h-5" />
+				</button>
+			</div>
+			<div class="modal-body">
+				{#if actionError}
+					<div class="form-error">{actionError}</div>
+				{/if}
+				<p>{$t.userManager.messages.deleteConfirm.replace('{username}', selectedUser.username)}</p>
+				<p class="text-secondary">{$t.userManager.messages.cannotBeUndone}</p>
+			</div>
+			<div class="modal-footer">
+				<button class="btn-secondary" on:click={() => showDeleteConfirm = false} disabled={actionLoading}>{$t.common.cancel}</button>
+				<button class="btn-danger" on:click={submitDeleteUser} disabled={actionLoading}>
+					{#if actionLoading}
+						<Icon icon="mdi:loading" class="w-4 h-4 animate-spin" />
+					{/if}
+					{$t.common.delete}
+				</button>
+			</div>
+		</div>
+	</div>
+{/if}
+
+<!-- Add Group Modal -->
+{#if showAddGroupModal}
+	<div class="modal-overlay" on:click={() => showAddGroupModal = false}>
+		<div class="modal modal-sm" on:click|stopPropagation>
+			<div class="modal-header">
+				<h2>{$t.userManager.modals.addGroupTitle}</h2>
+				<button class="modal-close" on:click={() => showAddGroupModal = false}>
+					<Icon icon="mdi:close" class="w-5 h-5" />
+				</button>
+			</div>
+			<div class="modal-body">
+				{#if actionError}
+					<div class="form-error">{actionError}</div>
+				{/if}
+				<div class="form-group">
+					<label>{$t.userManager.fields.groupName} <span class="required">*</span></label>
+					<input type="text" bind:value={newGroup.name} placeholder="" disabled={actionLoading} />
+				</div>
+				<div class="form-group">
+					<label>{$t.userManager.fields.description}</label>
+					<input type="text" bind:value={newGroup.description} placeholder="" disabled={actionLoading} />
+				</div>
+			</div>
+			<div class="modal-footer">
+				<button class="btn-secondary" on:click={() => showAddGroupModal = false} disabled={actionLoading}>{$t.common.cancel}</button>
+				<button class="btn-primary" on:click={submitCreateGroup} disabled={actionLoading}>
+					{#if actionLoading}
+						<Icon icon="mdi:loading" class="w-4 h-4 animate-spin" />
+					{/if}
+					{$t.common.create}
+				</button>
+			</div>
+		</div>
+	</div>
+{/if}
+
+<!-- Edit Group Modal -->
+{#if showEditGroupModal && selectedGroup}
+	<div class="modal-overlay" on:click={() => showEditGroupModal = false}>
+		<div class="modal modal-sm" on:click|stopPropagation>
+			<div class="modal-header">
+				<h2>{$t.userManager.modals.editGroupTitle}</h2>
+				<button class="modal-close" on:click={() => showEditGroupModal = false}>
+					<Icon icon="mdi:close" class="w-5 h-5" />
+				</button>
+			</div>
+			<div class="modal-body">
+				{#if actionError}
+					<div class="form-error">{actionError}</div>
+				{/if}
+				<div class="form-group">
+					<label>{$t.userManager.fields.groupName}</label>
+					<input type="text" bind:value={editGroupData.name} placeholder="" disabled={actionLoading || selectedGroup.isSystem} />
+					{#if selectedGroup.isSystem}
+						<span class="form-hint">{$t.userManager.messages.systemGroupNameReadonly}</span>
+					{/if}
+				</div>
+				<div class="form-group">
+					<label>{$t.userManager.fields.description}</label>
+					<input type="text" bind:value={editGroupData.description} placeholder="" disabled={actionLoading} />
+				</div>
+			</div>
+			<div class="modal-footer">
+				<button class="btn-secondary" on:click={() => showEditGroupModal = false} disabled={actionLoading}>{$t.common.cancel}</button>
+				<button class="btn-primary" on:click={submitEditGroup} disabled={actionLoading}>
+					{#if actionLoading}
+						<Icon icon="mdi:loading" class="w-4 h-4 animate-spin" />
+					{/if}
+					{$t.common.save}
+				</button>
+			</div>
+		</div>
+	</div>
+{/if}
+
+<!-- Delete Group Confirmation Modal -->
+{#if showDeleteGroupConfirm && selectedGroup}
+	<div class="modal-overlay" on:click={() => showDeleteGroupConfirm = false}>
+		<div class="modal modal-sm" on:click|stopPropagation>
+			<div class="modal-header">
+				<h2>{$t.userManager.modals.deleteGroupTitle}</h2>
+				<button class="modal-close" on:click={() => showDeleteGroupConfirm = false}>
+					<Icon icon="mdi:close" class="w-5 h-5" />
+				</button>
+			</div>
+			<div class="modal-body">
+				{#if actionError}
+					<div class="form-error">{actionError}</div>
+				{/if}
+				<p>{$t.userManager.messages.deleteGroupConfirm.replace('{groupName}', selectedGroup.name)}</p>
+				<p class="text-secondary">{$t.userManager.messages.cannotBeUndone}</p>
+			</div>
+			<div class="modal-footer">
+				<button class="btn-secondary" on:click={() => showDeleteGroupConfirm = false} disabled={actionLoading}>{$t.common.cancel}</button>
+				<button class="btn-danger" on:click={submitDeleteGroup} disabled={actionLoading}>
+					{#if actionLoading}
+						<Icon icon="mdi:loading" class="w-4 h-4 animate-spin" />
+					{/if}
+					{$t.common.delete}
+				</button>
+			</div>
+		</div>
+	</div>
+{/if}
+
+<style>
+	.user-manager {
+		display: flex;
+		flex-direction: column;
+		height: 100%;
+		background: white;
+	}
+
+	/* Tabs */
+	.tabs {
+		display: flex;
+		gap: 8px;
+		padding: 0 20px;
+		border-bottom: 1px solid #e5e7eb;
+	}
+
+	.tab {
+		padding: 14px 16px;
+		font-size: 14px;
+		color: #6b7280;
+		border-bottom: 2px solid transparent;
+		margin-bottom: -1px;
+		transition: all 0.15s ease;
+	}
+
+	.tab:hover {
+		color: #3b82f6;
+	}
+
+	.tab.active {
+		color: #3b82f6;
+		border-bottom-color: #3b82f6;
+	}
+
+	/* Content */
+	.content {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		overflow: hidden;
+	}
+
+	/* Loading and Error States */
+	.loading-state,
+	.error-state {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 12px;
+		color: #6b7280;
+	}
+
+	.error-state {
+		color: #ef4444;
+	}
+
+	.animate-spin {
+		animation: spin 1s linear infinite;
+	}
+
+	@keyframes spin {
+		from { transform: rotate(0deg); }
+		to { transform: rotate(360deg); }
+	}
+
+	/* Form Error */
+	.form-error {
+		padding: 10px 12px;
+		background: #fef2f2;
+		border: 1px solid #fecaca;
+		border-radius: 6px;
+		color: #dc2626;
+		font-size: 14px;
+		margin-bottom: 16px;
+	}
+
+	.form-hint {
+		display: block;
+		margin-top: 4px;
+		font-size: 12px;
+		color: #9ca3af;
+	}
+
+	/* Group Cell */
+	.group-cell {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+	}
+
+	.badge-system {
+		padding: 2px 6px;
+		background: #f3f4f6;
+		color: #6b7280;
+		font-size: 11px;
+		font-weight: 500;
+		border-radius: 4px;
+	}
+
+	.text-center {
+		text-align: center;
+	}
+
+	/* Toolbar */
+	.toolbar {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 16px 20px;
+	}
+
+	.toolbar-left, .toolbar-right {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+	}
+
+	/* Dropdown */
+	.dropdown-container {
+		position: relative;
+	}
+
+	.dropdown-menu {
+		position: absolute;
+		top: 100%;
+		left: 0;
+		margin-top: 4px;
+		background: white;
+		border: 1px solid #e5e7eb;
+		border-radius: 8px;
+		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+		min-width: 160px;
+		z-index: 50;
+	}
+
+	.dropdown-item {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		width: 100%;
+		padding: 10px 14px;
+		font-size: 14px;
+		color: #374151;
+		text-align: left;
+	}
+
+	.dropdown-item:hover {
+		background: #f3f4f6;
+	}
+
+	/* Filter Input */
+	.filter-input {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 8px 12px;
+		background: #f9fafb;
+		border: 1px solid #e5e7eb;
+		border-radius: 8px;
+	}
+
+	.filter-input input {
+		border: none;
+		background: transparent;
+		font-size: 14px;
+		width: 120px;
+		outline: none;
+	}
+
+	.filter-input input::placeholder {
+		color: #9ca3af;
+	}
+
+	/* Icon Button */
+	.icon-btn {
+		width: 36px;
+		height: 36px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		border-radius: 8px;
+		color: #6b7280;
+		transition: all 0.15s ease;
+	}
+
+	.icon-btn:hover {
+		background: #f3f4f6;
+		color: #374151;
+	}
+
+	/* Table */
+	.table-container {
+		flex: 1;
+		overflow: auto;
+		padding: 0 20px 20px;
+	}
+
+	.data-table {
+		width: 100%;
+		border-collapse: collapse;
+	}
+
+	.data-table th {
+		padding: 12px 16px;
+		text-align: left;
+		font-size: 13px;
+		font-weight: 500;
+		color: #6b7280;
+		background: #f9fafb;
+		border-bottom: 1px solid #e5e7eb;
+	}
+
+	.data-table th.sortable {
+		cursor: pointer;
+		user-select: none;
+	}
+
+	.data-table th.sortable:hover {
+		color: #374151;
+	}
+
+	.data-table td {
+		padding: 12px 16px;
+		font-size: 14px;
+		color: #374151;
+		border-bottom: 1px solid #f3f4f6;
+	}
+
+	.data-table tr:hover {
+		background: #f9fafb;
+	}
+
+	.data-table tr.disabled td {
+		color: #9ca3af;
+	}
+
+	/* User Cell */
+	.user-cell {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+	}
+
+	.avatar {
+		width: 36px;
+		height: 36px;
+		border-radius: 50%;
+		background: #e5e7eb;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		color: #6b7280;
+	}
+
+	.username {
+		font-weight: 500;
+	}
+
+	.badge-me {
+		padding: 2px 8px;
+		background: #3b82f6;
+		color: white;
+		font-size: 11px;
+		font-weight: 500;
+		border-radius: 10px;
+	}
+
+	.group-name {
+		font-weight: 500;
+	}
+
+	.text-secondary {
+		color: #6b7280;
+	}
+
+	.text-disabled {
+		color: #9ca3af;
+	}
+
+	/* Action Cell */
+	.action-cell {
+		position: relative;
+	}
+
+	.action-btn {
+		width: 32px;
+		height: 32px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		border-radius: 6px;
+		color: #6b7280;
+	}
+
+	.action-btn:hover {
+		background: #e5e7eb;
+	}
+
+	.action-menu {
+		position: absolute;
+		top: 100%;
+		right: 0;
+		margin-top: 4px;
+		background: white;
+		border: 1px solid #e5e7eb;
+		border-radius: 8px;
+		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+		min-width: 100px;
+		z-index: 50;
+		overflow: hidden;
+	}
+
+	.action-item {
+		display: block;
+		width: 100%;
+		padding: 10px 14px;
+		font-size: 14px;
+		color: #374151;
+		text-align: left;
+	}
+
+	.action-item:hover {
+		background: #f3f4f6;
+	}
+
+	.action-item.danger {
+		color: #ef4444;
+	}
+
+	.action-item.danger:hover {
+		background: #fef2f2;
+	}
+
+	/* Settings */
+	.settings-content {
+		flex: 1;
+		overflow-y: auto;
+		padding: 20px;
+	}
+
+	.settings-section {
+		margin-bottom: 32px;
+	}
+
+	.settings-section h3 {
+		font-size: 15px;
+		font-weight: 600;
+		color: #1f2937;
+		margin-bottom: 16px;
+		padding-bottom: 12px;
+		border-bottom: 1px solid #e5e7eb;
+	}
+
+	.settings-list {
+		display: flex;
+		flex-direction: column;
+		gap: 12px;
+	}
+
+	.checkbox-row {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		cursor: pointer;
+	}
+
+	.checkbox-row input[type="checkbox"] {
+		width: 18px;
+		height: 18px;
+		accent-color: #3b82f6;
+	}
+
+	.checkbox-row span {
+		font-size: 14px;
+		color: #374151;
+	}
+
+	.checkbox-row.with-input {
+		justify-content: space-between;
+	}
+
+	.toggle-row, .input-row {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 8px 0;
+	}
+
+	.toggle-row span, .input-row span {
+		font-size: 14px;
+		color: #374151;
+	}
+
+	/* Toggle Switch */
+	.toggle {
+		position: relative;
+		width: 48px;
+		height: 24px;
+	}
+
+	.toggle input {
+		opacity: 0;
+		width: 0;
+		height: 0;
+	}
+
+	.toggle-slider {
+		position: absolute;
+		cursor: pointer;
+		inset: 0;
+		background: #d1d5db;
+		border-radius: 24px;
+		transition: 0.3s;
+	}
+
+	.toggle-slider::before {
+		content: '';
+		position: absolute;
+		height: 18px;
+		width: 18px;
+		left: 3px;
+		bottom: 3px;
+		background: white;
+		border-radius: 50%;
+		transition: 0.3s;
+	}
+
+	.toggle input:checked + .toggle-slider {
+		background: #3b82f6;
+	}
+
+	.toggle input:checked + .toggle-slider::before {
+		transform: translateX(24px);
+	}
+
+	/* Number Input */
+	.number-input {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+	}
+
+	.number-input input {
+		width: 80px;
+		padding: 8px 12px;
+		border: 1px solid #e5e7eb;
+		border-radius: 6px;
+		font-size: 14px;
+		text-align: right;
+	}
+
+	.number-input .suffix {
+		font-size: 14px;
+		color: #6b7280;
+	}
+
+	.settings-footer {
+		display: flex;
+		justify-content: flex-end;
+		padding: 16px 0;
+		border-top: 1px solid #e5e7eb;
+		margin-top: 16px;
+	}
+
+	/* Buttons */
+	.btn-primary {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		padding: 8px 16px;
+		background: #3b82f6;
+		border-radius: 8px;
+		font-size: 14px;
+		font-weight: 500;
+		color: white;
+		transition: background 0.15s ease;
+	}
+
+	.btn-primary:hover {
+		background: #2563eb;
+	}
+
+	.btn-secondary {
+		padding: 8px 16px;
+		background: white;
+		border: 1px solid #e5e7eb;
+		border-radius: 8px;
+		font-size: 14px;
+		color: #374151;
+		transition: all 0.15s ease;
+	}
+
+	.btn-secondary:hover {
+		background: #f9fafb;
+	}
+
+	.btn-danger {
+		padding: 8px 16px;
+		background: #ef4444;
+		border-radius: 8px;
+		font-size: 14px;
+		font-weight: 500;
+		color: white;
+		transition: background 0.15s ease;
+	}
+
+	.btn-danger:hover {
+		background: #dc2626;
+	}
+
+	/* Modal */
+	.modal-overlay {
+		position: fixed;
+		inset: 0;
+		background: rgba(0, 0, 0, 0.4);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		z-index: 100;
+	}
+
+	.modal {
+		background: white;
+		border-radius: 12px;
+		width: 90%;
+		max-width: 700px;
+		max-height: 80vh;
+		display: flex;
+		flex-direction: column;
+		box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
+	}
+
+	.modal.modal-sm {
+		max-width: 450px;
+	}
+
+	.modal-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 16px 20px;
+		border-bottom: 1px solid #e5e7eb;
+	}
+
+	.modal-header h2 {
+		font-size: 16px;
+		font-weight: 600;
+		color: #1f2937;
+	}
+
+	.modal-close {
+		color: #6b7280;
+		padding: 4px;
+		border-radius: 4px;
+	}
+
+	.modal-close:hover {
+		background: #f3f4f6;
+		color: #374151;
+	}
+
+	.modal-body {
+		flex: 1;
+		padding: 20px;
+		overflow-y: auto;
+	}
+
+	.modal-footer {
+		display: flex;
+		justify-content: flex-end;
+		gap: 12px;
+		padding: 16px 20px;
+		border-top: 1px solid #e5e7eb;
+	}
+
+	/* Permission Filters */
+	.permission-filters {
+		display: flex;
+		align-items: flex-end;
+		gap: 16px;
+		margin-bottom: 20px;
+	}
+
+	.select-group {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+	}
+
+	.select-group label {
+		font-size: 13px;
+		color: #6b7280;
+	}
+
+	.select-group select {
+		padding: 8px 12px;
+		border: 1px solid #e5e7eb;
+		border-radius: 6px;
+		font-size: 14px;
+		min-width: 150px;
+	}
+
+	/* Pagination */
+	.pagination {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 16px 0;
+		font-size: 13px;
+		color: #6b7280;
+	}
+
+	.pagination-controls {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+	}
+
+	.pagination-controls button {
+		width: 28px;
+		height: 28px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		border: 1px solid #e5e7eb;
+		border-radius: 4px;
+		color: #6b7280;
+	}
+
+	.pagination-controls button:disabled {
+		opacity: 0.5;
+		cursor: not-allowed;
+	}
+
+	.page-number {
+		width: 28px;
+		height: 28px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		border: 1px solid #3b82f6;
+		border-radius: 4px;
+		color: #3b82f6;
+		font-weight: 500;
+	}
+
+	/* Form */
+	.form-group {
+		margin-bottom: 16px;
+	}
+
+	.form-group label {
+		display: block;
+		margin-bottom: 6px;
+		font-size: 14px;
+		color: #374151;
+	}
+
+	.form-group .required {
+		color: #ef4444;
+	}
+
+	.form-group input,
+	.form-group select {
+		width: 100%;
+		padding: 10px 12px;
+		border: 1px solid #e5e7eb;
+		border-radius: 8px;
+		font-size: 14px;
+	}
+
+	.form-group input:focus,
+	.form-group select:focus {
+		outline: none;
+		border-color: #3b82f6;
+		box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+	}
+
+	.form-group input:disabled {
+		background: #f3f4f6;
+		color: #9ca3af;
+	}
+
+	.modal-body p {
+		font-size: 14px;
+		color: #374151;
+		margin-bottom: 8px;
+	}
+
+	/* Large Modal */
+	.modal.modal-lg {
+		max-width: 800px;
+	}
+
+	.modal-header h2 {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+	}
+
+	/* Permissions Modal */
+	.permission-modal-body {
+		min-height: 400px;
+	}
+
+	.permission-toolbar {
+		display: flex;
+		justify-content: flex-end;
+		margin-bottom: 16px;
+	}
+
+	.empty-permissions {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		padding: 60px 20px;
+		color: #9ca3af;
+		text-align: center;
+	}
+
+	.empty-permissions p {
+		margin: 8px 0 0;
+		color: #6b7280;
+	}
+
+	.empty-permissions p.text-secondary {
+		font-size: 13px;
+		color: #9ca3af;
+	}
+
+	.permission-list {
+		display: flex;
+		flex-direction: column;
+		gap: 16px;
+	}
+
+	.permission-folder-card {
+		border: 1px solid #e5e7eb;
+		border-radius: 10px;
+		overflow: hidden;
+		background: white;
+	}
+
+	.folder-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 12px 16px;
+		background: #f9fafb;
+		border-bottom: 1px solid #e5e7eb;
+	}
+
+	.folder-info {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+	}
+
+	.folder-icon {
+		color: #f59e0b;
+	}
+
+	.folder-path {
+		font-weight: 500;
+		font-size: 14px;
+		color: #374151;
+		font-family: monospace;
+	}
+
+	.btn-icon-danger {
+		width: 32px;
+		height: 32px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		border-radius: 6px;
+		color: #6b7280;
+		transition: all 0.15s ease;
+	}
+
+	.btn-icon-danger:hover {
+		background: #fef2f2;
+		color: #ef4444;
+	}
+
+	.permission-grid {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 16px;
+		padding: 16px;
+	}
+
+	@media (max-width: 640px) {
+		.permission-grid {
+			grid-template-columns: 1fr;
+		}
+	}
+
+	.permission-section h4 {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		font-size: 13px;
+		font-weight: 600;
+		color: #6b7280;
+		margin-bottom: 10px;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+	}
+
+	.permission-rows {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+	}
+
+	.permission-row {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		padding: 8px 12px;
+		background: #f9fafb;
+		border-radius: 8px;
+	}
+
+	.entity-info {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		font-size: 14px;
+		color: #374151;
+	}
+
+	.avatar-sm {
+		width: 28px;
+		height: 28px;
+		border-radius: 50%;
+		background: #e5e7eb;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		color: #6b7280;
+	}
+
+	.avatar-sm.group-avatar {
+		background: #dbeafe;
+		color: #3b82f6;
+	}
+
+	.permission-select {
+		padding: 6px 10px;
+		border: 1px solid #e5e7eb;
+		border-radius: 6px;
+		font-size: 13px;
+		color: #374151;
+		background: white;
+		cursor: pointer;
+		min-width: 120px;
+	}
+
+	.permission-select:focus {
+		outline: none;
+		border-color: #3b82f6;
+		box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+	}
+
+	.permissions-btn {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+	}
+</style>
