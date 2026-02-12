@@ -2,18 +2,40 @@
 # PiNAS - Configure Kodi webserver for JSON-RPC access
 # Runs BEFORE kodi.service to ensure the webserver is enabled on first boot
 # and credentials match PiNAS configuration.
+#
+# The password is shared with the PiNAS backend via a file:
+#   /storage/.pinas/data/.kodi_password
+# This script generates it if missing; the backend reads the same file.
 
 set -e
 
 GUISETTINGS="/storage/.kodi/userdata/guisettings.xml"
 MARKER="/storage/.pinas/.kodi-configured"
+PASSWORD_FILE="/storage/.pinas/data/.kodi_password"
 KODI_USER="kodi"
-KODI_PASS="pinas"
 KODI_PORT="8080"
 
 log() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') [kodi-config] $1"
 }
+
+# Load or generate the shared Kodi password
+load_or_generate_password() {
+    mkdir -p "$(dirname "$PASSWORD_FILE")"
+
+    if [ -f "$PASSWORD_FILE" ] && [ -s "$PASSWORD_FILE" ]; then
+        KODI_PASS="$(cat "$PASSWORD_FILE")"
+        log "Kodi password loaded from $PASSWORD_FILE"
+    else
+        # Generate a random password (32 hex chars)
+        KODI_PASS="$(head -c 16 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+        printf '%s' "$KODI_PASS" > "$PASSWORD_FILE"
+        chmod 600 "$PASSWORD_FILE"
+        log "Generated new Kodi password at $PASSWORD_FILE"
+    fi
+}
+
+load_or_generate_password
 
 # If Kodi settings don't exist yet (first boot), create userdata dir
 if [ ! -d "/storage/.kodi/userdata" ]; then
@@ -25,12 +47,12 @@ fi
 # Create a minimal one with webserver enabled
 if [ ! -f "$GUISETTINGS" ]; then
     log "Creating guisettings.xml with webserver enabled"
-    cat > "$GUISETTINGS" << 'EOF'
+    cat > "$GUISETTINGS" << EOF
 <settings version="2">
     <setting id="services.webserver">true</setting>
-    <setting id="services.webserverport">8080</setting>
-    <setting id="services.webserverusername">kodi</setting>
-    <setting id="services.webserverpassword">pinas</setting>
+    <setting id="services.webserverport">${KODI_PORT}</setting>
+    <setting id="services.webserverusername">${KODI_USER}</setting>
+    <setting id="services.webserverpassword">${KODI_PASS}</setting>
     <setting id="services.esallinterfaces">true</setting>
     <setting id="services.esenabled">true</setting>
 </settings>
@@ -40,13 +62,10 @@ EOF
     exit 0
 fi
 
-# Case 2: guisettings.xml exists but webserver not configured by PiNAS yet
-if [ -f "$MARKER" ]; then
-    log "Kodi webserver already configured by PiNAS"
-    exit 0
-fi
-
-log "Existing guisettings.xml found, enabling webserver..."
+# Case 2: guisettings.xml exists - ensure webserver is enabled and password is in sync.
+# We always re-apply settings because Kodi overwrites guisettings.xml on exit,
+# and the password must stay synchronized with the backend.
+log "Updating guisettings.xml - ensuring webserver is enabled..."
 
 # Enable webserver settings using sed
 # Each setting can be: missing, set to true/false, or have default="true" attribute
