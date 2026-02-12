@@ -1,0 +1,12 @@
+[Unit]
+Description=PiNAS - Splash Screen
+Conflicts=kodi.service
+After=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/pinas-splash.sh
+ExecStopPost=/usr/bin/setterm --cursor on --terminal /dev/tty1
+
+[Install]
+WantedBy=default.target

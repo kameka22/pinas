@@ -2,6 +2,7 @@ pub mod apps;
 pub mod auth;
 pub mod cookies;
 pub mod cups;
+pub mod display;
 pub mod docker;
 pub mod files;
 pub mod groups;

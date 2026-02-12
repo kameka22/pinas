@@ -257,7 +257,8 @@ export default {
 		terminal: 'Terminal',
 		users: 'Users',
 		processManager: 'Process Manager',
-		kodi: 'Kodi'
+		kodi: 'Kodi',
+		display: 'Display'
 	},
 
 	// Top Bar
@@ -813,6 +814,20 @@ export default {
 			rateLimit: 'Rate limit exceeded. Please wait before executing more commands.',
 			connectionFailed: 'Connection failed'
 		}
+	},
+
+	// Display App
+	display: {
+		title: 'Display',
+		description: 'Manage HDMI display services',
+		services: 'Display Services',
+		noActiveService: 'No active display service',
+		splashActive: 'PiNAS splash screen is displayed',
+		splashDescription: 'Access PiNAS at:',
+		activate: 'Activate',
+		deactivate: 'Deactivate',
+		activating: 'Starting...',
+		deactivating: 'Stopping...'
 	},
 
 	// Kodi App

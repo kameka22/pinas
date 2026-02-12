@@ -19,6 +19,8 @@ pub fn router() -> Router<AppState> {
         // Playback control
         .route("/playback/play-pause", post(play_pause))
         .route("/playback/stop", post(stop))
+        .route("/playback/previous", post(previous))
+        .route("/playback/next", post(next))
         .route("/playback/volume", get(get_volume).post(set_volume))
         // Input/Navigation
         .route("/input/:action", post(input_action))
@@ -100,6 +102,38 @@ async fn stop(
     let kodi = KodiService::new(state.config.dev_mode, state.config.kodi_username.clone(), state.config.kodi_password.clone());
 
     match kodi.stop().await {
+        Ok(_) => (StatusCode::OK, Json(serde_json::json!({ "success": true }))).into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": e.to_string() })),
+        )
+            .into_response(),
+    }
+}
+
+async fn previous(
+    State(state): State<AppState>,
+    _user: AuthUser,
+) -> impl IntoResponse {
+    let kodi = KodiService::new(state.config.dev_mode, state.config.kodi_username.clone(), state.config.kodi_password.clone());
+
+    match kodi.goto_previous().await {
+        Ok(_) => (StatusCode::OK, Json(serde_json::json!({ "success": true }))).into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": e.to_string() })),
+        )
+            .into_response(),
+    }
+}
+
+async fn next(
+    State(state): State<AppState>,
+    _user: AuthUser,
+) -> impl IntoResponse {
+    let kodi = KodiService::new(state.config.dev_mode, state.config.kodi_username.clone(), state.config.kodi_password.clone());
+
+    match kodi.goto_next().await {
         Ok(_) => (StatusCode::OK, Json(serde_json::json!({ "success": true }))).into_response(),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,

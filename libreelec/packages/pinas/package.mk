@@ -33,6 +33,14 @@ makeinstall_target() {
   cp ${PKG_DIR}/bin/pinas-debug.sh ${INSTALL}/usr/bin/pinas-debug
   chmod 755 ${INSTALL}/usr/bin/pinas-debug
 
+  # Installer le script de splash screen
+  cp ${PKG_DIR}/bin/pinas-splash.sh ${INSTALL}/usr/bin/
+  chmod 755 ${INSTALL}/usr/bin/pinas-splash.sh
+
+  # Installer le script de configuration Kodi
+  cp ${PKG_DIR}/bin/pinas-kodi-config.sh ${INSTALL}/usr/bin/
+  chmod 755 ${INSTALL}/usr/bin/pinas-kodi-config.sh
+
   # Installer les fichiers frontend (staging, sera copié vers /storage au premier boot)
   # IMPORTANT: Vérifier que le frontend existe avant de copier
   if [ ! -d "${PKG_DIR}/www" ] || [ ! -f "${PKG_DIR}/www/index.html" ]; then
@@ -51,6 +59,8 @@ makeinstall_target() {
   mkdir -p ${INSTALL}/usr/lib/systemd/system
   cp ${PKG_DIR}/system.d/pinas.service ${INSTALL}/usr/lib/systemd/system/
   cp ${PKG_DIR}/system.d/pinas-resize-storage.service ${INSTALL}/usr/lib/systemd/system/
+  cp ${PKG_DIR}/system.d/pinas-splash.service ${INSTALL}/usr/lib/systemd/system/
+  cp ${PKG_DIR}/system.d/pinas-kodi-config.service ${INSTALL}/usr/lib/systemd/system/
 
   # Activer le service pinas au démarrage
   mkdir -p ${INSTALL}/usr/lib/systemd/system/default.target.wants
@@ -61,6 +71,14 @@ makeinstall_target() {
   mkdir -p ${INSTALL}/usr/lib/systemd/system/local-fs-pre.target.wants
   ln -sf ../pinas-resize-storage.service ${INSTALL}/usr/lib/systemd/system/local-fs-pre.target.wants/pinas-resize-storage.service
   echo "Service enabled: pinas-resize-storage.service -> local-fs-pre.target.wants"
+
+  # Activer le service splash au démarrage
+  ln -sf ../pinas-splash.service ${INSTALL}/usr/lib/systemd/system/default.target.wants/pinas-splash.service
+  echo "Service enabled: pinas-splash.service -> default.target.wants"
+
+  # Activer le service kodi-config au démarrage
+  ln -sf ../pinas-kodi-config.service ${INSTALL}/usr/lib/systemd/system/default.target.wants/pinas-kodi-config.service
+  echo "Service enabled: pinas-kodi-config.service -> default.target.wants"
 
   # Installer la config tmpfiles (création dossiers)
   mkdir -p ${INSTALL}/usr/lib/tmpfiles.d

@@ -118,4 +118,16 @@ if [ -f /usr/bin/pinas-init.sh ]; then
     fi
 fi
 
+# Disable Kodi on first boot (PiNAS defaults to NAS-only mode)
+KODI_DISABLED_MARKER="/storage/.pinas/.kodi-disabled-by-pinas"
+if [ ! -f "$KODI_DISABLED_MARKER" ]; then
+    log "PiNAS: First boot - disabling Kodi (NAS-only mode by default)"
+    systemctl disable kodi.service 2>/dev/null || true
+    systemctl stop kodi.service 2>/dev/null || true
+    systemctl enable pinas-splash.service 2>/dev/null || true
+    systemctl start pinas-splash.service 2>/dev/null || true
+    touch "$KODI_DISABLED_MARKER"
+    log "PiNAS: Kodi disabled, splash screen active"
+fi
+
 log "PiNAS: Initialization complete"

@@ -257,7 +257,8 @@ export default {
 		terminal: 'Terminal',
 		users: 'Utilisateurs',
 		processManager: 'Gestionnaire de processus',
-		kodi: 'Kodi'
+		kodi: 'Kodi',
+		display: 'Affichage'
 	},
 
 	// Top Bar
@@ -813,6 +814,20 @@ export default {
 			rateLimit: 'Trop de commandes. Veuillez patienter avant de continuer.',
 			connectionFailed: 'Erreur de connexion'
 		}
+	},
+
+	// Display App
+	display: {
+		title: 'Affichage',
+		description: "Gérer les services d'affichage HDMI",
+		services: "Services d'affichage",
+		noActiveService: "Aucun service d'affichage actif",
+		splashActive: "L'écran d'accueil PiNAS est affiché",
+		splashDescription: 'Accédez à PiNAS sur :',
+		activate: 'Activer',
+		deactivate: 'Désactiver',
+		activating: 'Démarrage...',
+		deactivating: 'Arrêt...'
 	},
 
 	// Kodi App

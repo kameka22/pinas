@@ -219,6 +219,46 @@ impl KodiService {
         Ok(())
     }
 
+    pub async fn goto_previous(&self) -> Result<(), KodiError> {
+        if self.dev_mode {
+            tracing::info!("[DEV] Kodi goto previous");
+            return Ok(());
+        }
+
+        let players = self
+            .json_rpc_call("Player.GetActivePlayers", serde_json::json!({}))
+            .await?;
+        if let Some(player) = players.as_array().and_then(|a| a.first()) {
+            let playerid = player["playerid"].as_i64().unwrap_or(1);
+            self.json_rpc_call(
+                "Player.GoTo",
+                serde_json::json!({ "playerid": playerid, "to": "previous" }),
+            )
+            .await?;
+        }
+        Ok(())
+    }
+
+    pub async fn goto_next(&self) -> Result<(), KodiError> {
+        if self.dev_mode {
+            tracing::info!("[DEV] Kodi goto next");
+            return Ok(());
+        }
+
+        let players = self
+            .json_rpc_call("Player.GetActivePlayers", serde_json::json!({}))
+            .await?;
+        if let Some(player) = players.as_array().and_then(|a| a.first()) {
+            let playerid = player["playerid"].as_i64().unwrap_or(1);
+            self.json_rpc_call(
+                "Player.GoTo",
+                serde_json::json!({ "playerid": playerid, "to": "next" }),
+            )
+            .await?;
+        }
+        Ok(())
+    }
+
     pub async fn input_action(&self, action: &str) -> Result<(), KodiError> {
         if self.dev_mode {
             tracing::info!("[DEV] Kodi input action: {}", action);

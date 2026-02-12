@@ -93,12 +93,12 @@ export const builtInApps: DesktopApp[] = [
 		gradient: 'from-emerald-500 to-teal-600'
 	},
 	{
-		id: 'kodi',
-		label: 'Kodi',
-		labelKey: 'kodi',
-		icon: 'mdi:kodi',
-		component: 'KodiApp',
-		gradient: 'from-cyan-500 to-teal-500'
+		id: 'display',
+		label: 'Display',
+		labelKey: 'display',
+		icon: 'mdi:monitor',
+		component: 'DisplayApp',
+		gradient: 'from-indigo-500 to-purple-500'
 	}
 ];
 

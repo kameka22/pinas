@@ -154,6 +154,7 @@ fn create_router(state: AppState) -> Router {
         .nest("/api/services", api::services::router())
         .nest("/api/terminal", api::terminal::router())
         .nest("/api/locations", api::locations::router())
+        .nest("/api/display", api::display::router())
         .nest("/api/kodi", api::kodi::router())
         .nest("/api/network", api::network::router())
         .nest("/api/permissions", api::permissions::router())
