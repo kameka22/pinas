@@ -10,6 +10,7 @@ use sysinfo::{System, Signal, Pid};
 
 use crate::AppState;
 use crate::api::middleware::AdminUser;
+use crate::services::share::ShareService;
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -135,25 +136,30 @@ async fn get_info(State(state): State<AppState>) -> impl IntoResponse {
 }
 
 /// Get services status
-async fn get_services(State(_state): State<AppState>) -> impl IntoResponse {
-    // TODO: Implement actual service status check
-    let services = vec![
-        ServiceStatus {
+async fn get_services(State(state): State<AppState>) -> impl IntoResponse {
+    let mut services = Vec::new();
+
+    // Get real Samba status
+    let share_svc = ShareService::new(state.db.clone());
+    if let Ok(samba) = share_svc.get_samba_status().await {
+        services.push(ServiceStatus {
             name: "samba".to_string(),
-            status: "running".to_string(),
-            enabled: true,
-        },
-        ServiceStatus {
-            name: "nfs".to_string(),
-            status: "stopped".to_string(),
-            enabled: false,
-        },
-        ServiceStatus {
-            name: "ssh".to_string(),
-            status: "running".to_string(),
-            enabled: true,
-        },
-    ];
+            status: if samba.running { "running".to_string() } else { "stopped".to_string() },
+            enabled: samba.enabled,
+        });
+    }
+
+    // NFS and SSH remain simple checks for now
+    services.push(ServiceStatus {
+        name: "nfs".to_string(),
+        status: "stopped".to_string(),
+        enabled: false,
+    });
+    services.push(ServiceStatus {
+        name: "ssh".to_string(),
+        status: "running".to_string(),
+        enabled: true,
+    });
 
     Json(services)
 }
