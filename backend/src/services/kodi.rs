@@ -947,6 +947,60 @@ impl KodiService {
             .map(|s| s.to_string())
     }
 
+    /// Force Kodi to reload its profile, which re-reads sources.xml.
+    /// Errors are logged but not propagated (the XML is already written successfully).
+    async fn reload_kodi_sources(&self) {
+        if self.dev_mode {
+            tracing::info!("[DEV] Would reload Kodi sources");
+            return;
+        }
+
+        // 1. Get current profile name
+        let profile_name = match self
+            .json_rpc_call(
+                "Profiles.GetCurrentProfile",
+                serde_json::json!({ "properties": ["thumbnail"] }),
+            )
+            .await
+        {
+            Ok(result) => result["label"]
+                .as_str()
+                .unwrap_or("Master user")
+                .to_string(),
+            Err(e) => {
+                tracing::warn!("Failed to get Kodi profile for source reload: {}", e);
+                return;
+            }
+        };
+
+        // 2. Reload the profile (forces Kodi to re-read sources.xml)
+        if let Err(e) = self
+            .json_rpc_call(
+                "Profiles.LoadProfile",
+                serde_json::json!({
+                    "profile": profile_name
+                }),
+            )
+            .await
+        {
+            tracing::warn!("Failed to reload Kodi profile: {}", e);
+            return;
+        }
+
+        // 3. Show a notification (best-effort)
+        let _ = self
+            .json_rpc_call(
+                "GUI.ShowNotification",
+                serde_json::json!({
+                    "title": "PiNAS",
+                    "message": "Media sources updated"
+                }),
+            )
+            .await;
+
+        tracing::info!("Kodi sources reloaded via profile reload");
+    }
+
     async fn get_free_space(&self) -> Option<String> {
         let result = self
             .json_rpc_call(
@@ -1223,6 +1277,7 @@ impl KodiService {
             .map_err(KodiError::Io)?;
 
         tracing::info!("Added Kodi source: {} -> {}", source.name, source.path);
+        self.reload_kodi_sources().await;
         Ok(())
     }
 
@@ -1263,6 +1318,7 @@ impl KodiService {
                 .map_err(KodiError::Io)?;
 
             tracing::info!("Removed Kodi source: {}", source_name);
+            self.reload_kodi_sources().await;
             Ok(())
         } else {
             Err(KodiError::XmlParse(format!(
