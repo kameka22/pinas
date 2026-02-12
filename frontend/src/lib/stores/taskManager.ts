@@ -22,7 +22,7 @@ function createTaskManagerStore() {
 		subscribe,
 
 		addTask(type: FileTaskType, fileName: string, id?: string): string {
-			const taskId = id || crypto.randomUUID();
+			const taskId = id || (crypto.randomUUID?.() ?? Math.random().toString(36).slice(2) + Date.now().toString(36));
 			update(tasks => {
 				const newTask: FileTask = {
 					id: taskId,
