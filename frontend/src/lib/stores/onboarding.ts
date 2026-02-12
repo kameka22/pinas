@@ -137,12 +137,18 @@ function createOnboardingStore() {
 				if (config.enableSsh) {
 					try {
 						await api.enableSsh();
-						if (config.sshPassword) {
-							await api.changeSshPassword(config.sshPassword);
-						}
 						console.log('[Onboarding] SSH enabled successfully');
 					} catch (sshError) {
-						console.warn('[Onboarding] SSH configuration failed (non-blocking):', sshError);
+						console.warn('[Onboarding] SSH enable failed:', sshError);
+					}
+
+					if (config.sshPassword) {
+						try {
+							await api.changeSshPassword(config.sshPassword);
+							console.log('[Onboarding] SSH password changed successfully');
+						} catch (sshError) {
+							console.warn('[Onboarding] SSH password change failed:', sshError);
+						}
 					}
 				}
 

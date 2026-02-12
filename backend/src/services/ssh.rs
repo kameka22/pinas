@@ -279,8 +279,8 @@ impl SshService {
 
     /// Change SSH password (root password in LibreELEC)
     pub async fn change_password(&self, new_password: &str) -> anyhow::Result<()> {
-        if new_password.len() < 12 {
-            anyhow::bail!("Password must be at least 12 characters");
+        if new_password.len() < 8 {
+            anyhow::bail!("Password must be at least 8 characters");
         }
 
         if self.dev_mode {

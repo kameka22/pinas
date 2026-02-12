@@ -132,11 +132,11 @@ async fn complete_setup(
             .into_response();
     }
 
-    if payload.admin_password.len() < 12 {
+    if payload.admin_password.len() < 8 {
         return (
             StatusCode::BAD_REQUEST,
             Json(ErrorResponse {
-                error: "Password must be at least 12 characters".to_string(),
+                error: "Password must be at least 8 characters".to_string(),
                 code: "VALIDATION_ERROR".to_string(),
             }),
         )
