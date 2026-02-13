@@ -5,9 +5,10 @@ use axum::{
     routing::{delete, get, post, put},
     Json, Router,
 };
-use serde::Deserialize;
-
-use crate::models::storage::{CreatePoolRequest, CreateVolumeRequest, UpdatePoolRequest};
+use crate::models::storage::{
+    CreatePoolRequest, CreateVolumeRequest, UpdatePoolRequest,
+    UpdateVolumeRequest, ResizeVolumeRequest, FsckRequest, WipeDiskRequest, WipeMode,
+};
 use crate::services::storage::StorageService;
 use crate::AppState;
 
@@ -30,9 +31,12 @@ pub fn router() -> Router<AppState> {
         // Volumes
         .route("/volumes", get(list_volumes))
         .route("/volumes/:id", get(get_volume))
+        .route("/volumes/:id", put(update_volume))
         .route("/volumes/:id", delete(delete_volume))
         .route("/volumes/:id/mount", post(mount_volume))
         .route("/volumes/:id/unmount", post(unmount_volume))
+        .route("/volumes/:id/resize", post(resize_volume))
+        .route("/volumes/:id/check", post(check_volume))
         // Legacy compatibility
         .route("/filesystems", get(list_filesystems))
 }
@@ -72,17 +76,51 @@ async fn get_disk_smart(
 async fn wipe_disk(
     State(state): State<AppState>,
     Path(name): Path<String>,
+    body: Option<Json<WipeDiskRequest>>,
 ) -> impl IntoResponse {
+    let mode = body.and_then(|b| b.mode.clone()).unwrap_or(WipeMode::Quick);
     let service = StorageService::new(state.db.clone());
 
-    match service.wipe_disk(&name).await {
-        Ok(_) => StatusCode::NO_CONTENT.into_response(),
-        Err(e) => {
-            tracing::error!("Failed to wipe disk {}: {}", name, e);
-            if e.to_string().contains("system disk") {
-                (StatusCode::FORBIDDEN, e.to_string()).into_response()
-            } else {
-                (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+    match mode {
+        WipeMode::Quick => {
+            // Synchronous quick wipe (existing behavior)
+            match service.wipe_disk(&name).await {
+                Ok(_) => StatusCode::NO_CONTENT.into_response(),
+                Err(e) => {
+                    tracing::error!("Failed to wipe disk {}: {}", name, e);
+                    if e.to_string().contains("system disk") {
+                        (StatusCode::FORBIDDEN, e.to_string()).into_response()
+                    } else {
+                        (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+                    }
+                }
+            }
+        }
+        WipeMode::Zeros | WipeMode::Secure => {
+            // Background wipe with progress
+            match service.wipe_disk_start(&name) {
+                Ok(wipe_status) => {
+                    let task_id = wipe_status.task_id.clone();
+                    let device_name = name.clone();
+                    let task_tx = state.task_tx.clone();
+                    let dev_mode = std::env::var("PINAS_DEV_MODE")
+                        .map(|v| v.to_lowercase() == "true" || v == "1")
+                        .unwrap_or(false);
+
+                    tokio::spawn(async move {
+                        StorageService::wipe_disk_execute(device_name, mode, task_id, task_tx, dev_mode).await;
+                    });
+
+                    (StatusCode::OK, Json(wipe_status)).into_response()
+                }
+                Err(e) => {
+                    tracing::error!("Failed to start wipe for disk {}: {}", name, e);
+                    if e.to_string().contains("system disk") {
+                        (StatusCode::FORBIDDEN, e.to_string()).into_response()
+                    } else {
+                        (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+                    }
+                }
             }
         }
     }
@@ -335,6 +373,76 @@ async fn unmount_volume(
         Err(e) => {
             tracing::error!("Failed to unmount volume {}: {}", id, e);
             (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+        }
+    }
+}
+
+/// Update a volume (mount options)
+async fn update_volume(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(request): Json<UpdateVolumeRequest>,
+) -> impl IntoResponse {
+    let service = StorageService::new(state.db.clone());
+
+    match service.update_volume(&id, request).await {
+        Ok(_) => StatusCode::NO_CONTENT.into_response(),
+        Err(e) => {
+            tracing::error!("Failed to update volume {}: {}", id, e);
+            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+        }
+    }
+}
+
+/// Resize a volume
+async fn resize_volume(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(request): Json<ResizeVolumeRequest>,
+) -> impl IntoResponse {
+    let service = StorageService::new(state.db.clone());
+
+    match service.resize_volume(&id, request).await {
+        Ok(_) => StatusCode::NO_CONTENT.into_response(),
+        Err(e) => {
+            tracing::error!("Failed to resize volume {}: {}", id, e);
+            (StatusCode::BAD_REQUEST, e.to_string()).into_response()
+        }
+    }
+}
+
+/// Check filesystem on a volume
+async fn check_volume(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(request): Json<FsckRequest>,
+) -> impl IntoResponse {
+    let service = StorageService::new(state.db.clone());
+
+    match service.fsck_volume_start(&id, request.repair).await {
+        Ok(fsck_status) => {
+            let task_id = fsck_status.task_id.clone();
+            let volume_id = id.clone();
+            let db = state.db.clone();
+            let task_tx = state.task_tx.clone();
+            let repair = request.repair;
+            let dev_mode = std::env::var("PINAS_DEV_MODE")
+                .map(|v| v.to_lowercase() == "true" || v == "1")
+                .unwrap_or(false);
+
+            tokio::spawn(async move {
+                StorageService::fsck_volume_execute(db, volume_id, task_id, task_tx, repair, dev_mode).await;
+            });
+
+            (StatusCode::OK, Json(fsck_status)).into_response()
+        }
+        Err(e) => {
+            tracing::error!("Failed to start fsck for volume {}: {}", id, e);
+            if e.to_string().contains("unmounted") {
+                (StatusCode::CONFLICT, e.to_string()).into_response()
+            } else {
+                (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+            }
         }
     }
 }

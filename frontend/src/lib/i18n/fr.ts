@@ -771,7 +771,10 @@ export default {
 			scrub: 'Vérifier',
 			scrubbing: 'Vérification...',
 			changeRaidType: 'Changer le type RAID',
-			delete: 'Supprimer'
+			delete: 'Supprimer',
+			resize: 'Redimensionner',
+			editMountOptions: 'Options de montage',
+			checkFilesystem: 'Vérifier le système de fichiers'
 		},
 		messages: {
 			loading: 'Chargement des informations de stockage...',
@@ -779,6 +782,50 @@ export default {
 			dataOrganizingComingSoon: 'Fonctionnalités d\'organisation des données bientôt disponibles',
 			advancedSettingsComingSoon: 'Paramètres avancés bientôt disponibles',
 			empty: 'Vide'
+		},
+		modals2: {
+			resize: {
+				title: 'Redimensionner le volume',
+				currentSize: 'Taille actuelle',
+				usedSpace: 'Espace utilisé',
+				newSize: 'Nouvelle taille',
+				useMaxSpace: 'Utiliser tout l\'espace disponible',
+				shrinkWarning: 'La réduction ext4 nécessite que le volume soit démonté.',
+				xfsNoShrink: 'XFS ne supporte que l\'agrandissement.',
+				f2fsNotSupported: 'F2FS ne supporte pas le redimensionnement en ligne.'
+			},
+			mountOptions: {
+				title: 'Options de montage',
+				mountOptions: 'Options de montage',
+				presetDefault: 'Par défaut',
+				presetDefaultDesc: 'Options de montage standard',
+				presetSSD: 'Optimisé SSD',
+				presetSSDDesc: 'noatime,discard — Optimal pour les SSD',
+				presetNAS: 'Optimisé NAS',
+				presetNASDesc: 'noatime,nofail — Optimal pour le NAS',
+				customOptions: 'Personnalisé',
+				customOptionsDesc: 'Saisir des options personnalisées',
+				customPlaceholder: 'ex: noatime,discard,nofail'
+			},
+			fsck: {
+				title: 'Vérifier le système de fichiers',
+				repairErrors: 'Réparer les erreurs automatiquement',
+				mustBeUnmounted: 'Le volume doit être démonté avant la vérification.',
+				checkRunning: 'Vérification en cours...',
+				checkComplete: 'Vérification terminée',
+				errorsFound: 'erreurs trouvées',
+				errorsRepaired: 'erreurs réparées'
+			},
+			wipeDisk: {
+				wipeMode: 'Mode d\'effacement',
+				wipeQuick: 'Rapide',
+				wipeQuickDesc: 'Effacer la table de partition uniquement (instantané)',
+				wipeZeros: 'Remplissage zéros',
+				wipeZerosDesc: 'Écrire des zéros sur tout le disque (1 passe)',
+				wipeSecure: 'Effacement sécurisé',
+				wipeSecureDesc: 'Réécrire 3 fois + zéros (très lent)',
+				wipeDuration: 'La durée dépend de la taille du disque et du mode.'
+			}
 		},
 		errors: {
 			loadFailed: 'Échec du chargement des données de stockage',
@@ -789,7 +836,10 @@ export default {
 			toggleMountFailed: 'Échec du montage/démontage du volume',
 			scrubFailed: 'Échec du lancement de la vérification',
 			editPoolFailed: 'Échec de la modification du pool',
-			wipeDiskFailed: 'Échec de l\'effacement du disque'
+			wipeDiskFailed: 'Échec de l\'effacement du disque',
+			resizeFailed: 'Échec du redimensionnement du volume',
+			updateVolumeFailed: 'Échec de la mise à jour du volume',
+			checkFailed: 'Échec de la vérification du système de fichiers'
 		}
 	},
 

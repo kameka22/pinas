@@ -1,7 +1,7 @@
 <script lang="ts">
 	import Icon from '@iconify/svelte';
 	import { onMount } from 'svelte';
-	import { api, type Disk, type StoragePool, type VolumeInfo, type DiskCandidate, type SmartInfo, type RaidType, type PoolHealthInfo, type ScrubStatus } from '$lib/stores/api';
+	import { api, type Disk, type StoragePool, type VolumeInfo, type DiskCandidate, type SmartInfo, type RaidType, type PoolHealthInfo, type ScrubStatus, type WipeMode, type FsckStatus } from '$lib/stores/api';
 	import { taskProgress } from '$lib/stores/websocket';
 	import { t } from '$lib/i18n';
 
@@ -29,6 +29,9 @@
 	let showEditPoolModal = false;
 	let showWipeDiskModal = false;
 	let showDiskDetailsModal = false;
+	let showResizeModal = false;
+	let showMountOptionsModal = false;
+	let showFsckModal = false;
 
 	// Pool context menu
 	let poolMenuTarget: StoragePool | null = null;
@@ -74,6 +77,25 @@
 
 	// Disk details state
 	let selectedDiskDetails: Disk | null = null;
+
+	// Resize state
+	let volumeToResize: VolumeInfo | null = null;
+	let resizeData = { useMax: true, newSizeGB: 0 };
+
+	// Mount options state
+	let volumeForMountOptions: VolumeInfo | null = null;
+	let mountOptionsPreset: 'default' | 'ssd' | 'nas' | 'custom' = 'default';
+	let mountOptionsCustom = '';
+
+	// Fsck state
+	let volumeToCheck: VolumeInfo | null = null;
+	let fsckRepair = false;
+	let checkingVolumes: Set<string> = new Set();
+	let fsckTaskIds: Record<string, string> = {}; // volumeId -> taskId
+
+	// Wipe mode state
+	let wipeMode: WipeMode = 'quick';
+	let wipingTaskId: string | null = null;
 
 	// Scrubbing state
 	let scrubbingPools: Set<string> = new Set();
@@ -328,9 +350,12 @@
 		try {
 			await api.createVolume(newVolume.poolId, {
 				name: newVolume.name,
-				fs_type: newVolume.fsType
+				fs_type: newVolume.fsType,
+				mount_options: getCreateVolumeMountOptions()
 			});
 			showCreateVolumeModal = false;
+			createVolumeMountPreset = 'default';
+			createVolumeMountCustom = '';
 			await loadData();
 		} catch (e) {
 			error = e instanceof Error ? e.message : $t.storageManager.errors.createVolumeFailed;
@@ -446,8 +471,9 @@
 	}
 
 	// Wipe disk
-	function confirmWipeDisk(disk: Disk) {
+	function confirmWipeDiskWithReset(disk: Disk) {
 		diskToWipe = disk;
+		wipeMode = 'quick';
 		showWipeDiskModal = true;
 	}
 
@@ -455,9 +481,14 @@
 		if (!diskToWipe) return;
 		wipingDisk = true;
 		try {
-			await api.wipeDisk(diskToWipe.device_name);
+			const result = await api.wipeDisk(diskToWipe.device_name, wipeMode);
+			if (wipeMode !== 'quick' && result && typeof result === 'object' && 'task_id' in result) {
+				wipingTaskId = (result as any).task_id;
+				// Background wipe — track via WebSocket
+			}
 			showWipeDiskModal = false;
 			diskToWipe = null;
+			wipeMode = 'quick';
 			await loadData();
 		} catch (e) {
 			error = e instanceof Error ? e.message : $t.storageManager.errors.wipeDiskFailed;
@@ -470,6 +501,103 @@
 	function showDiskDetails(disk: Disk) {
 		selectedDiskDetails = disk;
 		showDiskDetailsModal = true;
+	}
+
+	// Resize volume
+	function openResizeVolume(volume: VolumeInfo) {
+		volumeMenuTarget = null;
+		volumeToResize = volume;
+		resizeData = { useMax: true, newSizeGB: Math.round(volume.size / (1024 * 1024 * 1024)) };
+		showResizeModal = true;
+	}
+
+	async function resizeVolume() {
+		if (!volumeToResize) return;
+		try {
+			await api.resizeVolume(volumeToResize.id, {
+				size: resizeData.useMax ? undefined : resizeData.newSizeGB * 1024 * 1024 * 1024
+			});
+			showResizeModal = false;
+			volumeToResize = null;
+			await loadData();
+		} catch (e) {
+			error = e instanceof Error ? e.message : $t.storageManager.errors.resizeFailed;
+		}
+	}
+
+	// Mount options
+	function openMountOptions(volume: VolumeInfo) {
+		volumeMenuTarget = null;
+		volumeForMountOptions = volume;
+		const opts = volume.mount_options || '';
+		if (!opts || opts === 'defaults') {
+			mountOptionsPreset = 'default';
+			mountOptionsCustom = '';
+		} else if (opts === 'noatime,discard') {
+			mountOptionsPreset = 'ssd';
+			mountOptionsCustom = '';
+		} else if (opts === 'noatime,nofail') {
+			mountOptionsPreset = 'nas';
+			mountOptionsCustom = '';
+		} else {
+			mountOptionsPreset = 'custom';
+			mountOptionsCustom = opts;
+		}
+		showMountOptionsModal = true;
+	}
+
+	async function saveMountOptions() {
+		if (!volumeForMountOptions) return;
+		let opts = '';
+		switch (mountOptionsPreset) {
+			case 'default': opts = 'defaults'; break;
+			case 'ssd': opts = 'noatime,discard'; break;
+			case 'nas': opts = 'noatime,nofail'; break;
+			case 'custom': opts = mountOptionsCustom; break;
+		}
+		try {
+			await api.updateVolume(volumeForMountOptions.id, { mount_options: opts });
+			showMountOptionsModal = false;
+			volumeForMountOptions = null;
+			await loadData();
+		} catch (e) {
+			error = e instanceof Error ? e.message : $t.storageManager.errors.updateVolumeFailed;
+		}
+	}
+
+	// Mount options for create volume
+	let createVolumeMountPreset: 'default' | 'ssd' | 'nas' | 'custom' = 'default';
+	let createVolumeMountCustom = '';
+
+	function getCreateVolumeMountOptions(): string | undefined {
+		switch (createVolumeMountPreset) {
+			case 'ssd': return 'noatime,discard';
+			case 'nas': return 'noatime,nofail';
+			case 'custom': return createVolumeMountCustom || undefined;
+			default: return undefined;
+		}
+	}
+
+	// Filesystem check
+	function openFsckVolume(volume: VolumeInfo) {
+		volumeMenuTarget = null;
+		volumeToCheck = volume;
+		fsckRepair = false;
+		showFsckModal = true;
+	}
+
+	async function checkFilesystem() {
+		if (!volumeToCheck) return;
+		try {
+			const result = await api.checkVolume(volumeToCheck.id, { repair: fsckRepair });
+			fsckTaskIds[volumeToCheck.id] = result.task_id;
+			fsckTaskIds = fsckTaskIds;
+			checkingVolumes.add(volumeToCheck.id);
+			checkingVolumes = checkingVolumes;
+			showFsckModal = false;
+		} catch (e) {
+			error = e instanceof Error ? e.message : $t.storageManager.errors.checkFailed;
+		}
 	}
 
 	// Click outside handler
@@ -493,8 +621,17 @@
 					scrubbingPools = scrubbingPools;
 					delete scrubTaskIds[poolId];
 					scrubTaskIds = scrubTaskIds;
-					// Reload health data after scrub completes
 					loadPoolsHealth();
+				}
+			}
+			for (const [volumeId, taskId] of Object.entries(fsckTaskIds)) {
+				const progress = tasks[taskId];
+				if (progress && (progress.status === 'completed' || progress.status === 'failed')) {
+					checkingVolumes.delete(volumeId);
+					checkingVolumes = checkingVolumes;
+					delete fsckTaskIds[volumeId];
+					fsckTaskIds = fsckTaskIds;
+					loadData();
 				}
 			}
 		});
@@ -682,6 +819,18 @@
 														</span>
 														<span class="meta-item">{volume.fs_type}</span>
 														<span class="meta-item">{formatBytes(volume.size)}</span>
+														{#if volume.mount_options}
+															<span class="meta-item mount-opts">
+																<Icon icon="mdi:cog" class="w-3 h-3" style="display:inline;vertical-align:middle" />
+																{volume.mount_options}
+															</span>
+														{/if}
+														{#if checkingVolumes.has(volume.id)}
+															<span class="meta-item checking">
+																<Icon icon="mdi:shield-check" class="w-3.5 h-3.5 animate-spin" style="display:inline;vertical-align:middle" />
+																{$t.storageManager.modals2?.fsck?.checkRunning || 'Checking...'}
+															</span>
+														{/if}
 													</div>
 												</div>
 												<div class="volume-usage">
@@ -822,7 +971,7 @@
 										<Icon icon="mdi:chart-line" class="w-4 h-4" />
 										{$t.storageManager.disks.smart}
 									</button>
-									<button class="btn-secondary btn-warning" onclick={() => confirmWipeDisk(disk)}>
+									<button class="btn-secondary btn-warning" onclick={() => confirmWipeDiskWithReset(disk)}>
 										<Icon icon="mdi:eraser" class="w-4 h-4" />
 										{$t.storageManager.disks.wipe}
 									</button>
@@ -928,6 +1077,21 @@
 			<button onclick={() => volumeMenuTarget && toggleVolumeMount(volumeMenuTarget)}>
 				<Icon icon={volumeMenuTarget.status === 'mounted' ? 'mdi:eject' : 'mdi:play'} class="w-4 h-4" />
 				{volumeMenuTarget.status === 'mounted' ? $t.storageManager.volumes.unmount : $t.storageManager.volumes.mount}
+			</button>
+			<button onclick={() => volumeMenuTarget && openResizeVolume(volumeMenuTarget)}>
+				<Icon icon="mdi:resize" class="w-4 h-4" />
+				{$t.storageManager.contextMenu.resize}
+			</button>
+			<button onclick={() => volumeMenuTarget && openMountOptions(volumeMenuTarget)}>
+				<Icon icon="mdi:cog" class="w-4 h-4" />
+				{$t.storageManager.contextMenu.editMountOptions}
+			</button>
+			<button
+				onclick={() => volumeMenuTarget && openFsckVolume(volumeMenuTarget)}
+				disabled={volumeMenuTarget.status === 'mounted'}
+			>
+				<Icon icon="mdi:shield-check" class="w-4 h-4" />
+				{$t.storageManager.contextMenu.checkFilesystem}
 			</button>
 			<div class="menu-divider"></div>
 			<button class="danger" onclick={() => volumeMenuTarget && confirmDeleteVolume(volumeMenuTarget)}>
@@ -1098,6 +1262,33 @@
 						<option value="xfs">XFS</option>
 						<option value="f2fs">F2FS</option>
 					</select>
+				</div>
+
+				<div class="form-section">
+					<label class="form-label">{$t.storageManager.modals2?.mountOptions?.mountOptions || 'Mount Options'}</label>
+					<div class="mount-presets-inline">
+						<button class="preset-chip" class:selected={createVolumeMountPreset === 'default'} onclick={() => createVolumeMountPreset = 'default'}>
+							{$t.storageManager.modals2?.mountOptions?.presetDefault || 'Default'}
+						</button>
+						<button class="preset-chip" class:selected={createVolumeMountPreset === 'ssd'} onclick={() => createVolumeMountPreset = 'ssd'}>
+							SSD
+						</button>
+						<button class="preset-chip" class:selected={createVolumeMountPreset === 'nas'} onclick={() => createVolumeMountPreset = 'nas'}>
+							NAS
+						</button>
+						<button class="preset-chip" class:selected={createVolumeMountPreset === 'custom'} onclick={() => createVolumeMountPreset = 'custom'}>
+							{$t.storageManager.modals2?.mountOptions?.customOptions || 'Custom'}
+						</button>
+					</div>
+					{#if createVolumeMountPreset === 'custom'}
+						<input
+							type="text"
+							class="form-input"
+							style="margin-top: 8px;"
+							bind:value={createVolumeMountCustom}
+							placeholder={$t.storageManager.modals2?.mountOptions?.customPlaceholder || 'e.g. noatime,discard'}
+						/>
+					{/if}
 				</div>
 			</div>
 
@@ -1284,6 +1475,41 @@
 					{$t.storageManager.modals.wipeDisk.confirmMessage} <strong>{diskToWipe.model}</strong> ({diskToWipe.device_path})?
 					{$t.storageManager.modals.wipeDisk.allDataLost} {$t.storageManager.modals.wipeDisk.cannotBeUndone}
 				</p>
+
+				<div class="form-section" style="margin-top: 16px;">
+					<label class="form-label">{$t.storageManager.modals2?.wipeDisk?.wipeMode || 'Wipe Mode'}</label>
+					<div class="preset-selector">
+						<button
+							class="preset-option"
+							class:selected={wipeMode === 'quick'}
+							onclick={() => wipeMode = 'quick'}
+						>
+							<div class="preset-name">{$t.storageManager.modals2?.wipeDisk?.wipeQuick || 'Quick'}</div>
+							<div class="preset-desc">{$t.storageManager.modals2?.wipeDisk?.wipeQuickDesc || 'Erase partition table only (instant)'}</div>
+						</button>
+						<button
+							class="preset-option"
+							class:selected={wipeMode === 'zeros'}
+							onclick={() => wipeMode = 'zeros'}
+						>
+							<div class="preset-name">{$t.storageManager.modals2?.wipeDisk?.wipeZeros || 'Zero Fill'}</div>
+							<div class="preset-desc">{$t.storageManager.modals2?.wipeDisk?.wipeZerosDesc || 'Write zeros to entire disk (1 pass)'}</div>
+						</button>
+						<button
+							class="preset-option"
+							class:selected={wipeMode === 'secure'}
+							onclick={() => wipeMode = 'secure'}
+						>
+							<div class="preset-name">{$t.storageManager.modals2?.wipeDisk?.wipeSecure || 'Secure Erase'}</div>
+							<div class="preset-desc">{$t.storageManager.modals2?.wipeDisk?.wipeSecureDesc || 'Overwrite 3 times + zeros (very slow)'}</div>
+						</button>
+					</div>
+					{#if wipeMode !== 'quick'}
+						<p class="help-text" style="margin-top: 8px; font-size: 12px; color: #64748b;">
+							{$t.storageManager.modals2?.wipeDisk?.wipeDuration || 'Duration depends on disk size and mode.'}
+						</p>
+					{/if}
+				</div>
 			</div>
 			<div class="modal-footer">
 				<button class="btn-secondary" onclick={() => showWipeDiskModal = false} disabled={wipingDisk}>{$t.common.cancel}</button>
@@ -1382,6 +1608,186 @@
 			</div>
 			<div class="modal-footer">
 				<button class="btn-secondary" onclick={() => showDiskDetailsModal = false}>{$t.common.close}</button>
+			</div>
+		</div>
+	</div>
+{/if}
+
+<!-- Resize Volume Modal -->
+{#if showResizeModal && volumeToResize}
+	<div class="modal-overlay" onclick={() => showResizeModal = false}>
+		<div class="modal modal-sm" onclick={(e) => e.stopPropagation()}>
+			<div class="modal-header">
+				<h2>{$t.storageManager.modals2?.resize?.title || 'Resize Volume'}</h2>
+				<button class="close-btn" onclick={() => showResizeModal = false}>
+					<Icon icon="mdi:close" class="w-5 h-5" />
+				</button>
+			</div>
+			<div class="modal-content">
+				<div class="form-section">
+					<div class="info-row">
+						<span class="info-label">{$t.storageManager.modals2?.resize?.currentSize || 'Current Size'}</span>
+						<span class="info-value">{formatBytes(volumeToResize.size)}</span>
+					</div>
+					<div class="info-row">
+						<span class="info-label">{$t.storageManager.modals2?.resize?.usedSpace || 'Used Space'}</span>
+						<span class="info-value">{formatBytes(volumeToResize.used)} ({volumeToResize.usage_percent}%)</span>
+					</div>
+				</div>
+
+				{#if volumeToResize.fs_type === 'f2fs'}
+					<div class="warning-banner">
+						<Icon icon="mdi:alert" class="w-5 h-5" />
+						<span>{$t.storageManager.modals2?.resize?.f2fsNotSupported || 'F2FS does not support online resize.'}</span>
+					</div>
+				{:else}
+					<div class="form-section">
+						<label class="checkbox-label">
+							<input type="checkbox" bind:checked={resizeData.useMax} />
+							<span>{$t.storageManager.modals2?.resize?.useMaxSpace || 'Use all available space'}</span>
+						</label>
+					</div>
+
+					{#if !resizeData.useMax}
+						<div class="form-section">
+							<label class="form-label">{$t.storageManager.modals2?.resize?.newSize || 'New Size'} (GB)</label>
+							<input type="number" class="form-input" bind:value={resizeData.newSizeGB} min="1" />
+						</div>
+
+						{#if volumeToResize.fs_type === 'ext4' && resizeData.newSizeGB * 1024 * 1024 * 1024 < volumeToResize.size && volumeToResize.status === 'mounted'}
+							<div class="warning-banner">
+								<Icon icon="mdi:alert" class="w-5 h-5" />
+								<span>{$t.storageManager.modals2?.resize?.shrinkWarning || 'Shrinking ext4 requires the volume to be unmounted first.'}</span>
+							</div>
+						{/if}
+
+						{#if volumeToResize.fs_type === 'xfs' && resizeData.newSizeGB * 1024 * 1024 * 1024 < volumeToResize.size}
+							<div class="warning-banner">
+								<Icon icon="mdi:alert" class="w-5 h-5" />
+								<span>{$t.storageManager.modals2?.resize?.xfsNoShrink || 'XFS only supports growing, not shrinking.'}</span>
+							</div>
+						{/if}
+					{/if}
+				{/if}
+			</div>
+			<div class="modal-footer">
+				<button class="btn-secondary" onclick={() => showResizeModal = false}>{$t.common.cancel}</button>
+				<button
+					class="btn-primary"
+					onclick={resizeVolume}
+					disabled={volumeToResize.fs_type === 'f2fs'}
+				>
+					{$t.storageManager.contextMenu?.resize || 'Resize'}
+				</button>
+			</div>
+		</div>
+	</div>
+{/if}
+
+<!-- Mount Options Modal -->
+{#if showMountOptionsModal && volumeForMountOptions}
+	<div class="modal-overlay" onclick={() => showMountOptionsModal = false}>
+		<div class="modal modal-sm" onclick={(e) => e.stopPropagation()}>
+			<div class="modal-header">
+				<h2>{$t.storageManager.modals2?.mountOptions?.title || 'Mount Options'}</h2>
+				<button class="close-btn" onclick={() => showMountOptionsModal = false}>
+					<Icon icon="mdi:close" class="w-5 h-5" />
+				</button>
+			</div>
+			<div class="modal-content">
+				<div class="preset-selector">
+					<button
+						class="preset-option"
+						class:selected={mountOptionsPreset === 'default'}
+						onclick={() => mountOptionsPreset = 'default'}
+					>
+						<div class="preset-name">{$t.storageManager.modals2?.mountOptions?.presetDefault || 'Default'}</div>
+						<div class="preset-desc">{$t.storageManager.modals2?.mountOptions?.presetDefaultDesc || 'Standard mount options'}</div>
+					</button>
+					<button
+						class="preset-option"
+						class:selected={mountOptionsPreset === 'ssd'}
+						onclick={() => mountOptionsPreset = 'ssd'}
+					>
+						<div class="preset-name">{$t.storageManager.modals2?.mountOptions?.presetSSD || 'SSD Optimized'}</div>
+						<div class="preset-desc">{$t.storageManager.modals2?.mountOptions?.presetSSDDesc || 'noatime,discard'}</div>
+					</button>
+					<button
+						class="preset-option"
+						class:selected={mountOptionsPreset === 'nas'}
+						onclick={() => mountOptionsPreset = 'nas'}
+					>
+						<div class="preset-name">{$t.storageManager.modals2?.mountOptions?.presetNAS || 'NAS Optimized'}</div>
+						<div class="preset-desc">{$t.storageManager.modals2?.mountOptions?.presetNASDesc || 'noatime,nofail'}</div>
+					</button>
+					<button
+						class="preset-option"
+						class:selected={mountOptionsPreset === 'custom'}
+						onclick={() => mountOptionsPreset = 'custom'}
+					>
+						<div class="preset-name">{$t.storageManager.modals2?.mountOptions?.customOptions || 'Custom'}</div>
+						<div class="preset-desc">{$t.storageManager.modals2?.mountOptions?.customOptionsDesc || 'Enter custom mount options'}</div>
+					</button>
+				</div>
+
+				{#if mountOptionsPreset === 'custom'}
+					<div class="form-section" style="margin-top: 16px;">
+						<input
+							type="text"
+							class="form-input"
+							bind:value={mountOptionsCustom}
+							placeholder={$t.storageManager.modals2?.mountOptions?.customPlaceholder || 'e.g. noatime,discard,nofail'}
+						/>
+					</div>
+				{/if}
+			</div>
+			<div class="modal-footer">
+				<button class="btn-secondary" onclick={() => showMountOptionsModal = false}>{$t.common.cancel}</button>
+				<button class="btn-primary" onclick={saveMountOptions}>{$t.common.save}</button>
+			</div>
+		</div>
+	</div>
+{/if}
+
+<!-- Filesystem Check Modal -->
+{#if showFsckModal && volumeToCheck}
+	<div class="modal-overlay" onclick={() => showFsckModal = false}>
+		<div class="modal modal-sm" onclick={(e) => e.stopPropagation()}>
+			<div class="modal-header">
+				<h2>{$t.storageManager.modals2?.fsck?.title || 'Check Filesystem'}</h2>
+				<button class="close-btn" onclick={() => showFsckModal = false}>
+					<Icon icon="mdi:close" class="w-5 h-5" />
+				</button>
+			</div>
+			<div class="modal-content">
+				{#if volumeToCheck.status === 'mounted'}
+					<div class="warning-banner">
+						<Icon icon="mdi:alert" class="w-6 h-6" />
+						<span>{$t.storageManager.modals2?.fsck?.mustBeUnmounted || 'Volume must be unmounted before checking.'}</span>
+					</div>
+				{:else}
+					<div class="info-row" style="margin-bottom: 16px;">
+						<span class="info-label">Volume</span>
+						<span class="info-value">{volumeToCheck.name} ({volumeToCheck.fs_type})</span>
+					</div>
+					<div class="form-section">
+						<label class="checkbox-label">
+							<input type="checkbox" bind:checked={fsckRepair} />
+							<span>{$t.storageManager.modals2?.fsck?.repairErrors || 'Repair errors automatically'}</span>
+						</label>
+					</div>
+				{/if}
+			</div>
+			<div class="modal-footer">
+				<button class="btn-secondary" onclick={() => showFsckModal = false}>{$t.common.cancel}</button>
+				<button
+					class="btn-primary"
+					onclick={checkFilesystem}
+					disabled={volumeToCheck.status === 'mounted'}
+				>
+					<Icon icon="mdi:shield-check" class="w-4 h-4" />
+					{$t.storageManager.modals2?.fsck?.title || 'Check'}
+				</button>
 			</div>
 		</div>
 	</div>
@@ -2428,4 +2834,86 @@
 		color: #dc2626;
 		font-weight: 500;
 	}
+
+	/* Mount options display */
+	.mount-opts {
+		font-family: monospace;
+		font-size: 11px;
+		background: #f1f5f9;
+		padding: 1px 6px;
+		border-radius: 4px;
+	}
+
+	.checking {
+		color: #2563eb;
+		font-weight: 500;
+	}
+
+	/* Info rows */
+	.info-row {
+		display: flex;
+		justify-content: space-between;
+		padding: 10px 0;
+		border-bottom: 1px solid #f1f5f9;
+	}
+
+	.info-label {
+		font-size: 13px;
+		color: #64748b;
+	}
+
+	.info-value {
+		font-size: 13px;
+		font-weight: 500;
+		color: #1e293b;
+	}
+
+	/* Preset selector */
+	.preset-selector {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+	}
+
+	.preset-option {
+		padding: 12px 16px;
+		border: 2px solid #e2e8f0;
+		border-radius: 10px;
+		text-align: left;
+		transition: all 0.15s;
+	}
+
+	.preset-option:hover { border-color: #94a3b8; }
+	.preset-option.selected { border-color: #3b82f6; background: #eff6ff; }
+
+	.preset-name {
+		font-size: 14px;
+		font-weight: 500;
+		color: #1e293b;
+		margin-bottom: 2px;
+	}
+
+	.preset-desc {
+		font-size: 12px;
+		color: #64748b;
+	}
+
+	/* Mount presets inline (for create volume) */
+	.mount-presets-inline {
+		display: flex;
+		gap: 8px;
+		flex-wrap: wrap;
+	}
+
+	.preset-chip {
+		padding: 6px 14px;
+		border: 1px solid #e2e8f0;
+		border-radius: 20px;
+		font-size: 13px;
+		color: #475569;
+		transition: all 0.15s;
+	}
+
+	.preset-chip:hover { border-color: #94a3b8; }
+	.preset-chip.selected { border-color: #3b82f6; background: #eff6ff; color: #2563eb; }
 </style>

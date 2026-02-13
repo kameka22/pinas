@@ -233,6 +233,7 @@ pub struct VolumeInfo {
     pub available: u64,
     pub usage_percent: u8,
     pub status: VolumeStatus,
+    pub mount_options: Option<String>,
     pub created_at: String,
 }
 
@@ -261,6 +262,65 @@ pub struct CreateVolumeRequest {
     pub name: String,
     pub fs_type: String,       // ext4, btrfs, xfs
     pub size: Option<u64>,     // None = use all available space
+    pub mount_options: Option<String>,
+}
+
+/// Requête de modification de volume
+#[derive(Debug, Clone, Deserialize)]
+pub struct UpdateVolumeRequest {
+    pub mount_options: Option<String>,
+}
+
+/// Requête de redimensionnement de volume
+#[derive(Debug, Clone, Deserialize)]
+pub struct ResizeVolumeRequest {
+    pub size: Option<u64>,  // None = use all available space
+}
+
+/// Requête de vérification filesystem
+#[derive(Debug, Clone, Deserialize)]
+pub struct FsckRequest {
+    pub repair: bool,  // false = read-only check, true = repair
+}
+
+/// Statut d'un fsck en cours
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FsckStatus {
+    pub task_id: String,
+    pub volume_id: String,
+    pub status: String,       // "running", "completed", "error"
+    pub errors_found: u64,
+    pub repaired: u64,
+}
+
+/// Mode de wipe
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum WipeMode {
+    Quick,     // sgdisk --zap-all (existing, instant)
+    Zeros,     // dd if=/dev/zero (1 pass, ~minutes per GB)
+    Secure,    // shred -vfz -n 3 (3 passes + zeros, slow)
+}
+
+impl Default for WipeMode {
+    fn default() -> Self {
+        WipeMode::Quick
+    }
+}
+
+/// Requête de wipe disque (optionnel, default = Quick)
+#[derive(Debug, Clone, Deserialize)]
+pub struct WipeDiskRequest {
+    pub mode: Option<WipeMode>,
+}
+
+/// Statut d'un wipe en cours
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WipeStatus {
+    pub task_id: String,
+    pub device_name: String,
+    pub status: String,
+    pub progress: f32,
 }
 
 /// Disque candidat pour un pool

@@ -824,7 +824,7 @@ impl StorageService {
                     // Create filesystem on pool device
                     if let Some(device) = pool.devices.first() {
                         self.create_filesystem(device, &request.fs_type).await?;
-                        self.mount(device, &mount_point, Some(&request.fs_type)).await?;
+                        self.mount(device, &mount_point, Some(&request.fs_type), request.mount_options.as_deref()).await?;
                     }
                 }
             }
@@ -832,14 +832,15 @@ impl StorageService {
 
         // Insert into database
         sqlx::query(
-            "INSERT INTO storage_volumes (id, pool_id, name, fs_type, mount_point, status, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, 'mounted', ?, ?)"
+            "INSERT INTO storage_volumes (id, pool_id, name, fs_type, mount_point, mount_options, status, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, 'mounted', ?, ?)"
         )
         .bind(&volume_id)
         .bind(pool_id)
         .bind(&request.name)
         .bind(&request.fs_type)
         .bind(&mount_point)
+        .bind(&request.mount_options)
         .bind(&now)
         .bind(&now)
         .execute(&self.db)
@@ -907,7 +908,7 @@ impl StorageService {
 
             let devices: Vec<String> = serde_json::from_str(&pool.devices)?;
             if let Some(device) = devices.first() {
-                self.mount(device, &volume.mount_point, Some(&volume.fs_type)).await?;
+                self.mount(device, &volume.mount_point, Some(&volume.fs_type), volume.mount_options.as_deref()).await?;
             }
         }
 
@@ -947,6 +948,495 @@ impl StorageService {
             .await?;
 
         Ok(())
+    }
+
+    // ============ UPDATE VOLUME ============
+
+    /// Update volume settings (mount options)
+    pub async fn update_volume(&self, volume_id: &str, request: UpdateVolumeRequest) -> Result<()> {
+        let volume: StorageVolume = sqlx::query_as(
+            "SELECT * FROM storage_volumes WHERE id = ?"
+        )
+        .bind(volume_id)
+        .fetch_one(&self.db)
+        .await
+        .context("Volume not found")?;
+
+        let now = chrono::Utc::now().to_rfc3339();
+
+        if let Some(ref mount_options) = request.mount_options {
+            sqlx::query("UPDATE storage_volumes SET mount_options = ?, updated_at = ? WHERE id = ?")
+                .bind(mount_options)
+                .bind(&now)
+                .bind(volume_id)
+                .execute(&self.db)
+                .await?;
+
+            // If volume is mounted, remount with new options
+            if volume.status == "mounted" && !self.dev_mode {
+                let _ = Command::new("mount")
+                    .args(["-o", &format!("remount,{}", mount_options), &volume.mount_point])
+                    .output()
+                    .await;
+            }
+
+            if self.dev_mode {
+                tracing::info!("[DEV MODE] Would update mount options for volume '{}' to '{}'", volume.name, mount_options);
+            }
+        }
+
+        Ok(())
+    }
+
+    // ============ RESIZE VOLUME ============
+
+    /// Resize a volume
+    pub async fn resize_volume(&self, volume_id: &str, request: ResizeVolumeRequest) -> Result<()> {
+        let volume: StorageVolume = sqlx::query_as(
+            "SELECT * FROM storage_volumes WHERE id = ?"
+        )
+        .bind(volume_id)
+        .fetch_one(&self.db)
+        .await
+        .context("Volume not found")?;
+
+        let pool: StoragePool = sqlx::query_as(
+            "SELECT * FROM storage_pools WHERE id = ?"
+        )
+        .bind(&volume.pool_id)
+        .fetch_one(&self.db)
+        .await
+        .context("Pool not found")?;
+
+        let devices: Vec<String> = serde_json::from_str(&pool.devices).unwrap_or_default();
+        let device = devices.first().ok_or_else(|| anyhow!("No devices in pool"))?;
+        let part_device = format!("{}1", device);
+
+        if self.dev_mode {
+            let size_str = request.size.map(|s| format!("{}", s)).unwrap_or_else(|| "max".to_string());
+            tracing::info!("[DEV MODE] Would resize volume '{}' to {}", volume.name, size_str);
+
+            // Update DB with new size if specified
+            if let Some(new_size) = request.size {
+                let now = chrono::Utc::now().to_rfc3339();
+                sqlx::query("UPDATE storage_volumes SET size_bytes = ?, updated_at = ? WHERE id = ?")
+                    .bind(new_size as i64)
+                    .bind(&now)
+                    .bind(volume_id)
+                    .execute(&self.db)
+                    .await?;
+            }
+            return Ok(());
+        }
+
+        match volume.fs_type.as_str() {
+            "ext4" => {
+                if let Some(new_size) = request.size {
+                    // Get current usage
+                    let (_, used, _) = self.get_mount_stats(&volume.mount_point).await;
+                    if new_size < used {
+                        return Err(anyhow!("Cannot shrink below used space ({} used)", used));
+                    }
+                    // Shrink requires unmount
+                    if volume.status == "mounted" {
+                        return Err(anyhow!("ext4 shrink requires volume to be unmounted first"));
+                    }
+                    let size_k = format!("{}K", new_size / 1024);
+                    let output = Command::new("resize2fs")
+                        .args([&part_device, &size_k])
+                        .output()
+                        .await?;
+                    if !output.status.success() {
+                        return Err(anyhow!("resize2fs failed: {}", String::from_utf8_lossy(&output.stderr)));
+                    }
+                } else {
+                    // Grow to max (works online)
+                    let output = Command::new("resize2fs")
+                        .arg(&part_device)
+                        .output()
+                        .await?;
+                    if !output.status.success() {
+                        return Err(anyhow!("resize2fs failed: {}", String::from_utf8_lossy(&output.stderr)));
+                    }
+                }
+            }
+            "btrfs" => {
+                // btrfs resize works online (grow + shrink)
+                let size_arg = match request.size {
+                    Some(s) => format!("{}", s),
+                    None => "max".to_string(),
+                };
+                let output = Command::new("btrfs")
+                    .args(["filesystem", "resize", &size_arg, &volume.mount_point])
+                    .output()
+                    .await?;
+                if !output.status.success() {
+                    return Err(anyhow!("btrfs resize failed: {}", String::from_utf8_lossy(&output.stderr)));
+                }
+            }
+            "xfs" => {
+                // xfs only supports grow, online
+                if request.size.is_some() {
+                    return Err(anyhow!("XFS does not support shrinking"));
+                }
+                let output = Command::new("xfs_growfs")
+                    .arg(&volume.mount_point)
+                    .output()
+                    .await?;
+                if !output.status.success() {
+                    return Err(anyhow!("xfs_growfs failed: {}", String::from_utf8_lossy(&output.stderr)));
+                }
+            }
+            "f2fs" => {
+                return Err(anyhow!("F2FS does not support online resize"));
+            }
+            _ => {
+                return Err(anyhow!("Unsupported filesystem for resize: {}", volume.fs_type));
+            }
+        }
+
+        Ok(())
+    }
+
+    // ============ FILESYSTEM CHECK (FSCK) ============
+
+    /// Start a filesystem check (returns task_id immediately)
+    pub async fn fsck_volume_start(&self, volume_id: &str, repair: bool) -> Result<FsckStatus> {
+        let volume: StorageVolume = sqlx::query_as(
+            "SELECT * FROM storage_volumes WHERE id = ?"
+        )
+        .bind(volume_id)
+        .fetch_one(&self.db)
+        .await
+        .context("Volume not found")?;
+
+        // Must be unmounted
+        if volume.status == "mounted" {
+            return Err(anyhow!("Volume must be unmounted before filesystem check"));
+        }
+
+        let task_id = Uuid::new_v4().to_string();
+
+        Ok(FsckStatus {
+            task_id,
+            volume_id: volume_id.to_string(),
+            status: "running".to_string(),
+            errors_found: 0,
+            repaired: 0,
+        })
+    }
+
+    /// Execute filesystem check in background
+    pub async fn fsck_volume_execute(
+        db: SqlitePool,
+        volume_id: String,
+        task_id: String,
+        task_tx: broadcast::Sender<crate::api::ws::TaskProgressEvent>,
+        repair: bool,
+        dev_mode: bool,
+    ) {
+        let volume: StorageVolume = match sqlx::query_as::<_, StorageVolume>(
+            "SELECT * FROM storage_volumes WHERE id = ?"
+        )
+        .bind(&volume_id)
+        .fetch_one(&db)
+        .await {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::error!("Fsck: volume not found: {}", e);
+                return;
+            }
+        };
+
+        let pool: StoragePool = match sqlx::query_as::<_, StoragePool>(
+            "SELECT * FROM storage_pools WHERE id = ?"
+        )
+        .bind(&volume.pool_id)
+        .fetch_one(&db)
+        .await {
+            Ok(p) => p,
+            Err(e) => {
+                tracing::error!("Fsck: pool not found: {}", e);
+                return;
+            }
+        };
+
+        let devices: Vec<String> = serde_json::from_str(&pool.devices).unwrap_or_default();
+        let device = match devices.first() {
+            Some(d) => format!("{}1", d),
+            None => {
+                tracing::error!("Fsck: no devices in pool");
+                return;
+            }
+        };
+
+        // Send initial progress
+        let _ = task_tx.send(crate::api::ws::TaskProgressEvent {
+            task_id: task_id.clone(),
+            package_id: volume_id.clone(),
+            status: "running".to_string(),
+            progress: 0,
+            total_steps: 1,
+            progress_percent: 0,
+            current_step: Some("Starting filesystem check...".to_string()),
+            error_message: None,
+        });
+
+        if dev_mode {
+            // Simulate fsck progress
+            for pct in (0..=100).step_by(10) {
+                tokio::time::sleep(tokio::time::Duration::from_millis(300)).await;
+                let _ = task_tx.send(crate::api::ws::TaskProgressEvent {
+                    task_id: task_id.clone(),
+                    package_id: volume_id.clone(),
+                    status: "running".to_string(),
+                    progress: 1,
+                    total_steps: 1,
+                    progress_percent: pct,
+                    current_step: Some(format!("Checking filesystem... {}%", pct)),
+                    error_message: None,
+                });
+            }
+        } else {
+            let result = match volume.fs_type.as_str() {
+                "ext4" => {
+                    let mut args = vec!["-f".to_string()];
+                    if repair {
+                        args.push("-y".to_string());
+                    } else {
+                        args.push("-n".to_string());
+                    }
+                    args.push(device.clone());
+                    Command::new("e2fsck").args(&args).output().await
+                }
+                "btrfs" => {
+                    let mut args = vec!["check".to_string()];
+                    if repair {
+                        args.push("--repair".to_string());
+                    }
+                    // btrfs check uses the raw device
+                    let raw_device = devices.first().cloned().unwrap_or_default();
+                    args.push(raw_device);
+                    Command::new("btrfs").args(&args).output().await
+                }
+                "xfs" => {
+                    let mut args = Vec::new();
+                    if !repair {
+                        args.push("-n".to_string());
+                    }
+                    // xfs_repair uses the raw device
+                    let raw_device = devices.first().cloned().unwrap_or_default();
+                    args.push(raw_device);
+                    Command::new("xfs_repair").args(&args).output().await
+                }
+                _ => {
+                    let _ = task_tx.send(crate::api::ws::TaskProgressEvent {
+                        task_id: task_id.clone(),
+                        package_id: volume_id.clone(),
+                        status: "failed".to_string(),
+                        progress: 1,
+                        total_steps: 1,
+                        progress_percent: 100,
+                        current_step: None,
+                        error_message: Some(format!("Unsupported filesystem for check: {}", volume.fs_type)),
+                    });
+                    return;
+                }
+            };
+
+            match result {
+                Ok(output) => {
+                    if !output.status.success() {
+                        let stderr = String::from_utf8_lossy(&output.stderr);
+                        tracing::warn!("Fsck returned non-zero (may indicate errors found): {}", stderr);
+                    }
+                    let stdout = String::from_utf8_lossy(&output.stdout);
+                    tracing::info!("Fsck output: {}", stdout);
+                }
+                Err(e) => {
+                    let _ = task_tx.send(crate::api::ws::TaskProgressEvent {
+                        task_id: task_id.clone(),
+                        package_id: volume_id.clone(),
+                        status: "failed".to_string(),
+                        progress: 1,
+                        total_steps: 1,
+                        progress_percent: 100,
+                        current_step: None,
+                        error_message: Some(e.to_string()),
+                    });
+                    return;
+                }
+            }
+        }
+
+        // Send completion
+        let _ = task_tx.send(crate::api::ws::TaskProgressEvent {
+            task_id: task_id.clone(),
+            package_id: volume_id.clone(),
+            status: "completed".to_string(),
+            progress: 1,
+            total_steps: 1,
+            progress_percent: 100,
+            current_step: Some("Filesystem check completed".to_string()),
+            error_message: None,
+        });
+    }
+
+    // ============ SECURE WIPE ============
+
+    /// Quick wipe (synchronous, existing logic)
+    pub async fn wipe_disk_quick(&self, device_name: &str) -> Result<()> {
+        // This is the existing wipe_disk logic
+        self.wipe_disk(device_name).await
+    }
+
+    /// Start a background wipe (Zeros or Secure mode)
+    pub fn wipe_disk_start(&self, device_name: &str) -> Result<WipeStatus> {
+        let device_path = if device_name.starts_with("/dev/") {
+            device_name.to_string()
+        } else {
+            format!("/dev/{}", device_name)
+        };
+
+        if self.is_protected_device(&device_path) {
+            return Err(anyhow!("Cannot wipe system disk: {}", device_path));
+        }
+
+        let task_id = Uuid::new_v4().to_string();
+
+        Ok(WipeStatus {
+            task_id,
+            device_name: device_name.to_string(),
+            status: "running".to_string(),
+            progress: 0.0,
+        })
+    }
+
+    /// Execute background wipe (Zeros or Secure)
+    pub async fn wipe_disk_execute(
+        device_name: String,
+        mode: WipeMode,
+        task_id: String,
+        task_tx: broadcast::Sender<crate::api::ws::TaskProgressEvent>,
+        dev_mode: bool,
+    ) {
+        let device_path = if device_name.starts_with("/dev/") {
+            device_name.clone()
+        } else {
+            format!("/dev/{}", device_name)
+        };
+
+        // Send initial progress
+        let _ = task_tx.send(crate::api::ws::TaskProgressEvent {
+            task_id: task_id.clone(),
+            package_id: device_name.clone(),
+            status: "running".to_string(),
+            progress: 0,
+            total_steps: 1,
+            progress_percent: 0,
+            current_step: Some("Starting wipe...".to_string()),
+            error_message: None,
+        });
+
+        if dev_mode {
+            let steps = match mode {
+                WipeMode::Zeros => 10,
+                WipeMode::Secure => 20,
+                _ => 5,
+            };
+            for i in 0..=steps {
+                let pct = (i * 100) / steps;
+                tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+                let step_msg = match mode {
+                    WipeMode::Zeros => format!("Writing zeros... {}%", pct),
+                    WipeMode::Secure => format!("Secure erasing (pass {}/{})... {}%", (i * 3 / steps) + 1, 3, pct),
+                    _ => format!("Wiping... {}%", pct),
+                };
+                let _ = task_tx.send(crate::api::ws::TaskProgressEvent {
+                    task_id: task_id.clone(),
+                    package_id: device_name.clone(),
+                    status: "running".to_string(),
+                    progress: 1,
+                    total_steps: 1,
+                    progress_percent: pct,
+                    current_step: Some(step_msg),
+                    error_message: None,
+                });
+            }
+        } else {
+            let result = match mode {
+                WipeMode::Zeros => {
+                    // dd if=/dev/zero of=/dev/sdX bs=1M status=progress
+                    let mut child = match Command::new("dd")
+                        .args(["if=/dev/zero", &format!("of={}", device_path), "bs=1M", "status=progress"])
+                        .stderr(std::process::Stdio::piped())
+                        .spawn()
+                    {
+                        Ok(c) => c,
+                        Err(e) => {
+                            let _ = task_tx.send(crate::api::ws::TaskProgressEvent {
+                                task_id: task_id.clone(),
+                                package_id: device_name.clone(),
+                                status: "failed".to_string(),
+                                progress: 1, total_steps: 1, progress_percent: 100,
+                                current_step: None,
+                                error_message: Some(e.to_string()),
+                            });
+                            return;
+                        }
+                    };
+                    // dd writes progress to stderr — we just wait for completion
+                    child.wait().await
+                }
+                WipeMode::Secure => {
+                    // shred -vfz -n 3 /dev/sdX
+                    let mut child = match Command::new("shred")
+                        .args(["-vfz", "-n", "3", &device_path])
+                        .stderr(std::process::Stdio::piped())
+                        .spawn()
+                    {
+                        Ok(c) => c,
+                        Err(e) => {
+                            let _ = task_tx.send(crate::api::ws::TaskProgressEvent {
+                                task_id: task_id.clone(),
+                                package_id: device_name.clone(),
+                                status: "failed".to_string(),
+                                progress: 1, total_steps: 1, progress_percent: 100,
+                                current_step: None,
+                                error_message: Some(e.to_string()),
+                            });
+                            return;
+                        }
+                    };
+                    child.wait().await
+                }
+                _ => unreachable!("Quick mode handled before background execution"),
+            };
+
+            if let Err(e) = result {
+                let _ = task_tx.send(crate::api::ws::TaskProgressEvent {
+                    task_id: task_id.clone(),
+                    package_id: device_name.clone(),
+                    status: "failed".to_string(),
+                    progress: 1, total_steps: 1, progress_percent: 100,
+                    current_step: None,
+                    error_message: Some(e.to_string()),
+                });
+                return;
+            }
+        }
+
+        // Send completion
+        let _ = task_tx.send(crate::api::ws::TaskProgressEvent {
+            task_id: task_id.clone(),
+            package_id: device_name.clone(),
+            status: "completed".to_string(),
+            progress: 1,
+            total_steps: 1,
+            progress_percent: 100,
+            current_step: Some("Wipe completed".to_string()),
+            error_message: None,
+        });
     }
 
     // ============ HELPER METHODS ============
@@ -1100,6 +1590,7 @@ impl StorageService {
                 "creating" => VolumeStatus::Creating,
                 _ => VolumeStatus::Error,
             },
+            mount_options: volume.mount_options,
             created_at: volume.created_at,
         }
     }
@@ -1287,7 +1778,7 @@ impl StorageService {
         if let Some(device) = pool.devices.first() {
             // Mount pool root
             tokio::fs::create_dir_all(&pool_mount).await?;
-            self.mount(device, &pool_mount, Some("btrfs")).await?;
+            self.mount(device, &pool_mount, Some("btrfs"), None).await?;
 
             // Create subvolume
             let output = Command::new("btrfs")
@@ -1329,14 +1820,25 @@ impl StorageService {
     }
 
     /// Mount a device
-    async fn mount(&self, device: &str, mount_point: &str, fs_type: Option<&str>) -> Result<()> {
+    async fn mount(&self, device: &str, mount_point: &str, fs_type: Option<&str>, mount_options: Option<&str>) -> Result<()> {
         tokio::fs::create_dir_all(mount_point).await?;
 
-        let mut args = vec![device, mount_point];
+        let mut args: Vec<&str> = Vec::new();
         if let Some(fs) = fs_type {
-            args.insert(0, "-t");
-            args.insert(1, fs);
+            args.push("-t");
+            args.push(fs);
         }
+        // We need to own the string for mount_options
+        let opts_string;
+        if let Some(opts) = mount_options {
+            if !opts.is_empty() {
+                opts_string = opts.to_string();
+                args.push("-o");
+                args.push(&opts_string);
+            }
+        }
+        args.push(device);
+        args.push(mount_point);
 
         let output = Command::new("mount")
             .args(&args)

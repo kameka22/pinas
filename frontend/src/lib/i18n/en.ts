@@ -771,7 +771,10 @@ export default {
 			scrub: 'Scrub',
 			scrubbing: 'Scrubbing...',
 			changeRaidType: 'Change RAID type',
-			delete: 'Delete'
+			delete: 'Delete',
+			resize: 'Resize',
+			editMountOptions: 'Mount Options',
+			checkFilesystem: 'Check Filesystem'
 		},
 		messages: {
 			loading: 'Loading storage information...',
@@ -779,6 +782,50 @@ export default {
 			dataOrganizingComingSoon: 'Data organizing features coming soon',
 			advancedSettingsComingSoon: 'Advanced settings coming soon',
 			empty: 'Empty'
+		},
+		modals2: {
+			resize: {
+				title: 'Resize Volume',
+				currentSize: 'Current Size',
+				usedSpace: 'Used Space',
+				newSize: 'New Size',
+				useMaxSpace: 'Use all available space',
+				shrinkWarning: 'Shrinking ext4 requires the volume to be unmounted first.',
+				xfsNoShrink: 'XFS only supports growing, not shrinking.',
+				f2fsNotSupported: 'F2FS does not support online resize.'
+			},
+			mountOptions: {
+				title: 'Mount Options',
+				mountOptions: 'Mount Options',
+				presetDefault: 'Default',
+				presetDefaultDesc: 'Standard mount options',
+				presetSSD: 'SSD Optimized',
+				presetSSDDesc: 'noatime,discard — Best for SSDs',
+				presetNAS: 'NAS Optimized',
+				presetNASDesc: 'noatime,nofail — Best for NAS usage',
+				customOptions: 'Custom',
+				customOptionsDesc: 'Enter custom mount options',
+				customPlaceholder: 'e.g. noatime,discard,nofail'
+			},
+			fsck: {
+				title: 'Check Filesystem',
+				repairErrors: 'Repair errors automatically',
+				mustBeUnmounted: 'Volume must be unmounted before checking.',
+				checkRunning: 'Checking filesystem...',
+				checkComplete: 'Check completed',
+				errorsFound: 'errors found',
+				errorsRepaired: 'errors repaired'
+			},
+			wipeDisk: {
+				wipeMode: 'Wipe Mode',
+				wipeQuick: 'Quick',
+				wipeQuickDesc: 'Erase partition table only (instant)',
+				wipeZeros: 'Zero Fill',
+				wipeZerosDesc: 'Write zeros to entire disk (1 pass)',
+				wipeSecure: 'Secure Erase',
+				wipeSecureDesc: 'Overwrite 3 times + zeros (very slow)',
+				wipeDuration: 'Duration depends on disk size and mode.'
+			}
 		},
 		errors: {
 			loadFailed: 'Failed to load storage data',
@@ -789,7 +836,10 @@ export default {
 			toggleMountFailed: 'Failed to toggle volume mount',
 			scrubFailed: 'Failed to start scrub operation',
 			editPoolFailed: 'Failed to update pool',
-			wipeDiskFailed: 'Failed to wipe disk'
+			wipeDiskFailed: 'Failed to wipe disk',
+			resizeFailed: 'Failed to resize volume',
+			updateVolumeFailed: 'Failed to update volume',
+			checkFailed: 'Failed to check filesystem'
 		}
 	},
 

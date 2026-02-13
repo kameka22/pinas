@@ -198,8 +198,11 @@ class ApiClient {
 		return this.get<SmartInfo>(`/storage/disks/${encodeURIComponent(deviceName)}/smart`);
 	}
 
-	async wipeDisk(deviceName: string): Promise<void> {
-		return this.post(`/storage/disks/${encodeURIComponent(deviceName)}/wipe`);
+	async wipeDisk(deviceName: string, mode?: WipeMode): Promise<void | WipeStatus> {
+		if (mode && mode !== 'quick') {
+			return this.post<WipeStatus>(`/storage/disks/${encodeURIComponent(deviceName)}/wipe`, { mode });
+		}
+		return this.post(`/storage/disks/${encodeURIComponent(deviceName)}/wipe`, mode ? { mode } : undefined);
 	}
 
 	async getDiskCandidates(): Promise<DiskCandidate[]> {
@@ -258,6 +261,18 @@ class ApiClient {
 
 	async unmountVolume(id: string): Promise<void> {
 		return this.post(`/storage/volumes/${id}/unmount`);
+	}
+
+	async updateVolume(id: string, data: UpdateVolumeRequest): Promise<void> {
+		return this.put(`/storage/volumes/${id}`, data);
+	}
+
+	async resizeVolume(id: string, data: ResizeVolumeRequest): Promise<void> {
+		return this.post(`/storage/volumes/${id}/resize`, data);
+	}
+
+	async checkVolume(id: string, data: FsckRequest): Promise<FsckStatus> {
+		return this.post<FsckStatus>(`/storage/volumes/${id}/check`, data);
 	}
 
 	// Legacy filesystem endpoint
@@ -785,6 +800,7 @@ export interface VolumeInfo {
 	available: number;
 	usage_percent: number;
 	status: VolumeStatus;
+	mount_options: string | null;
 	created_at: string;
 }
 
@@ -818,6 +834,40 @@ export interface UpdatePoolRequest {
 export interface CreateVolumeRequest {
 	name: string;
 	fs_type: string;
+	mount_options?: string;
+}
+
+export interface UpdateVolumeRequest {
+	mount_options?: string;
+}
+
+export interface ResizeVolumeRequest {
+	size?: number;  // null = use all available space
+}
+
+export interface FsckRequest {
+	repair: boolean;
+}
+
+export interface FsckStatus {
+	task_id: string;
+	volume_id: string;
+	status: string;
+	errors_found: number;
+	repaired: number;
+}
+
+export type WipeMode = 'quick' | 'zeros' | 'secure';
+
+export interface WipeDiskRequest {
+	mode?: WipeMode;
+}
+
+export interface WipeStatus {
+	task_id: string;
+	device_name: string;
+	status: string;
+	progress: number;
 }
 
 // Health & Scrub types
