@@ -11,6 +11,9 @@ use crate::models::{
 use crate::services::permission::PermissionService;
 use crate::services::service_access::ServiceAccessService;
 
+const SAMBA_CONF_PATH: &str = "/storage/.pinas/data/samba/smb.conf";
+const SAMBA_PRIVATE_DIR: &str = "/storage/.pinas/data/samba";
+
 /// Share service errors
 #[derive(Debug, Error)]
 pub enum ShareError {
@@ -419,8 +422,11 @@ impl ShareService {
             return Ok(());
         }
 
+        // Ensure system user exists (required by smbpasswd)
+        self.ensure_system_user(username).await?;
+
         let mut child = AsyncCommand::new("smbpasswd")
-            .args(["-a", "-s", username])
+            .args(["-c", SAMBA_CONF_PATH, "-a", "-s", username])
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::piped())
@@ -456,7 +462,7 @@ impl ShareService {
         }
 
         let output = AsyncCommand::new("smbpasswd")
-            .args(["-x", username])
+            .args(["-c", SAMBA_CONF_PATH, "-x", username])
             .output()
             .await
             .map_err(|e| ShareError::SystemError(format!("Failed to run smbpasswd: {}", e)))?;
@@ -468,6 +474,9 @@ impl ShareService {
             tracing::info!("Samba user removed: {}", username);
         }
 
+        // Remove system user from /etc/passwd
+        self.remove_system_user(username).await?;
+
         Ok(())
     }
 
@@ -478,8 +487,11 @@ impl ShareService {
             return Ok(());
         }
 
+        // Ensure system user exists (may have been lost on reboot)
+        self.ensure_system_user(username).await?;
+
         let output = AsyncCommand::new("smbpasswd")
-            .args(["-e", username])
+            .args(["-c", SAMBA_CONF_PATH, "-e", username])
             .output()
             .await
             .map_err(|e| ShareError::SystemError(format!("Failed to run smbpasswd -e: {}", e)))?;
@@ -502,7 +514,7 @@ impl ShareService {
         }
 
         let output = AsyncCommand::new("smbpasswd")
-            .args(["-d", username])
+            .args(["-c", SAMBA_CONF_PATH, "-d", username])
             .output()
             .await
             .map_err(|e| ShareError::SystemError(format!("Failed to run smbpasswd -d: {}", e)))?;
@@ -514,6 +526,60 @@ impl ShareService {
             tracing::info!("Samba user disabled: {}", username);
         }
 
+        Ok(())
+    }
+
+    /// Ensure system user exists in /etc/passwd for Samba auth.
+    /// LibreELEC /etc/passwd is tmpfs — resets to root-only on reboot.
+    pub async fn ensure_system_user(&self, username: &str) -> Result<(), ShareError> {
+        if self.dev_mode {
+            return Ok(());
+        }
+        if username == "root" {
+            return Ok(());
+        }
+
+        // Check if already exists
+        let check = AsyncCommand::new("id")
+            .args(["-u", username])
+            .output()
+            .await
+            .map_err(|e| ShareError::SystemError(format!("Failed to run id: {}", e)))?;
+        if check.status.success() {
+            return Ok(());
+        }
+
+        // Create: no home (-M), no shell (-s /bin/false)
+        let output = AsyncCommand::new("useradd")
+            .args(["-M", "-s", "/bin/false", username])
+            .output()
+            .await
+            .map_err(|e| ShareError::SystemError(format!("Failed to run useradd: {}", e)))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            if output.status.code() != Some(9) {
+                // 9 = already exists
+                return Err(ShareError::SystemError(format!(
+                    "useradd failed for {}: {}",
+                    username, stderr
+                )));
+            }
+        }
+        tracing::info!("System user created: {}", username);
+        Ok(())
+    }
+
+    /// Remove system user from /etc/passwd
+    pub async fn remove_system_user(&self, username: &str) -> Result<(), ShareError> {
+        if self.dev_mode {
+            return Ok(());
+        }
+        if username == "root" {
+            return Ok(());
+        }
+
+        let _ = AsyncCommand::new("userdel").arg(username).output().await;
         Ok(())
     }
 
@@ -550,8 +616,27 @@ impl ShareService {
             tracing::warn!("Failed to create samba dir: {}", e);
         }
 
+        // Create Samba log directory (may not exist on LibreELEC tmpfs)
+        if let Err(e) = tokio::fs::create_dir_all("/var/log/samba").await {
+            tracing::warn!("Failed to create samba log dir: {}", e);
+        }
+
         // Regenerate smb.conf from database state
         self.regenerate_and_reload().await;
+
+        // Resync system users from PiNAS DB (tmpfs /etc/passwd resets on reboot,
+        // but passdb.tdb in /storage is persistent — no password resync needed)
+        let users: Vec<(String,)> = sqlx::query_as("SELECT username FROM users")
+            .fetch_all(&self.db)
+            .await
+            .unwrap_or_default();
+
+        for (username,) in &users {
+            if let Err(e) = self.ensure_system_user(username).await {
+                tracing::warn!("Failed to ensure system user {} at boot: {}", username, e);
+            }
+        }
+        tracing::info!("Resynced {} system users for Samba", users.len());
 
         tracing::info!("PiNAS Samba initialization complete");
     }
@@ -577,11 +662,17 @@ impl ShareService {
             .into_iter()
             .collect();
 
+        // Get hostname for netbios name
+        let hostname = hostname::get()
+            .map(|h| h.to_string_lossy().to_string())
+            .unwrap_or_else(|_| "pinas".to_string());
+
         let mut conf = String::new();
 
         // Global section
         conf.push_str("[global]\n");
         conf.push_str(&format!("   workgroup = {}\n", global_config.workgroup));
+        conf.push_str(&format!("   netbios name = {}\n", hostname));
         conf.push_str(&format!("   server string = {}\n", global_config.server_string));
         conf.push_str(&format!("   min protocol = {}\n", global_config.min_protocol));
         conf.push_str(&format!("   max protocol = {}\n", global_config.max_protocol));
@@ -590,6 +681,10 @@ impl ShareService {
         conf.push_str("   log file = /var/log/samba/%m.log\n");
         conf.push_str("   max log size = 1000\n");
         conf.push_str("   logging = file\n");
+        conf.push_str("   passdb backend = tdbsam\n");
+        conf.push_str(&format!("   private dir = {}\n", SAMBA_PRIVATE_DIR));
+        conf.push_str("   obey pam restrictions = no\n");
+        conf.push_str("   use sendfile = yes\n");
         conf.push('\n');
 
         // Per-share sections
@@ -608,17 +703,100 @@ impl ShareService {
             conf.push_str(&format!("   read only = {}\n", if smb_cfg.read_only { "yes" } else { "no" }));
             conf.push_str(&format!("   guest ok = {}\n", if smb_cfg.guest_ok { "yes" } else { "no" }));
             conf.push_str(&format!("   create mask = {}\n", smb_cfg.create_mask));
+            conf.push_str(&format!("   force create mode = {}\n", smb_cfg.create_mask));
             conf.push_str(&format!("   directory mask = {}\n", smb_cfg.directory_mask));
+            conf.push_str(&format!("   force directory mode = {}\n", smb_cfg.directory_mask));
+            conf.push_str("   force user = root\n");
+            conf.push_str("   force group = root\n");
+            conf.push_str("   inherit acls = yes\n");
+            conf.push_str("   inherit permissions = yes\n");
+            conf.push_str("   ea support = yes\n");
+            conf.push_str("   store dos attributes = yes\n");
+            conf.push_str("   hide special files = yes\n");
+            conf.push_str("   hide dot files = yes\n");
 
             if let Some(ref veto) = smb_cfg.veto_files {
                 conf.push_str(&format!("   veto files = {}\n", veto));
             }
 
+            // Build VFS objects list dynamically
+            let mut vfs_objects: Vec<&str> = Vec::new();
+
+            if smb_cfg.fruit_enabled {
+                vfs_objects.push("fruit");
+                vfs_objects.push("streams_xattr");
+            }
+
             if smb_cfg.recycle_bin {
-                conf.push_str("   vfs objects = recycle\n");
-                conf.push_str("   recycle:repository = .recycle\n");
+                vfs_objects.push("recycle");
+            }
+
+            if smb_cfg.audit_enabled {
+                vfs_objects.push("full_audit");
+            }
+
+            if !vfs_objects.is_empty() {
+                conf.push_str(&format!("   vfs objects = {}\n", vfs_objects.join(" ")));
+            }
+
+            // VFS module configurations
+            if smb_cfg.fruit_enabled {
+                conf.push_str("   fruit:encoding = private\n");
+                conf.push_str("   fruit:metadata = stream\n");
+                conf.push_str("   fruit:resource = file\n");
+                conf.push_str("   fruit:locking = none\n");
+                conf.push_str("   fruit:delete_empty_adfiles = yes\n");
+                conf.push_str("   fruit:wipe_intentionally_left_blank_rfork = yes\n");
+                conf.push_str("   fruit:veto_appledouble = no\n");
+                conf.push_str("   fruit:time machine = yes\n");
+            }
+
+            if smb_cfg.recycle_bin {
+                conf.push_str("   recycle:repository = .recycle/%U\n");
                 conf.push_str("   recycle:keeptree = yes\n");
                 conf.push_str("   recycle:versions = yes\n");
+                conf.push_str("   recycle:touch = yes\n");
+                conf.push_str("   recycle:directory_mode = 0777\n");
+                conf.push_str("   recycle:subdir_mode = 0700\n");
+                conf.push_str("   recycle:exclude = *.tmp,*.TMP,*.temp,*.o,~$*\n");
+                conf.push_str("   recycle:exclude_dir = /tmp,/cache,/TEMP\n");
+            }
+
+            if smb_cfg.audit_enabled {
+                conf.push_str("   full_audit:prefix = %u|%I|%m|%S\n");
+                conf.push_str("   full_audit:success = mkdirat renameat unlinkat pwrite\n");
+                conf.push_str("   full_audit:failure = connect\n");
+                conf.push_str("   full_audit:facility = local7\n");
+                conf.push_str("   full_audit:priority = NOTICE\n");
+            }
+
+            if let Some(ref encrypt) = smb_cfg.smb_encrypt {
+                if encrypt != "off" && !encrypt.is_empty() {
+                    conf.push_str(&format!("   smb encrypt = {}\n", encrypt));
+                }
+            }
+
+            if let Some(ref hosts) = smb_cfg.hosts_allow {
+                if !hosts.is_empty() {
+                    conf.push_str(&format!("   hosts allow = {}\n", hosts));
+                }
+            }
+
+            if let Some(ref hosts) = smb_cfg.hosts_deny {
+                if !hosts.is_empty() {
+                    conf.push_str(&format!("   hosts deny = {}\n", hosts));
+                }
+            }
+
+            if let Some(ref extra) = smb_cfg.extra_options {
+                if !extra.is_empty() {
+                    for line in extra.lines() {
+                        let trimmed = line.trim();
+                        if !trimmed.is_empty() {
+                            conf.push_str(&format!("   {}\n", trimmed));
+                        }
+                    }
+                }
             }
 
             // Resolve permissions: build valid users, read list, write list
@@ -684,14 +862,14 @@ impl ShareService {
             return Ok(());
         }
 
-        let conf_path = "/storage/.pinas/data/samba/smb.conf";
-        let tmp_path = "/storage/.pinas/data/samba/smb.conf.tmp";
+        let conf_path = SAMBA_CONF_PATH;
+        let tmp_path = format!("{}.tmp", SAMBA_CONF_PATH);
 
-        tokio::fs::write(tmp_path, content)
+        tokio::fs::write(&tmp_path, content)
             .await
             .map_err(|e| ShareError::SystemError(format!("Failed to write temp smb.conf: {}", e)))?;
 
-        tokio::fs::rename(tmp_path, conf_path)
+        tokio::fs::rename(&tmp_path, conf_path)
             .await
             .map_err(|e| ShareError::SystemError(format!("Failed to rename smb.conf: {}", e)))?;
 
@@ -740,12 +918,45 @@ impl ShareService {
         self.regenerate_and_reload().await;
     }
 
+    /// Validate smb.conf using testparm
+    async fn validate_smb_conf(&self) -> bool {
+        if self.dev_mode {
+            return true;
+        }
+
+        let output = AsyncCommand::new("testparm")
+            .args(["-s", "--suppress-prompt", SAMBA_CONF_PATH])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::piped())
+            .output()
+            .await;
+
+        match output {
+            Ok(o) if o.status.success() => true,
+            Ok(o) => {
+                let stderr = String::from_utf8_lossy(&o.stderr);
+                tracing::warn!("smb.conf validation failed: {}", stderr);
+                false
+            }
+            Err(e) => {
+                // testparm not available — skip validation
+                tracing::debug!("testparm not available, skipping validation: {}", e);
+                true
+            }
+        }
+    }
+
     /// Regenerate smb.conf and reload Samba (convenience method)
     async fn regenerate_and_reload(&self) {
         match self.generate_smb_conf().await {
             Ok(content) => {
                 if let Err(e) = self.write_smb_conf(&content).await {
                     tracing::warn!("Failed to write smb.conf: {}", e);
+                    return;
+                }
+                if !self.validate_smb_conf().await {
+                    tracing::error!("Generated smb.conf is invalid, skipping reload");
+                    return;
                 }
                 if let Err(e) = self.reload_samba().await {
                     tracing::warn!("Failed to reload Samba: {}", e);

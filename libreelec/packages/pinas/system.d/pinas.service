@@ -23,7 +23,7 @@ StandardOutput=journal
 StandardError=journal
 NoNewPrivileges=true
 ProtectSystem=strict
-ReadWritePaths=/storage
+ReadWritePaths=/storage /etc /var/log/samba
 ProtectHome=true
 PrivateTmp=true
 

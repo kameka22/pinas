@@ -9,7 +9,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::api::middleware::{AdminUser, AuthErrorResponse, AuthUser};
 use crate::services::home::HomeService;
-use crate::services::service_access::ServiceAccessService;
 use crate::services::share::ShareService;
 use crate::services::user::{
     self, change_password, create_user_with_home, delete_user_with_home,
@@ -159,14 +158,11 @@ async fn create_user(
     .await
     {
         Ok(user) => {
-            // Sync Samba user only if SMB access is enabled
-            let sa_svc = ServiceAccessService::new(state.db.clone());
-            let smb_enabled = sa_svc.is_user_smb_enabled(&user.id).await.unwrap_or(false);
-            if smb_enabled {
-                let share_svc = ShareService::new(state.db.clone());
-                if let Err(e) = share_svc.sync_samba_user(&payload.username, &payload.password).await {
-                    tracing::warn!("Failed to sync Samba user: {}", e);
-                }
+            // Always sync Samba user — plaintext password is only available at creation.
+            // Access to shares is controlled by valid_users in smb.conf.
+            let share_svc = ShareService::new(state.db.clone());
+            if let Err(e) = share_svc.sync_samba_user(&payload.username, &payload.password).await {
+                tracing::warn!("Failed to sync Samba user: {}", e);
             }
 
             let response: UserResponse = user.into();
@@ -323,15 +319,11 @@ async fn change_user_password(
 
     match change_password(&state.db, &id, &payload.password).await {
         Ok(()) => {
-            // Sync Samba password only if SMB access is enabled
+            // Always sync Samba password — plaintext password is only available here.
             if let Ok(Some(user)) = get_user_by_id(&state.db, &id).await {
-                let sa_svc = ServiceAccessService::new(state.db.clone());
-                let smb_enabled = sa_svc.is_user_smb_enabled(&user.id).await.unwrap_or(false);
-                if smb_enabled {
-                    let share_svc = ShareService::new(state.db.clone());
-                    if let Err(e) = share_svc.sync_samba_user(&user.username, &payload.password).await {
-                        tracing::warn!("Failed to sync Samba password: {}", e);
-                    }
+                let share_svc = ShareService::new(state.db.clone());
+                if let Err(e) = share_svc.sync_samba_user(&user.username, &payload.password).await {
+                    tracing::warn!("Failed to sync Samba password: {}", e);
                 }
             }
             StatusCode::NO_CONTENT.into_response()

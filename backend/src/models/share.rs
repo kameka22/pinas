@@ -63,6 +63,18 @@ pub struct SmbShareConfig {
     pub veto_files: Option<String>,
     #[serde(default)]
     pub recycle_bin: bool,
+    #[serde(default)]
+    pub fruit_enabled: bool,
+    #[serde(default)]
+    pub smb_encrypt: Option<String>,
+    #[serde(default)]
+    pub hosts_allow: Option<String>,
+    #[serde(default)]
+    pub hosts_deny: Option<String>,
+    #[serde(default)]
+    pub audit_enabled: bool,
+    #[serde(default)]
+    pub extra_options: Option<String>,
 }
 
 fn default_true() -> bool {
@@ -87,6 +99,12 @@ impl Default for SmbShareConfig {
             directory_mask: default_directory_mask(),
             veto_files: None,
             recycle_bin: false,
+            fruit_enabled: false,
+            smb_encrypt: None,
+            hosts_allow: None,
+            hosts_deny: None,
+            audit_enabled: false,
+            extra_options: None,
         }
     }
 }

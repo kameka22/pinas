@@ -31,7 +31,14 @@
 		read_only: false,
 		create_mask: '0644',
 		directory_mask: '0755',
-		recycle_bin: false
+		recycle_bin: false,
+		fruit_enabled: false,
+		smb_encrypt: '',
+		hosts_allow: '',
+		hosts_deny: '',
+		audit_enabled: false,
+		veto_files: '',
+		extra_options: ''
 	};
 
 	// Edit form
@@ -43,7 +50,14 @@
 		read_only: false,
 		create_mask: '0644',
 		directory_mask: '0755',
-		recycle_bin: false
+		recycle_bin: false,
+		fruit_enabled: false,
+		smb_encrypt: '',
+		hosts_allow: '',
+		hosts_deny: '',
+		audit_enabled: false,
+		veto_files: '',
+		extra_options: ''
 	};
 
 	onMount(loadShares);
@@ -64,7 +78,9 @@
 		newShare = {
 			name: '', path: '', share_type: 'smb', description: '',
 			guest_ok: false, browseable: true, read_only: false,
-			create_mask: '0644', directory_mask: '0755', recycle_bin: false
+			create_mask: '0644', directory_mask: '0755', recycle_bin: false,
+			fruit_enabled: false, smb_encrypt: '', hosts_allow: '', hosts_deny: '',
+			audit_enabled: false, veto_files: '', extra_options: ''
 		};
 		showAdvanced = false;
 	}
@@ -85,7 +101,14 @@
 			read_only: share.config.read_only,
 			create_mask: share.config.create_mask,
 			directory_mask: share.config.directory_mask,
-			recycle_bin: share.config.recycle_bin
+			recycle_bin: share.config.recycle_bin,
+			fruit_enabled: share.config.fruit_enabled || false,
+			smb_encrypt: share.config.smb_encrypt || '',
+			hosts_allow: share.config.hosts_allow || '',
+			hosts_deny: share.config.hosts_deny || '',
+			audit_enabled: share.config.audit_enabled || false,
+			veto_files: share.config.veto_files || '',
+			extra_options: share.config.extra_options || ''
 		};
 		actionError = null;
 		showEditModal = true;
@@ -113,7 +136,14 @@
 					read_only: newShare.read_only,
 					create_mask: newShare.create_mask,
 					directory_mask: newShare.directory_mask,
-					recycle_bin: newShare.recycle_bin
+					recycle_bin: newShare.recycle_bin,
+					fruit_enabled: newShare.fruit_enabled,
+					smb_encrypt: newShare.smb_encrypt || undefined,
+					hosts_allow: newShare.hosts_allow || undefined,
+					hosts_deny: newShare.hosts_deny || undefined,
+					audit_enabled: newShare.audit_enabled,
+					veto_files: newShare.veto_files || undefined,
+					extra_options: newShare.extra_options || undefined
 				}
 			};
 			await api.createShare(req);
@@ -140,7 +170,14 @@
 					read_only: editData.read_only,
 					create_mask: editData.create_mask,
 					directory_mask: editData.directory_mask,
-					recycle_bin: editData.recycle_bin
+					recycle_bin: editData.recycle_bin,
+					fruit_enabled: editData.fruit_enabled,
+					smb_encrypt: editData.smb_encrypt || undefined,
+					hosts_allow: editData.hosts_allow || undefined,
+					hosts_deny: editData.hosts_deny || undefined,
+					audit_enabled: editData.audit_enabled,
+					veto_files: editData.veto_files || undefined,
+					extra_options: editData.extra_options || undefined
 				}
 			};
 			await api.updateShare(selectedShare.id, req);
@@ -354,6 +391,35 @@
 								{$t.shareManager?.recycleBin || 'Recycle Bin'}
 							</label>
 						</div>
+						<div class="form-group checkbox">
+							<label>
+								<input type="checkbox" bind:checked={newShare.fruit_enabled} />
+								{$t.shareManager?.timeMachine || 'Time Machine Support'}
+							</label>
+						</div>
+						<div class="form-group checkbox">
+							<label>
+								<input type="checkbox" bind:checked={newShare.audit_enabled} />
+								{$t.shareManager?.auditLogging || 'Audit Logging'}
+							</label>
+						</div>
+						<div class="form-group">
+							<label>{$t.shareManager?.smbEncrypt || 'Encryption'}</label>
+							<select bind:value={newShare.smb_encrypt}>
+								<option value="">{$t.shareManager?.encryptOff || 'Off'}</option>
+								<option value="desired">{$t.shareManager?.encryptDesired || 'If supported'}</option>
+								<option value="required">{$t.shareManager?.encryptRequired || 'Required'}</option>
+							</select>
+						</div>
+						<div class="form-group">
+							<label>{$t.shareManager?.hostsAllow || 'Allowed Hosts'}</label>
+							<input type="text" bind:value={newShare.hosts_allow} placeholder="192.168.1.0/24" />
+							<span class="field-hint">{$t.shareManager?.hostsHint || 'Space-separated IPs or subnets'}</span>
+						</div>
+						<div class="form-group">
+							<label>{$t.shareManager?.hostsDeny || 'Denied Hosts'}</label>
+							<input type="text" bind:value={newShare.hosts_deny} placeholder="" />
+						</div>
 						<div class="form-row">
 							<div class="form-group">
 								<label>{$t.shareManager?.createMask || 'File Mask'}</label>
@@ -363,6 +429,16 @@
 								<label>{$t.shareManager?.directoryMask || 'Dir Mask'}</label>
 								<input type="text" bind:value={newShare.directory_mask} placeholder="0755" />
 							</div>
+						</div>
+						<div class="form-group">
+							<label>{$t.shareManager?.vetoFiles || 'Veto Files'}</label>
+							<input type="text" bind:value={newShare.veto_files} placeholder="/._*/.DS_Store/" />
+							<span class="field-hint">{$t.shareManager?.vetoFilesHint || 'Samba veto pattern'}</span>
+						</div>
+						<div class="form-group">
+							<label>{$t.shareManager?.extraOptions || 'Extra Options'}</label>
+							<textarea bind:value={newShare.extra_options} placeholder="follow symlinks = yes" rows="3"></textarea>
+							<span class="field-hint">{$t.shareManager?.extraOptionsHint || 'Raw Samba directives (one per line)'}</span>
 						</div>
 					</div>
 				{/if}
@@ -430,6 +506,35 @@
 						{$t.shareManager?.recycleBin || 'Recycle Bin'}
 					</label>
 				</div>
+				<div class="form-group checkbox">
+					<label>
+						<input type="checkbox" bind:checked={editData.fruit_enabled} />
+						{$t.shareManager?.timeMachine || 'Time Machine Support'}
+					</label>
+				</div>
+				<div class="form-group checkbox">
+					<label>
+						<input type="checkbox" bind:checked={editData.audit_enabled} />
+						{$t.shareManager?.auditLogging || 'Audit Logging'}
+					</label>
+				</div>
+				<div class="form-group">
+					<label>{$t.shareManager?.smbEncrypt || 'Encryption'}</label>
+					<select bind:value={editData.smb_encrypt}>
+						<option value="">{$t.shareManager?.encryptOff || 'Off'}</option>
+						<option value="desired">{$t.shareManager?.encryptDesired || 'If supported'}</option>
+						<option value="required">{$t.shareManager?.encryptRequired || 'Required'}</option>
+					</select>
+				</div>
+				<div class="form-group">
+					<label>{$t.shareManager?.hostsAllow || 'Allowed Hosts'}</label>
+					<input type="text" bind:value={editData.hosts_allow} placeholder="192.168.1.0/24" />
+					<span class="field-hint">{$t.shareManager?.hostsHint || 'Space-separated IPs or subnets'}</span>
+				</div>
+				<div class="form-group">
+					<label>{$t.shareManager?.hostsDeny || 'Denied Hosts'}</label>
+					<input type="text" bind:value={editData.hosts_deny} placeholder="" />
+				</div>
 				<div class="form-row">
 					<div class="form-group">
 						<label>{$t.shareManager?.createMask || 'File Mask'}</label>
@@ -439,6 +544,16 @@
 						<label>{$t.shareManager?.directoryMask || 'Dir Mask'}</label>
 						<input type="text" bind:value={editData.directory_mask} />
 					</div>
+				</div>
+				<div class="form-group">
+					<label>{$t.shareManager?.vetoFiles || 'Veto Files'}</label>
+					<input type="text" bind:value={editData.veto_files} placeholder="/._*/.DS_Store/" />
+					<span class="field-hint">{$t.shareManager?.vetoFilesHint || 'Samba veto pattern'}</span>
+				</div>
+				<div class="form-group">
+					<label>{$t.shareManager?.extraOptions || 'Extra Options'}</label>
+					<textarea bind:value={editData.extra_options} placeholder="follow symlinks = yes" rows="3"></textarea>
+					<span class="field-hint">{$t.shareManager?.extraOptionsHint || 'Raw Samba directives (one per line)'}</span>
 				</div>
 			</div>
 
@@ -782,6 +897,7 @@
 		width: auto;
 	}
 
+	.form-group textarea,
 	.form-group input,
 	.form-group select {
 		width: 100%;
@@ -795,6 +911,19 @@
 		transition: border-color 0.15s ease;
 	}
 
+	.form-group textarea {
+		resize: vertical;
+		font-family: monospace;
+	}
+
+	.field-hint {
+		display: block;
+		font-size: 11px;
+		color: #94a3b8;
+		margin-top: 4px;
+	}
+
+	.form-group textarea:focus,
 	.form-group input:focus,
 	.form-group select:focus {
 		border-color: #3b82f6;

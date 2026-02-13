@@ -880,6 +880,12 @@ export interface SmbShareConfig {
 	directory_mask: string;
 	veto_files?: string;
 	recycle_bin: boolean;
+	fruit_enabled?: boolean;
+	smb_encrypt?: string;
+	hosts_allow?: string;
+	hosts_deny?: string;
+	audit_enabled?: boolean;
+	extra_options?: string;
 }
 
 export interface ShareInfo {
