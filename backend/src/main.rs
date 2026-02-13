@@ -100,9 +100,19 @@ async fn main() -> anyhow::Result<()> {
     };
 
     // Start storage health monitor (background task every 60s)
+    let db_for_smart = db.clone();
+    let db_for_power = db.clone();
     services::storage::StorageService::start_health_monitor(
         db, storage_tx, dev_mode,
     );
+
+    // Start SMART test scheduler (background task every 60s)
+    services::storage::StorageService::start_smart_scheduler(
+        db_for_smart, state.task_tx.clone(), dev_mode,
+    );
+
+    // Apply saved disk power settings on boot
+    services::storage::StorageService::apply_power_settings_on_boot(&db_for_power, dev_mode).await;
 
     // Capture TLS paths before state is moved into router
     let tls_cert_path = state.config.tls_cert_path.clone();

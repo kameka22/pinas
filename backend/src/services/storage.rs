@@ -597,6 +597,7 @@ impl StorageService {
                     "normal" => PoolStatus::Normal,
                     "degraded" => PoolStatus::Degraded,
                     "rebuilding" => PoolStatus::Rebuilding,
+                    "expanding" => PoolStatus::Expanding,
                     "creating" => PoolStatus::Creating,
                     _ => PoolStatus::Error,
                 },
@@ -638,10 +639,10 @@ impl StorageService {
             tracing::info!("[DEV MODE] Would create pool '{}' with devices: {:?}", request.name, request.devices);
             // Return fake metadata based on raid type
             match request.raid_type {
-                RaidType::BtrfsSingle | RaidType::BtrfsRaid0 | RaidType::BtrfsRaid1 | RaidType::BtrfsRaid10 => {
+                RaidType::BtrfsSingle | RaidType::BtrfsRaid0 | RaidType::BtrfsRaid1 | RaidType::BtrfsRaid5 | RaidType::BtrfsRaid6 | RaidType::BtrfsRaid10 => {
                     serde_json::json!({ "btrfs_uuid": format!("fake-btrfs-{}", &pool_id[..8]) }).to_string()
                 }
-                RaidType::Jbod | RaidType::Raid0 | RaidType::Raid1 | RaidType::Raid5 | RaidType::Raid10 => {
+                RaidType::Jbod | RaidType::Raid0 | RaidType::Raid1 | RaidType::Raid5 | RaidType::Raid6 | RaidType::Raid10 => {
                     serde_json::json!({ "md_device": "/dev/md0" }).to_string()
                 }
                 _ => "{}".to_string(),
@@ -663,7 +664,7 @@ impl StorageService {
                     }
                     self.create_basic_pool(&request.devices[0]).await?
                 }
-                RaidType::BtrfsSingle | RaidType::BtrfsRaid0 | RaidType::BtrfsRaid1 | RaidType::BtrfsRaid10 => {
+                RaidType::BtrfsSingle | RaidType::BtrfsRaid0 | RaidType::BtrfsRaid1 | RaidType::BtrfsRaid5 | RaidType::BtrfsRaid6 | RaidType::BtrfsRaid10 => {
                     self.create_btrfs_pool(&request.devices, &request.raid_type).await?
                 }
                 _ => {
@@ -1680,6 +1681,8 @@ impl StorageService {
             RaidType::BtrfsSingle => "single",
             RaidType::BtrfsRaid0 => "raid0",
             RaidType::BtrfsRaid1 => "raid1",
+            RaidType::BtrfsRaid5 => "raid5",
+            RaidType::BtrfsRaid6 => "raid6",
             RaidType::BtrfsRaid10 => "raid10",
             _ => "single",
         };
@@ -1727,6 +1730,7 @@ impl StorageService {
             RaidType::Raid0 => "0",
             RaidType::Raid1 => "1",
             RaidType::Raid5 => "5",
+            RaidType::Raid6 => "6",
             RaidType::Raid10 => "10",
             _ => return Err(anyhow!("Unsupported RAID type for mdadm")),
         };
@@ -1894,10 +1898,10 @@ impl StorageService {
 
         // Parse health based on pool type
         let (device_health, rebuild_progress) = match raid_type {
-            RaidType::BtrfsSingle | RaidType::BtrfsRaid0 | RaidType::BtrfsRaid1 | RaidType::BtrfsRaid10 => {
+            RaidType::BtrfsSingle | RaidType::BtrfsRaid0 | RaidType::BtrfsRaid1 | RaidType::BtrfsRaid5 | RaidType::BtrfsRaid6 | RaidType::BtrfsRaid10 => {
                 self.parse_btrfs_health(&devices).await
             }
-            RaidType::Jbod | RaidType::Raid0 | RaidType::Raid1 | RaidType::Raid5 | RaidType::Raid10 => {
+            RaidType::Jbod | RaidType::Raid0 | RaidType::Raid1 | RaidType::Raid5 | RaidType::Raid6 | RaidType::Raid10 => {
                 let md_device = metadata.get("md_device")
                     .and_then(|v| v.as_str())
                     .unwrap_or("/dev/md0");
@@ -1918,6 +1922,7 @@ impl StorageService {
             "normal" => PoolStatus::Normal,
             "degraded" => PoolStatus::Degraded,
             "rebuilding" => PoolStatus::Rebuilding,
+            "expanding" => PoolStatus::Expanding,
             "creating" => PoolStatus::Creating,
             _ => PoolStatus::Error,
         };
@@ -2196,10 +2201,10 @@ impl StorageService {
         } else {
             // Real scrub
             let result = match raid_type {
-                RaidType::BtrfsSingle | RaidType::BtrfsRaid0 | RaidType::BtrfsRaid1 | RaidType::BtrfsRaid10 => {
+                RaidType::BtrfsSingle | RaidType::BtrfsRaid0 | RaidType::BtrfsRaid1 | RaidType::BtrfsRaid5 | RaidType::BtrfsRaid6 | RaidType::BtrfsRaid10 => {
                     Self::scrub_btrfs(&devices, &task_id, &pool_id, &task_tx).await
                 }
-                RaidType::Jbod | RaidType::Raid0 | RaidType::Raid1 | RaidType::Raid5 | RaidType::Raid10 => {
+                RaidType::Jbod | RaidType::Raid0 | RaidType::Raid1 | RaidType::Raid5 | RaidType::Raid6 | RaidType::Raid10 => {
                     let md_device = metadata.get("md_device")
                         .and_then(|v| v.as_str())
                         .unwrap_or("/dev/md0");
@@ -2363,6 +2368,958 @@ impl StorageService {
             .unwrap_or(0);
 
         Ok(mismatches)
+    }
+
+    // ============ SMART SCHEDULED TESTS ============
+
+    /// List all SMART test schedules
+    pub async fn list_smart_schedules(&self) -> Result<Vec<SmartTestScheduleInfo>> {
+        let schedules: Vec<SmartTestSchedule> = sqlx::query_as(
+            "SELECT * FROM smart_test_schedules ORDER BY device_name, test_type"
+        )
+        .fetch_all(&self.db)
+        .await?;
+
+        Ok(schedules.into_iter().map(|s| {
+            let last_result = s.last_result.as_deref()
+                .and_then(|r| serde_json::from_str::<SmartTestResult>(r).ok());
+            SmartTestScheduleInfo {
+                id: s.id,
+                device_path: s.device_path,
+                device_name: s.device_name,
+                test_type: s.test_type,
+                interval_hours: s.interval_hours,
+                last_run: s.last_run,
+                next_run: s.next_run,
+                last_result,
+                enabled: s.enabled,
+            }
+        }).collect())
+    }
+
+    /// Create a new SMART test schedule
+    pub async fn create_smart_schedule(&self, request: CreateSmartScheduleRequest) -> Result<String> {
+        let id = Uuid::new_v4().to_string();
+        let now = chrono::Utc::now();
+        let interval_hours = request.interval_hours.unwrap_or(168); // default weekly
+        let next_run = now + chrono::Duration::hours(interval_hours);
+
+        // Extract device_name from device_path
+        let device_name = request.device_path.trim_start_matches("/dev/").to_string();
+
+        sqlx::query(
+            "INSERT INTO smart_test_schedules (id, device_path, device_name, test_type, interval_hours, next_run, enabled, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)"
+        )
+        .bind(&id)
+        .bind(&request.device_path)
+        .bind(&device_name)
+        .bind(&request.test_type)
+        .bind(interval_hours)
+        .bind(next_run.to_rfc3339())
+        .bind(now.to_rfc3339())
+        .bind(now.to_rfc3339())
+        .execute(&self.db)
+        .await?;
+
+        Ok(id)
+    }
+
+    /// Delete a SMART test schedule
+    pub async fn delete_smart_schedule(&self, schedule_id: &str) -> Result<()> {
+        let result = sqlx::query("DELETE FROM smart_test_schedules WHERE id = ?")
+            .bind(schedule_id)
+            .execute(&self.db)
+            .await?;
+
+        if result.rows_affected() == 0 {
+            return Err(anyhow!("Schedule not found"));
+        }
+        Ok(())
+    }
+
+    /// Toggle a SMART test schedule enabled/disabled
+    pub async fn toggle_smart_schedule(&self, schedule_id: &str, enabled: bool) -> Result<()> {
+        let now = chrono::Utc::now().to_rfc3339();
+        let result = sqlx::query("UPDATE smart_test_schedules SET enabled = ?, updated_at = ? WHERE id = ?")
+            .bind(enabled)
+            .bind(&now)
+            .bind(schedule_id)
+            .execute(&self.db)
+            .await?;
+
+        if result.rows_affected() == 0 {
+            return Err(anyhow!("Schedule not found"));
+        }
+        Ok(())
+    }
+
+    /// Start a SMART test on-demand (returns task_id immediately)
+    pub fn smart_test_start(&self, device_name: &str, test_type: &str) -> SmartTestStatus {
+        let task_id = Uuid::new_v4().to_string();
+        SmartTestStatus {
+            task_id,
+            device_name: device_name.to_string(),
+            test_type: test_type.to_string(),
+            status: "running".to_string(),
+            progress: 0,
+        }
+    }
+
+    /// Execute a SMART test in background
+    pub async fn smart_test_execute(
+        device_name: String,
+        test_type: String,
+        task_id: String,
+        task_tx: broadcast::Sender<crate::api::ws::TaskProgressEvent>,
+        dev_mode: bool,
+    ) {
+        let device_path = format!("/dev/{}", device_name);
+
+        // Send initial progress
+        let _ = task_tx.send(crate::api::ws::TaskProgressEvent {
+            task_id: task_id.clone(),
+            package_id: device_name.clone(),
+            status: "running".to_string(),
+            progress: 0,
+            total_steps: 1,
+            progress_percent: 0,
+            current_step: Some(format!("Starting {} SMART test...", test_type)),
+            error_message: None,
+        });
+
+        if dev_mode {
+            // Simulate test progress
+            let duration_ms = match test_type.as_str() {
+                "short" => 5000u64,
+                "long" => 15000,
+                _ => 5000,
+            };
+            let steps = 20u64;
+            let step_ms = duration_ms / steps;
+
+            for i in 1..=steps {
+                tokio::time::sleep(tokio::time::Duration::from_millis(step_ms)).await;
+                let pct = ((i as f64 / steps as f64) * 100.0) as i32;
+                let _ = task_tx.send(crate::api::ws::TaskProgressEvent {
+                    task_id: task_id.clone(),
+                    package_id: device_name.clone(),
+                    status: "running".to_string(),
+                    progress: 1,
+                    total_steps: 1,
+                    progress_percent: pct,
+                    current_step: Some(format!("Running {} test... {}%", test_type, pct)),
+                    error_message: None,
+                });
+            }
+        } else {
+            // Start real SMART test
+            let test_arg = match test_type.as_str() {
+                "short" => "short",
+                "long" => "long",
+                "conveyance" => "conveyance",
+                "offline" => "offline",
+                _ => "short",
+            };
+
+            let output = Command::new("smartctl")
+                .args(["-t", test_arg, &device_path])
+                .output()
+                .await;
+
+            if let Err(e) = output {
+                let _ = task_tx.send(crate::api::ws::TaskProgressEvent {
+                    task_id: task_id.clone(),
+                    package_id: device_name.clone(),
+                    status: "failed".to_string(),
+                    progress: 1,
+                    total_steps: 1,
+                    progress_percent: 100,
+                    current_step: None,
+                    error_message: Some(format!("Failed to start SMART test: {}", e)),
+                });
+                return;
+            }
+
+            // Poll smartctl -l selftest to track progress
+            loop {
+                tokio::time::sleep(tokio::time::Duration::from_secs(30)).await;
+
+                let status_output = Command::new("smartctl")
+                    .args(["-l", "selftest", "-j", &device_path])
+                    .output()
+                    .await;
+
+                match status_output {
+                    Ok(out) => {
+                        let stdout = String::from_utf8_lossy(&out.stdout);
+                        // Check if test is still running (remaining > 0%)
+                        if stdout.contains("Self-test routine in progress") || stdout.contains("in progress") {
+                            let _ = task_tx.send(crate::api::ws::TaskProgressEvent {
+                                task_id: task_id.clone(),
+                                package_id: device_name.clone(),
+                                status: "running".to_string(),
+                                progress: 1,
+                                total_steps: 1,
+                                progress_percent: 50,
+                                current_step: Some(format!("Running {} test...", test_type)),
+                                error_message: None,
+                            });
+                        } else {
+                            // Test completed
+                            break;
+                        }
+                    }
+                    Err(_) => break,
+                }
+            }
+        }
+
+        // Send completion
+        let _ = task_tx.send(crate::api::ws::TaskProgressEvent {
+            task_id: task_id.clone(),
+            package_id: device_name.clone(),
+            status: "completed".to_string(),
+            progress: 1,
+            total_steps: 1,
+            progress_percent: 100,
+            current_step: Some(format!("{} test completed", test_type)),
+            error_message: None,
+        });
+    }
+
+    /// Get SMART test history for a device
+    pub async fn get_smart_test_history(&self, device_name: &str) -> Result<Vec<SmartTestHistoryEntry>> {
+        if self.dev_mode {
+            return Ok(vec![
+                SmartTestHistoryEntry {
+                    num: 1,
+                    test_type: "Short offline".to_string(),
+                    status: "Completed without error".to_string(),
+                    remaining_percent: 0,
+                    lifetime_hours: 1234,
+                    lba_of_first_error: None,
+                },
+                SmartTestHistoryEntry {
+                    num: 2,
+                    test_type: "Extended offline".to_string(),
+                    status: "Completed without error".to_string(),
+                    remaining_percent: 0,
+                    lifetime_hours: 1100,
+                    lba_of_first_error: None,
+                },
+                SmartTestHistoryEntry {
+                    num: 3,
+                    test_type: "Short offline".to_string(),
+                    status: "Completed without error".to_string(),
+                    remaining_percent: 0,
+                    lifetime_hours: 900,
+                    lba_of_first_error: None,
+                },
+            ]);
+        }
+
+        let device_path = format!("/dev/{}", device_name);
+        let output = Command::new("smartctl")
+            .args(["-l", "selftest", "-j", &device_path])
+            .output()
+            .await
+            .context("Failed to run smartctl")?;
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let json: serde_json::Value = serde_json::from_str(&stdout).unwrap_or_default();
+
+        let mut entries = Vec::new();
+        if let Some(tests) = json.get("ata_smart_self_test_log").and_then(|l| l.get("standard")).and_then(|s| s.get("table")).and_then(|t| t.as_array()) {
+            for (i, test) in tests.iter().enumerate() {
+                entries.push(SmartTestHistoryEntry {
+                    num: (i + 1) as u32,
+                    test_type: test.get("type").and_then(|v| v.get("string")).and_then(|v| v.as_str()).unwrap_or("Unknown").to_string(),
+                    status: test.get("status").and_then(|v| v.get("string")).and_then(|v| v.as_str()).unwrap_or("Unknown").to_string(),
+                    remaining_percent: test.get("status").and_then(|v| v.get("value")).and_then(|v| v.as_u64()).unwrap_or(0) as u8,
+                    lifetime_hours: test.get("lifetime_hours").and_then(|v| v.as_u64()).unwrap_or(0),
+                    lba_of_first_error: test.get("lba").and_then(|v| v.as_u64()),
+                });
+            }
+        }
+
+        Ok(entries)
+    }
+
+    /// Start background SMART scheduler (runs every 60s, checks for due schedules)
+    pub fn start_smart_scheduler(
+        db: SqlitePool,
+        task_tx: broadcast::Sender<crate::api::ws::TaskProgressEvent>,
+        dev_mode: bool,
+    ) {
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(60));
+
+            loop {
+                interval.tick().await;
+
+                // Find due schedules
+                let schedules: Vec<SmartTestSchedule> = match sqlx::query_as(
+                    "SELECT * FROM smart_test_schedules WHERE enabled = 1 AND next_run <= datetime('now')"
+                )
+                .fetch_all(&db)
+                .await {
+                    Ok(s) => s,
+                    Err(e) => {
+                        tracing::warn!("SMART scheduler: failed to query schedules: {}", e);
+                        continue;
+                    }
+                };
+
+                for schedule in schedules {
+                    tracing::info!("SMART scheduler: running {} test on {}", schedule.test_type, schedule.device_name);
+
+                    let task_id = Uuid::new_v4().to_string();
+                    let device_name = schedule.device_name.clone();
+                    let test_type = schedule.test_type.clone();
+                    let tx = task_tx.clone();
+                    let db_clone = db.clone();
+                    let schedule_id = schedule.id.clone();
+                    let interval_hours = schedule.interval_hours;
+
+                    // Spawn test execution
+                    tokio::spawn(async move {
+                        Self::smart_test_execute(device_name, test_type.clone(), task_id, tx, dev_mode).await;
+
+                        // Update schedule after completion
+                        let now = chrono::Utc::now();
+                        let next_run = now + chrono::Duration::hours(interval_hours);
+                        let result = SmartTestResult {
+                            status: "completed".to_string(),
+                            errors: 0,
+                            duration_secs: 0,
+                            completed_at: now.to_rfc3339(),
+                        };
+                        let result_json = serde_json::to_string(&result).unwrap_or_default();
+
+                        let _ = sqlx::query(
+                            "UPDATE smart_test_schedules SET last_run = ?, next_run = ?, last_result = ?, updated_at = ? WHERE id = ?"
+                        )
+                        .bind(now.to_rfc3339())
+                        .bind(next_run.to_rfc3339())
+                        .bind(&result_json)
+                        .bind(now.to_rfc3339())
+                        .bind(&schedule_id)
+                        .execute(&db_clone)
+                        .await;
+                    });
+                }
+            }
+        });
+    }
+
+    // ============ DISK POWER MANAGEMENT ============
+
+    /// Get power settings for a disk
+    pub async fn get_disk_power_settings(&self, device_name: &str) -> Result<DiskPowerSettings> {
+        let device_path = format!("/dev/{}", device_name);
+
+        let settings: Option<DiskPowerSettings> = sqlx::query_as(
+            "SELECT * FROM disk_power_settings WHERE device_path = ?"
+        )
+        .bind(&device_path)
+        .fetch_optional(&self.db)
+        .await?;
+
+        Ok(settings.unwrap_or(DiskPowerSettings {
+            device_path,
+            device_name: device_name.to_string(),
+            apm_level: None,
+            spindown_minutes: None,
+            write_cache: None,
+            updated_at: chrono::Utc::now().to_rfc3339(),
+        }))
+    }
+
+    /// Set power settings for a disk
+    pub async fn set_disk_power_settings(&self, device_name: &str, request: UpdateDiskPowerRequest) -> Result<()> {
+        let device_path = format!("/dev/{}", device_name);
+
+        // Reject NVMe and SD cards
+        if device_name.starts_with("nvme") || device_name.starts_with("mmcblk") {
+            return Err(anyhow!("Power management not supported for NVMe/SD devices"));
+        }
+
+        // Validate values
+        if let Some(apm) = request.apm_level {
+            if !(1..=254).contains(&apm) {
+                return Err(anyhow!("APM level must be between 1 and 254"));
+            }
+        }
+        if let Some(spindown) = request.spindown_minutes {
+            if spindown != 0 && !(5..=240).contains(&spindown) {
+                return Err(anyhow!("Spindown minutes must be 0 (disabled) or between 5 and 240"));
+            }
+        }
+
+        // Apply settings
+        if !self.dev_mode {
+            if let Some(apm) = request.apm_level {
+                let _ = Command::new("hdparm")
+                    .args(["-B", &apm.to_string(), &device_path])
+                    .output()
+                    .await;
+            }
+            if let Some(spindown) = request.spindown_minutes {
+                // Convert minutes to hdparm value (1-240 = 5s increments, so minutes*60/5 = minutes*12)
+                let hdparm_val = if spindown == 0 { 0 } else { (spindown * 12).min(240) };
+                let _ = Command::new("hdparm")
+                    .args(["-S", &hdparm_val.to_string(), &device_path])
+                    .output()
+                    .await;
+            }
+            if let Some(write_cache) = request.write_cache {
+                let val = if write_cache { "1" } else { "0" };
+                let _ = Command::new("hdparm")
+                    .args(["-W", val, &device_path])
+                    .output()
+                    .await;
+            }
+        } else {
+            tracing::info!("[DEV MODE] Would set power settings for {}: apm={:?}, spindown={:?}, write_cache={:?}",
+                device_name, request.apm_level, request.spindown_minutes, request.write_cache);
+        }
+
+        // Save to DB (upsert)
+        let now = chrono::Utc::now().to_rfc3339();
+        sqlx::query(
+            "INSERT INTO disk_power_settings (device_path, device_name, apm_level, spindown_minutes, write_cache, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?)
+             ON CONFLICT(device_path) DO UPDATE SET
+                apm_level = COALESCE(excluded.apm_level, apm_level),
+                spindown_minutes = COALESCE(excluded.spindown_minutes, spindown_minutes),
+                write_cache = COALESCE(excluded.write_cache, write_cache),
+                updated_at = excluded.updated_at"
+        )
+        .bind(&device_path)
+        .bind(device_name)
+        .bind(request.apm_level)
+        .bind(request.spindown_minutes)
+        .bind(request.write_cache)
+        .bind(&now)
+        .execute(&self.db)
+        .await?;
+
+        Ok(())
+    }
+
+    /// Apply all saved power settings on boot
+    pub async fn apply_power_settings_on_boot(db: &SqlitePool, dev_mode: bool) {
+        let settings: Vec<DiskPowerSettings> = match sqlx::query_as(
+            "SELECT * FROM disk_power_settings"
+        )
+        .fetch_all(db)
+        .await {
+            Ok(s) => s,
+            Err(e) => {
+                tracing::warn!("Failed to load power settings on boot: {}", e);
+                return;
+            }
+        };
+
+        for setting in settings {
+            if dev_mode {
+                tracing::info!("[DEV MODE] Would apply power settings for {} on boot: apm={:?}, spindown={:?}, write_cache={:?}",
+                    setting.device_name, setting.apm_level, setting.spindown_minutes, setting.write_cache);
+                continue;
+            }
+
+            if let Some(apm) = setting.apm_level {
+                let _ = Command::new("hdparm")
+                    .args(["-B", &apm.to_string(), &setting.device_path])
+                    .output()
+                    .await;
+            }
+            if let Some(spindown) = setting.spindown_minutes {
+                let hdparm_val = if spindown == 0 { 0 } else { (spindown * 12).min(240) };
+                let _ = Command::new("hdparm")
+                    .args(["-S", &hdparm_val.to_string(), &setting.device_path])
+                    .output()
+                    .await;
+            }
+            if let Some(write_cache) = setting.write_cache {
+                let val = if write_cache { "1" } else { "0" };
+                let _ = Command::new("hdparm")
+                    .args(["-W", val, &setting.device_path])
+                    .output()
+                    .await;
+            }
+
+            tracing::info!("Applied power settings for {}", setting.device_name);
+        }
+    }
+
+    // ============ BTRFS SNAPSHOTS ============
+
+    /// List snapshots for a volume
+    pub async fn list_snapshots(&self, volume_id: &str) -> Result<Vec<BtrfsSnapshotInfo>> {
+        let snapshots: Vec<BtrfsSnapshot> = sqlx::query_as(
+            "SELECT * FROM btrfs_snapshots WHERE volume_id = ? ORDER BY created_at DESC"
+        )
+        .bind(volume_id)
+        .fetch_all(&self.db)
+        .await?;
+
+        Ok(snapshots.into_iter().map(|s| BtrfsSnapshotInfo {
+            id: s.id,
+            volume_id: s.volume_id,
+            name: s.name,
+            path: s.path,
+            snapshot_type: s.snapshot_type,
+            size_bytes: s.size_bytes.map(|b| b as u64),
+            created_at: s.created_at,
+        }).collect())
+    }
+
+    /// Create a btrfs snapshot
+    pub async fn create_snapshot(&self, volume_id: &str, request: CreateSnapshotRequest) -> Result<String> {
+        // Verify volume exists and is btrfs
+        let volume: StorageVolume = sqlx::query_as(
+            "SELECT * FROM storage_volumes WHERE id = ?"
+        )
+        .bind(volume_id)
+        .fetch_one(&self.db)
+        .await
+        .context("Volume not found")?;
+
+        if volume.fs_type != "btrfs" {
+            return Err(anyhow!("Snapshots are only supported for btrfs volumes"));
+        }
+
+        if volume.status != "mounted" {
+            return Err(anyhow!("Volume must be mounted to create snapshots"));
+        }
+
+        let snapshot_id = Uuid::new_v4().to_string();
+        let snapshot_dir = format!("{}/.snapshots", volume.mount_point);
+        let snapshot_path = format!("{}/{}", snapshot_dir, request.name);
+
+        if !self.dev_mode {
+            // Create snapshots directory
+            tokio::fs::create_dir_all(&snapshot_dir).await
+                .context("Failed to create snapshots directory")?;
+
+            // Create read-only snapshot
+            let output = Command::new("btrfs")
+                .args(["subvolume", "snapshot", "-r", &volume.mount_point, &snapshot_path])
+                .output()
+                .await
+                .context("Failed to run btrfs snapshot")?;
+
+            if !output.status.success() {
+                return Err(anyhow!("Failed to create snapshot: {}", String::from_utf8_lossy(&output.stderr)));
+            }
+        } else {
+            tracing::info!("[DEV MODE] Would create btrfs snapshot '{}' at {}", request.name, snapshot_path);
+        }
+
+        let now = chrono::Utc::now().to_rfc3339();
+        sqlx::query(
+            "INSERT INTO btrfs_snapshots (id, volume_id, name, path, snapshot_type, created_at)
+             VALUES (?, ?, ?, ?, 'manual', ?)"
+        )
+        .bind(&snapshot_id)
+        .bind(volume_id)
+        .bind(&request.name)
+        .bind(&snapshot_path)
+        .bind(&now)
+        .execute(&self.db)
+        .await?;
+
+        Ok(snapshot_id)
+    }
+
+    /// Delete a btrfs snapshot
+    pub async fn delete_snapshot(&self, volume_id: &str, snapshot_id: &str) -> Result<()> {
+        let snapshot: BtrfsSnapshot = sqlx::query_as(
+            "SELECT * FROM btrfs_snapshots WHERE id = ? AND volume_id = ?"
+        )
+        .bind(snapshot_id)
+        .bind(volume_id)
+        .fetch_one(&self.db)
+        .await
+        .context("Snapshot not found")?;
+
+        if !self.dev_mode {
+            let output = Command::new("btrfs")
+                .args(["subvolume", "delete", &snapshot.path])
+                .output()
+                .await
+                .context("Failed to run btrfs subvolume delete")?;
+
+            if !output.status.success() {
+                return Err(anyhow!("Failed to delete snapshot: {}", String::from_utf8_lossy(&output.stderr)));
+            }
+        } else {
+            tracing::info!("[DEV MODE] Would delete btrfs snapshot '{}' at {}", snapshot.name, snapshot.path);
+        }
+
+        sqlx::query("DELETE FROM btrfs_snapshots WHERE id = ?")
+            .bind(snapshot_id)
+            .execute(&self.db)
+            .await?;
+
+        Ok(())
+    }
+
+    // ============ RAID GROW/EXPAND ============
+
+    /// Start growing a pool by adding disks (returns task_id immediately)
+    pub async fn grow_pool_start(&self, pool_id: &str, request: &GrowPoolRequest) -> Result<GrowPoolStatus> {
+        let pool: StoragePool = sqlx::query_as(
+            "SELECT * FROM storage_pools WHERE id = ?"
+        )
+        .bind(pool_id)
+        .fetch_one(&self.db)
+        .await
+        .context("Pool not found")?;
+
+        let raid_type: RaidType = pool.raid_type.parse().unwrap_or(RaidType::Basic);
+
+        // Validate
+        if pool.status != "normal" {
+            return Err(anyhow!("Pool must be in normal status to add disks (current: {})", pool.status));
+        }
+        if raid_type == RaidType::Basic {
+            return Err(anyhow!("Cannot grow a basic (single disk) pool"));
+        }
+        if raid_type == RaidType::Raid10 && request.devices.len() % 2 != 0 {
+            return Err(anyhow!("RAID 10 requires an even number of new disks"));
+        }
+
+        // Check new devices are not protected or already in a pool
+        for device in &request.devices {
+            if self.is_protected_device(device) {
+                return Err(anyhow!("Cannot use system device: {}", device));
+            }
+        }
+        let existing_devices: Vec<String> = serde_json::from_str(&pool.devices).unwrap_or_default();
+        for device in &request.devices {
+            if existing_devices.contains(device) {
+                return Err(anyhow!("Device {} is already in this pool", device));
+            }
+        }
+
+        // Set status to expanding
+        let now = chrono::Utc::now().to_rfc3339();
+        sqlx::query("UPDATE storage_pools SET status = 'expanding', updated_at = ? WHERE id = ?")
+            .bind(&now)
+            .bind(pool_id)
+            .execute(&self.db)
+            .await?;
+
+        let task_id = Uuid::new_v4().to_string();
+        Ok(GrowPoolStatus {
+            task_id,
+            pool_id: pool_id.to_string(),
+            status: "running".to_string(),
+            progress: 0.0,
+        })
+    }
+
+    /// Execute pool grow in background
+    pub async fn grow_pool_execute(
+        db: SqlitePool,
+        pool_id: String,
+        new_devices: Vec<String>,
+        wipe_devices: bool,
+        task_id: String,
+        task_tx: broadcast::Sender<crate::api::ws::TaskProgressEvent>,
+        dev_mode: bool,
+    ) {
+        let pool: StoragePool = match sqlx::query_as::<_, StoragePool>(
+            "SELECT * FROM storage_pools WHERE id = ?"
+        )
+        .bind(&pool_id)
+        .fetch_one(&db)
+        .await {
+            Ok(p) => p,
+            Err(e) => {
+                tracing::error!("Grow pool: pool not found: {}", e);
+                return;
+            }
+        };
+
+        let raid_type: RaidType = pool.raid_type.parse().unwrap_or(RaidType::Basic);
+        let metadata: serde_json::Value = pool.metadata
+            .as_deref()
+            .and_then(|m| serde_json::from_str(m).ok())
+            .unwrap_or(serde_json::json!({}));
+        let mut existing_devices: Vec<String> = serde_json::from_str(&pool.devices).unwrap_or_default();
+
+        // Send initial progress
+        let _ = task_tx.send(crate::api::ws::TaskProgressEvent {
+            task_id: task_id.clone(),
+            package_id: pool_id.clone(),
+            status: "running".to_string(),
+            progress: 0,
+            total_steps: 1,
+            progress_percent: 0,
+            current_step: Some("Preparing to add disks...".to_string()),
+            error_message: None,
+        });
+
+        if dev_mode {
+            // Simulate grow progress
+            for pct in (0..=100).step_by(5) {
+                tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+                let _ = task_tx.send(crate::api::ws::TaskProgressEvent {
+                    task_id: task_id.clone(),
+                    package_id: pool_id.clone(),
+                    status: "running".to_string(),
+                    progress: 1,
+                    total_steps: 1,
+                    progress_percent: pct,
+                    current_step: Some(format!("Expanding pool... {}%", pct)),
+                    error_message: None,
+                });
+            }
+        } else {
+            // Wipe new devices if requested
+            if wipe_devices {
+                for device in &new_devices {
+                    let _ = Command::new("sgdisk").args(["--zap-all", device]).output().await;
+                }
+            }
+
+            let result = match raid_type {
+                RaidType::BtrfsSingle | RaidType::BtrfsRaid0 | RaidType::BtrfsRaid1 | RaidType::BtrfsRaid5 | RaidType::BtrfsRaid6 | RaidType::BtrfsRaid10 => {
+                    Self::grow_btrfs_pool(&pool, &new_devices, &task_id, &pool_id, &task_tx).await
+                }
+                RaidType::Jbod | RaidType::Raid0 | RaidType::Raid1 | RaidType::Raid5 | RaidType::Raid6 | RaidType::Raid10 => {
+                    Self::grow_mdadm_pool(&metadata, &raid_type, &new_devices, &existing_devices, &task_id, &pool_id, &task_tx).await
+                }
+                _ => Err(anyhow!("Cannot grow this pool type")),
+            };
+
+            if let Err(e) = result {
+                // Revert status to normal on error
+                let now = chrono::Utc::now().to_rfc3339();
+                let _ = sqlx::query("UPDATE storage_pools SET status = 'normal', updated_at = ? WHERE id = ?")
+                    .bind(&now)
+                    .bind(&pool_id)
+                    .execute(&db)
+                    .await;
+
+                let _ = task_tx.send(crate::api::ws::TaskProgressEvent {
+                    task_id: task_id.clone(),
+                    package_id: pool_id.clone(),
+                    status: "failed".to_string(),
+                    progress: 1,
+                    total_steps: 1,
+                    progress_percent: 100,
+                    current_step: None,
+                    error_message: Some(e.to_string()),
+                });
+                return;
+            }
+        }
+
+        // Update DB: append new devices, recalculate size, set status normal
+        existing_devices.extend(new_devices.clone());
+        let devices_json = serde_json::to_string(&existing_devices).unwrap_or_default();
+
+        // Recalculate total size
+        let mut total_size: i64 = pool.total_size.unwrap_or(0);
+        if dev_mode {
+            // In dev mode, just add fake size for each new device
+            for _ in &new_devices {
+                total_size += 1000 * 1024 * 1024 * 1024; // 1TB per device
+            }
+        }
+
+        let now = chrono::Utc::now().to_rfc3339();
+        let _ = sqlx::query("UPDATE storage_pools SET devices = ?, total_size = ?, status = 'normal', updated_at = ? WHERE id = ?")
+            .bind(&devices_json)
+            .bind(total_size)
+            .bind(&now)
+            .bind(&pool_id)
+            .execute(&db)
+            .await;
+
+        // Send completion
+        let _ = task_tx.send(crate::api::ws::TaskProgressEvent {
+            task_id: task_id.clone(),
+            package_id: pool_id.clone(),
+            status: "completed".to_string(),
+            progress: 1,
+            total_steps: 1,
+            progress_percent: 100,
+            current_step: Some("Pool expansion completed".to_string()),
+            error_message: None,
+        });
+    }
+
+    /// Grow a btrfs pool by adding devices and rebalancing
+    async fn grow_btrfs_pool(
+        pool: &StoragePool,
+        new_devices: &[String],
+        task_id: &str,
+        pool_id: &str,
+        task_tx: &broadcast::Sender<crate::api::ws::TaskProgressEvent>,
+    ) -> Result<()> {
+        let existing_devices: Vec<String> = serde_json::from_str(&pool.devices).unwrap_or_default();
+        let mount_point = format!("/storage/pools/{}", pool.name);
+
+        // Add each new device
+        for device in new_devices {
+            let output = Command::new("btrfs")
+                .args(["device", "add", device, &mount_point])
+                .output()
+                .await?;
+
+            if !output.status.success() {
+                return Err(anyhow!("Failed to add device {}: {}", device, String::from_utf8_lossy(&output.stderr)));
+            }
+        }
+
+        let _ = task_tx.send(crate::api::ws::TaskProgressEvent {
+            task_id: task_id.to_string(),
+            package_id: pool_id.to_string(),
+            status: "running".to_string(),
+            progress: 1,
+            total_steps: 1,
+            progress_percent: 30,
+            current_step: Some("Devices added, starting balance...".to_string()),
+            error_message: None,
+        });
+
+        // Start balance
+        let output = Command::new("btrfs")
+            .args(["balance", "start", &mount_point])
+            .output()
+            .await?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            if !stderr.contains("No space") {
+                return Err(anyhow!("Failed to start balance: {}", stderr));
+            }
+        }
+
+        // Poll balance status
+        loop {
+            tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+
+            let status = Command::new("btrfs")
+                .args(["balance", "status", &mount_point])
+                .output()
+                .await?;
+
+            let stdout = String::from_utf8_lossy(&status.stdout);
+            if stdout.contains("No balance found") || stdout.contains("completed") {
+                break;
+            }
+
+            let _ = task_tx.send(crate::api::ws::TaskProgressEvent {
+                task_id: task_id.to_string(),
+                package_id: pool_id.to_string(),
+                status: "running".to_string(),
+                progress: 1,
+                total_steps: 1,
+                progress_percent: 60,
+                current_step: Some("Rebalancing data...".to_string()),
+                error_message: None,
+            });
+        }
+
+        Ok(())
+    }
+
+    /// Grow an mdadm pool by adding devices and growing the array
+    async fn grow_mdadm_pool(
+        metadata: &serde_json::Value,
+        raid_type: &RaidType,
+        new_devices: &[String],
+        existing_devices: &[String],
+        task_id: &str,
+        pool_id: &str,
+        task_tx: &broadcast::Sender<crate::api::ws::TaskProgressEvent>,
+    ) -> Result<()> {
+        let md_device = metadata.get("md_device")
+            .and_then(|v| v.as_str())
+            .unwrap_or("/dev/md0");
+
+        // Add each new device to the array
+        for device in new_devices {
+            let output = Command::new("mdadm")
+                .args(["--add", md_device, device])
+                .output()
+                .await?;
+
+            if !output.status.success() {
+                return Err(anyhow!("Failed to add device {}: {}", device, String::from_utf8_lossy(&output.stderr)));
+            }
+        }
+
+        let _ = task_tx.send(crate::api::ws::TaskProgressEvent {
+            task_id: task_id.to_string(),
+            package_id: pool_id.to_string(),
+            status: "running".to_string(),
+            progress: 1,
+            total_steps: 1,
+            progress_percent: 20,
+            current_step: Some("Devices added, growing array...".to_string()),
+            error_message: None,
+        });
+
+        // For RAID 5/6/10, grow the array to use the new devices
+        match raid_type {
+            RaidType::Raid5 | RaidType::Raid6 | RaidType::Raid10 => {
+                let new_total = existing_devices.len() + new_devices.len();
+                let output = Command::new("mdadm")
+                    .args(["--grow", md_device, "--raid-devices", &new_total.to_string()])
+                    .output()
+                    .await?;
+
+                if !output.status.success() {
+                    return Err(anyhow!("Failed to grow array: {}", String::from_utf8_lossy(&output.stderr)));
+                }
+            }
+            _ => {} // JBOD, RAID0, RAID1 - devices are used immediately after --add
+        }
+
+        // Monitor reshape progress via sysfs
+        let md_name = md_device.trim_start_matches("/dev/");
+        let progress_path = format!("/sys/block/{}/md/sync_completed", md_name);
+        let action_path = format!("/sys/block/{}/md/sync_action", md_name);
+
+        loop {
+            tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+
+            let action = tokio::fs::read_to_string(&action_path).await.unwrap_or_default();
+            if action.trim() == "idle" {
+                break;
+            }
+
+            let completed = tokio::fs::read_to_string(&progress_path).await.unwrap_or_default();
+            let parts: Vec<&str> = completed.split('/').collect();
+            let pct = if parts.len() == 2 {
+                let current: f64 = parts[0].trim().parse().unwrap_or(0.0);
+                let total: f64 = parts[1].trim().parse().unwrap_or(1.0);
+                (20.0 + (current / total) * 80.0) as i32
+            } else {
+                50
+            };
+
+            let _ = task_tx.send(crate::api::ws::TaskProgressEvent {
+                task_id: task_id.to_string(),
+                package_id: pool_id.to_string(),
+                status: "running".to_string(),
+                progress: 1,
+                total_steps: 1,
+                progress_percent: pct,
+                current_step: Some(format!("Reshaping array... {}%", pct)),
+                error_message: None,
+            });
+        }
+
+        Ok(())
     }
 }
 

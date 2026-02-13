@@ -275,6 +275,58 @@ class ApiClient {
 		return this.post<FsckStatus>(`/storage/volumes/${id}/check`, data);
 	}
 
+	// SMART test endpoints
+	async runSmartTest(deviceName: string, testType: string): Promise<SmartTestStatus> {
+		return this.post<SmartTestStatus>(`/storage/disks/${encodeURIComponent(deviceName)}/smart/test`, { test_type: testType });
+	}
+
+	async getSmartTestHistory(deviceName: string): Promise<SmartTestHistoryEntry[]> {
+		return this.get<SmartTestHistoryEntry[]>(`/storage/disks/${encodeURIComponent(deviceName)}/smart/history`);
+	}
+
+	async getSmartSchedules(): Promise<SmartTestScheduleInfo[]> {
+		return this.get<SmartTestScheduleInfo[]>('/storage/smart/schedules');
+	}
+
+	async createSmartSchedule(data: CreateSmartScheduleRequest): Promise<{ id: string }> {
+		return this.post<{ id: string }>('/storage/smart/schedules', data);
+	}
+
+	async deleteSmartSchedule(id: string): Promise<void> {
+		return this.delete(`/storage/smart/schedules/${id}`);
+	}
+
+	async toggleSmartSchedule(id: string, enabled: boolean): Promise<void> {
+		return this.post(`/storage/smart/schedules/${id}/toggle`, { enabled });
+	}
+
+	// Disk power management endpoints
+	async getDiskPowerSettings(deviceName: string): Promise<DiskPowerSettings> {
+		return this.get<DiskPowerSettings>(`/storage/disks/${encodeURIComponent(deviceName)}/power`);
+	}
+
+	async setDiskPowerSettings(deviceName: string, data: UpdateDiskPowerRequest): Promise<void> {
+		return this.put(`/storage/disks/${encodeURIComponent(deviceName)}/power`, data);
+	}
+
+	// Btrfs snapshot endpoints
+	async listSnapshots(volumeId: string): Promise<BtrfsSnapshotInfo[]> {
+		return this.get<BtrfsSnapshotInfo[]>(`/storage/volumes/${volumeId}/snapshots`);
+	}
+
+	async createSnapshot(volumeId: string, data: CreateSnapshotRequest): Promise<{ id: string }> {
+		return this.post<{ id: string }>(`/storage/volumes/${volumeId}/snapshots`, data);
+	}
+
+	async deleteSnapshot(volumeId: string, snapshotId: string): Promise<void> {
+		return this.delete(`/storage/volumes/${volumeId}/snapshots/${snapshotId}`);
+	}
+
+	// RAID grow endpoint
+	async growPool(poolId: string, data: GrowPoolRequest): Promise<GrowPoolStatus> {
+		return this.post<GrowPoolStatus>(`/storage/pools/${poolId}/grow`, data);
+	}
+
 	// Legacy filesystem endpoint
 	async getFilesystems(): Promise<VolumeInfo[]> {
 		return this.get<VolumeInfo[]>('/storage/filesystems');
@@ -727,8 +779,8 @@ export interface BrowsableLocation {
 
 // Storage types
 export type DiskType = 'hdd' | 'ssd' | 'nvme' | 'sd' | 'usb' | 'unknown';
-export type RaidType = 'basic' | 'jbod' | 'raid0' | 'raid1' | 'raid5' | 'raid10' | 'btrfs-single' | 'btrfs-raid0' | 'btrfs-raid1' | 'btrfs-raid10';
-export type PoolStatus = 'normal' | 'degraded' | 'rebuilding' | 'error' | 'creating';
+export type RaidType = 'basic' | 'jbod' | 'raid0' | 'raid1' | 'raid5' | 'raid6' | 'raid10' | 'btrfs-single' | 'btrfs-raid0' | 'btrfs-raid1' | 'btrfs-raid5' | 'btrfs-raid6' | 'btrfs-raid10';
+export type PoolStatus = 'normal' | 'degraded' | 'rebuilding' | 'expanding' | 'error' | 'creating';
 export type VolumeStatus = 'mounted' | 'unmounted' | 'error' | 'creating';
 
 export interface Partition {
@@ -916,6 +968,93 @@ export interface StorageAlertEvent {
 	previous_status: string;
 	new_status: string;
 	message: string;
+}
+
+// SMART Test types
+export interface SmartTestResult {
+	status: string;
+	errors: number;
+	duration_secs: number;
+	completed_at: string;
+}
+
+export interface SmartTestScheduleInfo {
+	id: string;
+	device_path: string;
+	device_name: string;
+	test_type: string;
+	interval_hours: number;
+	last_run: string | null;
+	next_run: string;
+	last_result: SmartTestResult | null;
+	enabled: boolean;
+}
+
+export interface CreateSmartScheduleRequest {
+	device_path: string;
+	test_type: string;
+	interval_hours?: number;
+}
+
+export interface SmartTestStatus {
+	task_id: string;
+	device_name: string;
+	test_type: string;
+	status: string;
+	progress: number;
+}
+
+export interface SmartTestHistoryEntry {
+	num: number;
+	test_type: string;
+	status: string;
+	remaining_percent: number;
+	lifetime_hours: number;
+	lba_of_first_error: number | null;
+}
+
+// Disk Power Management types
+export interface DiskPowerSettings {
+	device_path: string;
+	device_name: string;
+	apm_level: number | null;
+	spindown_minutes: number | null;
+	write_cache: boolean | null;
+	updated_at: string;
+}
+
+export interface UpdateDiskPowerRequest {
+	apm_level?: number | null;
+	spindown_minutes?: number | null;
+	write_cache?: boolean | null;
+}
+
+// Btrfs Snapshot types
+export interface BtrfsSnapshotInfo {
+	id: string;
+	volume_id: string;
+	name: string;
+	path: string;
+	snapshot_type: string;
+	size_bytes: number | null;
+	created_at: string;
+}
+
+export interface CreateSnapshotRequest {
+	name: string;
+}
+
+// RAID Grow types
+export interface GrowPoolRequest {
+	devices: string[];
+	wipe_devices: boolean;
+}
+
+export interface GrowPoolStatus {
+	task_id: string;
+	pool_id: string;
+	status: string;
+	progress: number;
 }
 
 // Process types

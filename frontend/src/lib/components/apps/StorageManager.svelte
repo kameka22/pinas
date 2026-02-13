@@ -1,7 +1,7 @@
 <script lang="ts">
 	import Icon from '@iconify/svelte';
 	import { onMount } from 'svelte';
-	import { api, type Disk, type StoragePool, type VolumeInfo, type DiskCandidate, type SmartInfo, type RaidType, type PoolHealthInfo, type ScrubStatus, type WipeMode, type FsckStatus } from '$lib/stores/api';
+	import { api, type Disk, type StoragePool, type VolumeInfo, type DiskCandidate, type SmartInfo, type RaidType, type PoolHealthInfo, type ScrubStatus, type WipeMode, type FsckStatus, type SmartTestHistoryEntry, type SmartTestScheduleInfo, type SmartTestStatus, type DiskPowerSettings, type BtrfsSnapshotInfo, type GrowPoolStatus } from '$lib/stores/api';
 	import { taskProgress } from '$lib/stores/websocket';
 	import { t } from '$lib/i18n';
 
@@ -32,6 +32,10 @@
 	let showResizeModal = false;
 	let showMountOptionsModal = false;
 	let showFsckModal = false;
+	let showPowerModal = false;
+	let showSnapshotsModal = false;
+	let showGrowPoolModal = false;
+	let showCreateScheduleModal = false;
 
 	// Pool context menu
 	let poolMenuTarget: StoragePool | null = null;
@@ -104,6 +108,37 @@
 	let poolHealth: Record<string, PoolHealthInfo> = {};
 	let scrubTaskIds: Record<string, string> = {}; // poolId -> taskId
 
+	// SMART test state
+	let smartTab: 'info' | 'tests' | 'schedules' = 'info';
+	let smartTestHistory: SmartTestHistoryEntry[] = [];
+	let smartSchedules: SmartTestScheduleInfo[] = [];
+	let runningSmartTest = false;
+	let smartTestTaskId: string | null = null;
+
+	// Power settings state
+	let powerDisk: Disk | null = null;
+	let powerSettings: DiskPowerSettings | null = null;
+	let powerLoading = false;
+	let apmPreset: 'low' | 'balanced' | 'max' | 'disabled' | 'custom' = 'balanced';
+
+	// Snapshots state
+	let snapshotVolume: VolumeInfo | null = null;
+	let snapshots: BtrfsSnapshotInfo[] = [];
+	let snapshotLoading = false;
+	let newSnapshotName = '';
+
+	// Grow pool state
+	let growPool_: StoragePool | null = null;
+	let growSelectedDevices: string[] = [];
+	let growWipeDevices = true;
+	let growingPools: Set<string> = new Set();
+	let growTaskIds: Record<string, string> = {};
+
+	// Schedule creation state
+	let newScheduleDevice = '';
+	let newScheduleTestType = 'short';
+	let newScheduleInterval = 168; // weekly
+
 	// RAID type info - translations are applied in the template via getRaidTypeName/getRaidTypeDesc
 	const raidTypes: { type: RaidType; nameKey: string; minDisks: number; descKey: string }[] = [
 		{ type: 'basic', nameKey: 'basic', minDisks: 1, descKey: 'basicDesc' },
@@ -112,8 +147,13 @@
 		{ type: 'raid1', nameKey: 'raid1', minDisks: 2, descKey: 'raid1Desc' },
 		{ type: 'raid5', nameKey: 'raid5', minDisks: 3, descKey: 'raid5Desc' },
 		{ type: 'raid10', nameKey: 'raid10', minDisks: 4, descKey: 'raid10Desc' },
+		{ type: 'raid6', nameKey: 'raid6', minDisks: 4, descKey: 'raid6Desc' },
 		{ type: 'btrfs-single', nameKey: 'btrfsSingle', minDisks: 1, descKey: 'btrfsSingleDesc' },
+		{ type: 'btrfs-raid0', nameKey: 'btrfsRaid0', minDisks: 2, descKey: 'btrfsRaid0Desc' },
 		{ type: 'btrfs-raid1', nameKey: 'btrfsRaid1', minDisks: 2, descKey: 'btrfsRaid1Desc' },
+		{ type: 'btrfs-raid5', nameKey: 'btrfsRaid5', minDisks: 3, descKey: 'btrfsRaid5Desc' },
+		{ type: 'btrfs-raid6', nameKey: 'btrfsRaid6', minDisks: 4, descKey: 'btrfsRaid6Desc' },
+		{ type: 'btrfs-raid10', nameKey: 'btrfsRaid10', minDisks: 4, descKey: 'btrfsRaid10Desc' },
 	];
 
 	// Helper to get RAID type translated name
@@ -153,6 +193,7 @@
 				return 'bg-red-500 text-white';
 			case 'creating':
 			case 'rebuilding':
+			case 'expanding':
 				return 'bg-purple-500 text-white';
 			default:
 				return 'bg-slate-500 text-white';
@@ -189,12 +230,17 @@
 		const selectedDisks = candidates.filter(c => newPool.selectedDevices.includes(c.device_path));
 		const totalSize = selectedDisks.reduce((sum, d) => sum + d.size, 0);
 
+		const smallestDisk = Math.min(...selectedDisks.map(d => d.size)) || 0;
 		switch (newPool.raidType) {
 			case 'raid1':
 			case 'btrfs-raid1':
-				return Math.min(...selectedDisks.map(d => d.size)) || 0;
+				return smallestDisk;
 			case 'raid5':
-				return totalSize - (selectedDisks[0]?.size || 0);
+			case 'btrfs-raid5':
+				return totalSize - smallestDisk;
+			case 'raid6':
+			case 'btrfs-raid6':
+				return totalSize - 2 * smallestDisk;
 			case 'raid10':
 				return totalSize / 2;
 			default:
@@ -417,11 +463,14 @@
 	// SMART info
 	async function showDiskSmart(disk: Disk) {
 		selectedDiskForSmart = disk;
+		smartTab = 'info';
 		smartLoading = true;
 		smartInfo = null;
 		showSmartModal = true;
 		try {
 			smartInfo = await api.getDiskSmartInfo(disk.device_name);
+			await loadSmartHistory(disk.device_name);
+			await loadSmartSchedules();
 		} catch (e) {
 			// Error is shown in modal, not in main error state
 		} finally {
@@ -600,6 +649,189 @@
 		}
 	}
 
+	// SMART test functions
+	async function loadSmartHistory(deviceName: string) {
+		try {
+			smartTestHistory = await api.getSmartTestHistory(deviceName);
+		} catch (e) {
+			smartTestHistory = [];
+		}
+	}
+
+	async function loadSmartSchedules() {
+		try {
+			smartSchedules = await api.getSmartSchedules();
+		} catch (e) {
+			smartSchedules = [];
+		}
+	}
+
+	async function runSmartTest(testType: string) {
+		if (!selectedDiskForSmart) return;
+		runningSmartTest = true;
+		try {
+			const result = await api.runSmartTest(selectedDiskForSmart.device_name, testType);
+			smartTestTaskId = result.task_id;
+		} catch (e) {
+			error = e instanceof Error ? e.message : 'Failed to start SMART test';
+		}
+	}
+
+	async function openSmartWithTab(disk: Disk, tab: 'info' | 'tests' | 'schedules') {
+		selectedDiskForSmart = disk;
+		smartTab = tab;
+		smartLoading = true;
+		smartInfo = null;
+		showSmartModal = true;
+		try {
+			smartInfo = await api.getDiskSmartInfo(disk.device_name);
+			if (tab === 'tests') await loadSmartHistory(disk.device_name);
+			if (tab === 'schedules') await loadSmartSchedules();
+		} catch (e) {
+			// Shown in modal
+		} finally {
+			smartLoading = false;
+		}
+	}
+
+	async function createSmartSchedule() {
+		if (!newScheduleDevice) return;
+		try {
+			await api.createSmartSchedule({
+				device_path: newScheduleDevice,
+				test_type: newScheduleTestType,
+				interval_hours: newScheduleInterval
+			});
+			await loadSmartSchedules();
+			showCreateScheduleModal = false;
+		} catch (e) {
+			error = e instanceof Error ? e.message : 'Failed to create schedule';
+		}
+	}
+
+	async function deleteSmartSchedule(id: string) {
+		try {
+			await api.deleteSmartSchedule(id);
+			await loadSmartSchedules();
+		} catch (e) {
+			error = e instanceof Error ? e.message : 'Failed to delete schedule';
+		}
+	}
+
+	async function toggleSchedule(id: string, enabled: boolean) {
+		try {
+			await api.toggleSmartSchedule(id, enabled);
+			await loadSmartSchedules();
+		} catch (e) {
+			error = e instanceof Error ? e.message : 'Failed to toggle schedule';
+		}
+	}
+
+	// Power management functions
+	async function openPowerSettings(disk: Disk) {
+		powerDisk = disk;
+		powerLoading = true;
+		showPowerModal = true;
+		try {
+			powerSettings = await api.getDiskPowerSettings(disk.device_name);
+			// Determine preset from current values
+			if (!powerSettings.apm_level) apmPreset = 'disabled';
+			else if (powerSettings.apm_level <= 128) apmPreset = 'low';
+			else if (powerSettings.apm_level <= 192) apmPreset = 'balanced';
+			else apmPreset = 'max';
+		} catch (e) {
+			powerSettings = null;
+		} finally {
+			powerLoading = false;
+		}
+	}
+
+	async function savePowerSettings() {
+		if (!powerDisk || !powerSettings) return;
+		let apmLevel: number | null = null;
+		switch (apmPreset) {
+			case 'low': apmLevel = 128; break;
+			case 'balanced': apmLevel = 192; break;
+			case 'max': apmLevel = 254; break;
+			case 'disabled': apmLevel = null; break;
+			case 'custom': apmLevel = powerSettings.apm_level; break;
+		}
+		try {
+			await api.setDiskPowerSettings(powerDisk.device_name, {
+				apm_level: apmLevel,
+				spindown_minutes: powerSettings.spindown_minutes,
+				write_cache: powerSettings.write_cache,
+			});
+			showPowerModal = false;
+		} catch (e) {
+			error = e instanceof Error ? e.message : 'Failed to save power settings';
+		}
+	}
+
+	// Snapshot functions
+	async function openSnapshots(volume: VolumeInfo) {
+		volumeMenuTarget = null;
+		snapshotVolume = volume;
+		snapshotLoading = true;
+		snapshots = [];
+		showSnapshotsModal = true;
+		const now = new Date();
+		newSnapshotName = `snap-${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}-${String(now.getHours()).padStart(2,'0')}${String(now.getMinutes()).padStart(2,'0')}`;
+		try {
+			snapshots = await api.listSnapshots(volume.id);
+		} catch (e) {
+			// Shown in modal
+		} finally {
+			snapshotLoading = false;
+		}
+	}
+
+	async function createSnapshot() {
+		if (!snapshotVolume || !newSnapshotName) return;
+		try {
+			await api.createSnapshot(snapshotVolume.id, { name: newSnapshotName });
+			snapshots = await api.listSnapshots(snapshotVolume.id);
+		} catch (e) {
+			error = e instanceof Error ? e.message : 'Failed to create snapshot';
+		}
+	}
+
+	async function deleteSnapshot(snapId: string) {
+		if (!snapshotVolume) return;
+		try {
+			await api.deleteSnapshot(snapshotVolume.id, snapId);
+			snapshots = await api.listSnapshots(snapshotVolume.id);
+		} catch (e) {
+			error = e instanceof Error ? e.message : 'Failed to delete snapshot';
+		}
+	}
+
+	// Grow pool functions
+	function openGrowPool(pool: StoragePool) {
+		poolMenuTarget = null;
+		growPool_ = pool;
+		growSelectedDevices = [];
+		growWipeDevices = true;
+		showGrowPoolModal = true;
+	}
+
+	async function startGrowPool() {
+		if (!growPool_ || growSelectedDevices.length === 0) return;
+		try {
+			const result = await api.growPool(growPool_.id, {
+				devices: growSelectedDevices,
+				wipe_devices: growWipeDevices,
+			});
+			growTaskIds[growPool_.id] = result.task_id;
+			growTaskIds = growTaskIds;
+			growingPools.add(growPool_.id);
+			growingPools = growingPools;
+			showGrowPoolModal = false;
+		} catch (e) {
+			error = e instanceof Error ? e.message : 'Failed to start pool expansion';
+		}
+	}
+
 	// Click outside handler
 	function handleClickOutside(event: MouseEvent) {
 		const target = event.target as HTMLElement;
@@ -612,7 +844,7 @@
 		loadData();
 		document.addEventListener('click', handleClickOutside);
 
-		// Subscribe to task progress to track scrub completion
+		// Subscribe to task progress to track scrub/grow/smart completion
 		const unsubscribe = taskProgress.subscribe((tasks) => {
 			for (const [poolId, taskId] of Object.entries(scrubTaskIds)) {
 				const progress = tasks[taskId];
@@ -632,6 +864,25 @@
 					delete fsckTaskIds[volumeId];
 					fsckTaskIds = fsckTaskIds;
 					loadData();
+				}
+			}
+			for (const [poolId, taskId] of Object.entries(growTaskIds)) {
+				const progress = tasks[taskId];
+				if (progress && (progress.status === 'completed' || progress.status === 'failed')) {
+					growingPools.delete(poolId);
+					growingPools = growingPools;
+					delete growTaskIds[poolId];
+					growTaskIds = growTaskIds;
+					loadData();
+				}
+			}
+			// Track SMART test progress
+			if (smartTestTaskId) {
+				const progress = tasks[smartTestTaskId];
+				if (progress && (progress.status === 'completed' || progress.status === 'failed')) {
+					runningSmartTest = false;
+					smartTestTaskId = null;
+					if (selectedDiskForSmart) loadSmartHistory(selectedDiskForSmart.device_name);
 				}
 			}
 		});
@@ -971,6 +1222,12 @@
 										<Icon icon="mdi:chart-line" class="w-4 h-4" />
 										{$t.storageManager.disks.smart}
 									</button>
+									{#if disk.disk_type === 'hdd' || disk.disk_type === 'ssd'}
+										<button class="btn-secondary" onclick={() => openPowerSettings(disk)}>
+											<Icon icon="mdi:lightning-bolt" class="w-4 h-4" />
+											{$t.storageManager?.power?.title || 'Power'}
+										</button>
+									{/if}
 									<button class="btn-secondary btn-warning" onclick={() => confirmWipeDiskWithReset(disk)}>
 										<Icon icon="mdi:eraser" class="w-4 h-4" />
 										{$t.storageManager.disks.wipe}
@@ -1063,6 +1320,15 @@
 				<Icon icon="mdi:broom" class="w-4 h-4" />
 				{scrubbingPools.has(poolMenuTarget?.id || '') ? $t.storageManager.contextMenu.scrubbing : $t.storageManager.contextMenu.scrub}
 			</button>
+			{#if poolMenuTarget && poolMenuTarget.raid_type !== 'basic' && poolMenuTarget.status === 'normal'}
+				<button
+					onclick={() => poolMenuTarget && openGrowPool(poolMenuTarget)}
+					disabled={growingPools.has(poolMenuTarget?.id || '')}
+				>
+					<Icon icon="mdi:harddisk-plus" class="w-4 h-4" />
+					{growingPools.has(poolMenuTarget?.id || '') ? $t.storageManager?.grow?.expanding || 'Expanding...' : $t.storageManager?.grow?.addDisks || 'Add Disks'}
+				</button>
+			{/if}
 			<div class="menu-divider"></div>
 			<button class="danger" onclick={() => poolMenuTarget && confirmDeletePool(poolMenuTarget)}>
 				<Icon icon="mdi:delete" class="w-4 h-4" />
@@ -1093,6 +1359,12 @@
 				<Icon icon="mdi:shield-check" class="w-4 h-4" />
 				{$t.storageManager.contextMenu.checkFilesystem}
 			</button>
+			{#if volumeMenuTarget.fs_type === 'btrfs'}
+				<button onclick={() => volumeMenuTarget && openSnapshots(volumeMenuTarget)}>
+					<Icon icon="mdi:camera" class="w-4 h-4" />
+					{$t.storageManager?.snapshots?.title || 'Snapshots'}
+				</button>
+			{/if}
 			<div class="menu-divider"></div>
 			<button class="danger" onclick={() => volumeMenuTarget && confirmDeleteVolume(volumeMenuTarget)}>
 				<Icon icon="mdi:delete" class="w-4 h-4" />
@@ -1360,11 +1632,26 @@
 <!-- SMART Info Modal -->
 {#if showSmartModal}
 	<div class="modal-overlay" onclick={() => showSmartModal = false}>
-		<div class="modal" onclick={(e) => e.stopPropagation()}>
+		<div class="modal modal-lg" onclick={(e) => e.stopPropagation()}>
 			<div class="modal-header">
 				<h2>{$t.storageManager.modals.smartInfo.title}</h2>
 				<button class="close-btn" onclick={() => showSmartModal = false}>
 					<Icon icon="mdi:close" class="w-5 h-5" />
+				</button>
+			</div>
+			<!-- Tabs -->
+			<div class="modal-tabs">
+				<button class:active={smartTab === 'info'} onclick={() => smartTab = 'info'}>
+					<Icon icon="mdi:information" class="w-4 h-4" />
+					{$t.storageManager?.smartTests?.tabInfo || 'Info'}
+				</button>
+				<button class:active={smartTab === 'tests'} onclick={() => { smartTab = 'tests'; if (selectedDiskForSmart) loadSmartHistory(selectedDiskForSmart.device_name); }}>
+					<Icon icon="mdi:play-circle" class="w-4 h-4" />
+					{$t.storageManager?.smartTests?.tabTests || 'Self-Tests'}
+				</button>
+				<button class:active={smartTab === 'schedules'} onclick={() => { smartTab = 'schedules'; loadSmartSchedules(); }}>
+					<Icon icon="mdi:calendar-clock" class="w-4 h-4" />
+					{$t.storageManager?.smartTests?.tabSchedules || 'Schedules'}
 				</button>
 			</div>
 			<div class="modal-content">
@@ -1373,56 +1660,360 @@
 						<Icon icon="mdi:loading" class="w-8 h-8 animate-spin text-blue-500" />
 						<p>{$t.storageManager.modals.smartInfo.loadingData}</p>
 					</div>
-				{:else if smartInfo}
-					<div class="smart-header">
-						<div class="smart-device">
-							<span class="smart-model">{smartInfo.model}</span>
-							<span class="smart-path">{smartInfo.device_path}</span>
+				{:else if smartTab === 'info'}
+					{#if smartInfo}
+						<div class="smart-header">
+							<div class="smart-device">
+								<span class="smart-model">{smartInfo.model}</span>
+								<span class="smart-path">{smartInfo.device_path}</span>
+							</div>
+							<span class="health-badge {smartInfo.health_status === 'PASSED' ? 'healthy' : 'warning'}">
+								{smartInfo.health_status}
+							</span>
 						</div>
-						<span class="health-badge {smartInfo.health_status === 'PASSED' ? 'healthy' : 'warning'}">
-							{smartInfo.health_status}
-						</span>
+						<div class="smart-stats">
+							<div class="smart-stat">
+								<span class="stat-label">{$t.storageManager.modals.smartInfo.temperature}</span>
+								<span class="stat-value">{smartInfo.temperature ?? 'N/A'}°C</span>
+							</div>
+							<div class="smart-stat">
+								<span class="stat-label">{$t.storageManager.modals.smartInfo.powerOnHours}</span>
+								<span class="stat-value">{smartInfo.power_on_hours?.toLocaleString() ?? 'N/A'}</span>
+							</div>
+							<div class="smart-stat">
+								<span class="stat-label">{$t.storageManager.modals.smartInfo.powerCycles}</span>
+								<span class="stat-value">{smartInfo.power_cycle_count?.toLocaleString() ?? 'N/A'}</span>
+							</div>
+							<div class="smart-stat">
+								<span class="stat-label">{$t.storageManager.modals.smartInfo.serial}</span>
+								<span class="stat-value">{smartInfo.serial ?? 'N/A'}</span>
+							</div>
+						</div>
+						{#if smartInfo.attributes.length > 0}
+							<h3 class="attributes-title">{$t.storageManager.modals.smartInfo.attributes}</h3>
+							<div class="smart-attributes">
+								{#each smartInfo.attributes as attr}
+									<div class="smart-attr">
+										<span class="attr-name">{attr.name}</span>
+										<span class="attr-value">{attr.value}</span>
+									</div>
+								{/each}
+							</div>
+						{/if}
+					{:else}
+						<div class="error-state">
+							<Icon icon="mdi:alert-circle" class="w-8 h-8 text-red-500" />
+							<p>{$t.storageManager.modals.smartInfo.loadFailed}</p>
+						</div>
+					{/if}
+				{:else if smartTab === 'tests'}
+					<!-- Self-Test Controls -->
+					<div class="smart-test-controls">
+						<h3>{$t.storageManager?.smartTests?.runTest || 'Run Test'}</h3>
+						<div class="test-buttons">
+							<button class="btn-primary" onclick={() => runSmartTest('short')} disabled={runningSmartTest}>
+								<Icon icon="mdi:flash" class="w-4 h-4" />
+								{$t.storageManager?.smartTests?.shortTest || 'Short Test'}
+							</button>
+							<button class="btn-secondary" onclick={() => runSmartTest('long')} disabled={runningSmartTest}>
+								<Icon icon="mdi:clock-outline" class="w-4 h-4" />
+								{$t.storageManager?.smartTests?.longTest || 'Long Test'}
+							</button>
+						</div>
+						{#if runningSmartTest && smartTestTaskId}
+							{@const progress = $taskProgress[smartTestTaskId]}
+							{#if progress}
+								<div class="test-progress">
+									<div class="progress-bar">
+										<div class="progress-fill" style="width: {progress.progress_percent}%"></div>
+									</div>
+									<span class="progress-text">{progress.current_step || `${progress.progress_percent}%`}</span>
+								</div>
+							{/if}
+						{/if}
 					</div>
-
-					<div class="smart-stats">
-						<div class="smart-stat">
-							<span class="stat-label">{$t.storageManager.modals.smartInfo.temperature}</span>
-							<span class="stat-value">{smartInfo.temperature ?? 'N/A'}°C</span>
-						</div>
-						<div class="smart-stat">
-							<span class="stat-label">{$t.storageManager.modals.smartInfo.powerOnHours}</span>
-							<span class="stat-value">{smartInfo.power_on_hours?.toLocaleString() ?? 'N/A'}</span>
-						</div>
-						<div class="smart-stat">
-							<span class="stat-label">{$t.storageManager.modals.smartInfo.powerCycles}</span>
-							<span class="stat-value">{smartInfo.power_cycle_count?.toLocaleString() ?? 'N/A'}</span>
-						</div>
-						<div class="smart-stat">
-							<span class="stat-label">{$t.storageManager.modals.smartInfo.serial}</span>
-							<span class="stat-value">{smartInfo.serial ?? 'N/A'}</span>
-						</div>
-					</div>
-
-					{#if smartInfo.attributes.length > 0}
-						<h3 class="attributes-title">{$t.storageManager.modals.smartInfo.attributes}</h3>
-						<div class="smart-attributes">
-							{#each smartInfo.attributes as attr}
-								<div class="smart-attr">
-									<span class="attr-name">{attr.name}</span>
-									<span class="attr-value">{attr.value}</span>
+					<!-- Test History -->
+					<h3 class="mt-4">{$t.storageManager?.smartTests?.history || 'Test History'}</h3>
+					{#if smartTestHistory.length > 0}
+						<div class="smart-history-table">
+							<div class="table-header">
+								<span>#</span>
+								<span>{$t.storageManager?.smartTests?.testType || 'Type'}</span>
+								<span>{$t.common.status}</span>
+								<span>{$t.storageManager?.smartTests?.lifetime || 'Hours'}</span>
+							</div>
+							{#each smartTestHistory as entry}
+								<div class="table-row">
+									<span>{entry.num}</span>
+									<span>{entry.test_type}</span>
+									<span class="status-cell {entry.status.includes('without error') ? 'text-green' : 'text-red'}">{entry.status}</span>
+									<span>{entry.lifetime_hours.toLocaleString()}</span>
 								</div>
 							{/each}
 						</div>
+					{:else}
+						<p class="empty-text">{$t.storageManager?.smartTests?.noHistory || 'No test history available'}</p>
 					{/if}
-				{:else}
-					<div class="error-state">
-						<Icon icon="mdi:alert-circle" class="w-8 h-8 text-red-500" />
-						<p>{$t.storageManager.modals.smartInfo.loadFailed}</p>
+				{:else if smartTab === 'schedules'}
+					<div class="schedule-header">
+						<h3>{$t.storageManager?.smartTests?.scheduleTitle || 'Scheduled Tests'}</h3>
+						<button class="btn-primary btn-sm" onclick={() => {
+							newScheduleDevice = selectedDiskForSmart?.device_path || '';
+							showCreateScheduleModal = true;
+						}}>
+							<Icon icon="mdi:plus" class="w-4 h-4" />
+							{$t.storageManager?.smartTests?.addSchedule || 'Add Schedule'}
+						</button>
 					</div>
+					{#if smartSchedules.filter(s => s.device_name === selectedDiskForSmart?.device_name).length > 0}
+						{#each smartSchedules.filter(s => s.device_name === selectedDiskForSmart?.device_name) as schedule}
+							<div class="schedule-item">
+								<div class="schedule-info">
+									<span class="schedule-type">{schedule.test_type}</span>
+									<span class="schedule-interval">
+										{schedule.interval_hours === 24 ? ($t.storageManager?.smartTests?.daily || 'Daily') :
+										 schedule.interval_hours === 168 ? ($t.storageManager?.smartTests?.weekly || 'Weekly') :
+										 schedule.interval_hours === 720 ? ($t.storageManager?.smartTests?.monthly || 'Monthly') :
+										 `${schedule.interval_hours}h`}
+									</span>
+									{#if schedule.last_run}
+										<span class="schedule-last">{$t.storageManager?.smartTests?.lastRun || 'Last'}: {new Date(schedule.last_run).toLocaleDateString()}</span>
+									{/if}
+								</div>
+								<div class="schedule-actions">
+									<button class="toggle-btn" class:active={schedule.enabled} onclick={() => toggleSchedule(schedule.id, !schedule.enabled)}>
+										{schedule.enabled ? ($t.common.enabled) : ($t.common.disabled)}
+									</button>
+									<button class="btn-icon danger" onclick={() => deleteSmartSchedule(schedule.id)}>
+										<Icon icon="mdi:delete" class="w-4 h-4" />
+									</button>
+								</div>
+							</div>
+						{/each}
+					{:else}
+						<p class="empty-text">{$t.storageManager?.smartTests?.noSchedules || 'No schedules configured'}</p>
+					{/if}
 				{/if}
 			</div>
 			<div class="modal-footer">
 				<button class="btn-secondary" onclick={() => showSmartModal = false}>{$t.common.close}</button>
+			</div>
+		</div>
+	</div>
+{/if}
+
+<!-- Create SMART Schedule Modal -->
+{#if showCreateScheduleModal}
+	<div class="modal-overlay" onclick={() => showCreateScheduleModal = false}>
+		<div class="modal modal-sm" onclick={(e) => e.stopPropagation()}>
+			<div class="modal-header">
+				<h2>{$t.storageManager?.smartTests?.addSchedule || 'Add Schedule'}</h2>
+				<button class="close-btn" onclick={() => showCreateScheduleModal = false}>
+					<Icon icon="mdi:close" class="w-5 h-5" />
+				</button>
+			</div>
+			<div class="modal-content">
+				<div class="form-group">
+					<label>{$t.storageManager?.smartTests?.testType || 'Test Type'}</label>
+					<select bind:value={newScheduleTestType}>
+						<option value="short">{$t.storageManager?.smartTests?.shortTest || 'Short'}</option>
+						<option value="long">{$t.storageManager?.smartTests?.longTest || 'Long'}</option>
+					</select>
+				</div>
+				<div class="form-group">
+					<label>{$t.storageManager?.smartTests?.interval || 'Interval'}</label>
+					<select bind:value={newScheduleInterval}>
+						<option value={24}>{$t.storageManager?.smartTests?.daily || 'Daily'}</option>
+						<option value={168}>{$t.storageManager?.smartTests?.weekly || 'Weekly'}</option>
+						<option value={720}>{$t.storageManager?.smartTests?.monthly || 'Monthly'}</option>
+					</select>
+				</div>
+			</div>
+			<div class="modal-footer">
+				<button class="btn-secondary" onclick={() => showCreateScheduleModal = false}>{$t.common.cancel}</button>
+				<button class="btn-primary" onclick={createSmartSchedule}>{$t.common.create}</button>
+			</div>
+		</div>
+	</div>
+{/if}
+
+<!-- Power Settings Modal -->
+{#if showPowerModal && powerDisk}
+	<div class="modal-overlay" onclick={() => showPowerModal = false}>
+		<div class="modal" onclick={(e) => e.stopPropagation()}>
+			<div class="modal-header">
+				<h2>{$t.storageManager?.power?.title || 'Power Settings'} - {powerDisk.model}</h2>
+				<button class="close-btn" onclick={() => showPowerModal = false}>
+					<Icon icon="mdi:close" class="w-5 h-5" />
+				</button>
+			</div>
+			<div class="modal-content">
+				{#if powerLoading}
+					<div class="loading-state">
+						<Icon icon="mdi:loading" class="w-8 h-8 animate-spin text-blue-500" />
+					</div>
+				{:else if powerSettings}
+					<div class="form-group">
+						<label>{$t.storageManager?.power?.apmLevel || 'APM Level'}</label>
+						<div class="power-presets">
+							<button class:active={apmPreset === 'low'} onclick={() => apmPreset = 'low'}>
+								<Icon icon="mdi:leaf" class="w-4 h-4" />
+								{$t.storageManager?.power?.lowPower || 'Low Power'}
+							</button>
+							<button class:active={apmPreset === 'balanced'} onclick={() => apmPreset = 'balanced'}>
+								<Icon icon="mdi:scale-balance" class="w-4 h-4" />
+								{$t.storageManager?.power?.balanced || 'Balanced'}
+							</button>
+							<button class:active={apmPreset === 'max'} onclick={() => apmPreset = 'max'}>
+								<Icon icon="mdi:rocket-launch" class="w-4 h-4" />
+								{$t.storageManager?.power?.maxPerformance || 'Performance'}
+							</button>
+							<button class:active={apmPreset === 'disabled'} onclick={() => apmPreset = 'disabled'}>
+								<Icon icon="mdi:close-circle" class="w-4 h-4" />
+								{$t.common.disabled}
+							</button>
+						</div>
+					</div>
+					<div class="form-group">
+						<label>{$t.storageManager?.power?.spindown || 'Spindown Timer'}</label>
+						<select bind:value={powerSettings.spindown_minutes}>
+							<option value={0}>{$t.common.disabled}</option>
+							<option value={5}>5 min</option>
+							<option value={10}>10 min</option>
+							<option value={20}>20 min</option>
+							<option value={30}>30 min</option>
+							<option value={60}>60 min</option>
+							<option value={120}>120 min</option>
+						</select>
+					</div>
+					<div class="form-group">
+						<label class="checkbox-label">
+							<input type="checkbox" bind:checked={powerSettings.write_cache} />
+							{$t.storageManager?.power?.writeCache || 'Write Cache'}
+							<span class="help-text">{$t.storageManager?.power?.writeCacheWarning || 'Disabling write cache reduces performance but improves data safety'}</span>
+						</label>
+					</div>
+				{/if}
+			</div>
+			<div class="modal-footer">
+				<button class="btn-secondary" onclick={() => showPowerModal = false}>{$t.common.cancel}</button>
+				<button class="btn-primary" onclick={savePowerSettings}>{$t.common.save}</button>
+			</div>
+		</div>
+	</div>
+{/if}
+
+<!-- Snapshots Modal -->
+{#if showSnapshotsModal && snapshotVolume}
+	<div class="modal-overlay" onclick={() => showSnapshotsModal = false}>
+		<div class="modal modal-lg" onclick={(e) => e.stopPropagation()}>
+			<div class="modal-header">
+				<h2>{$t.storageManager?.snapshots?.title || 'Snapshots'} - {snapshotVolume.name}</h2>
+				<button class="close-btn" onclick={() => showSnapshotsModal = false}>
+					<Icon icon="mdi:close" class="w-5 h-5" />
+				</button>
+			</div>
+			<div class="modal-content">
+				<!-- Create snapshot -->
+				<div class="snapshot-create">
+					<input type="text" bind:value={newSnapshotName} placeholder={$t.storageManager?.snapshots?.namePlaceholder || 'Snapshot name'} />
+					<button class="btn-primary" onclick={createSnapshot} disabled={!newSnapshotName}>
+						<Icon icon="mdi:camera" class="w-4 h-4" />
+						{$t.storageManager?.snapshots?.create || 'Create Snapshot'}
+					</button>
+				</div>
+				<!-- Snapshot list -->
+				{#if snapshotLoading}
+					<div class="loading-state">
+						<Icon icon="mdi:loading" class="w-8 h-8 animate-spin text-blue-500" />
+					</div>
+				{:else if snapshots.length > 0}
+					<div class="snapshot-list">
+						{#each snapshots as snap}
+							<div class="snapshot-item">
+								<div class="snapshot-info">
+									<Icon icon="mdi:camera" class="w-4 h-4 text-blue-400" />
+									<span class="snapshot-name">{snap.name}</span>
+									<span class="snapshot-type badge">{snap.snapshot_type}</span>
+									<span class="snapshot-date">{new Date(snap.created_at).toLocaleString()}</span>
+									{#if snap.size_bytes}
+										<span class="snapshot-size">{formatBytes(snap.size_bytes)}</span>
+									{/if}
+								</div>
+								<button class="btn-icon danger" onclick={() => deleteSnapshot(snap.id)}>
+									<Icon icon="mdi:delete" class="w-4 h-4" />
+								</button>
+							</div>
+						{/each}
+					</div>
+				{:else}
+					<p class="empty-text">{$t.storageManager?.snapshots?.noSnapshots || 'No snapshots yet'}</p>
+				{/if}
+			</div>
+			<div class="modal-footer">
+				<button class="btn-secondary" onclick={() => showSnapshotsModal = false}>{$t.common.close}</button>
+			</div>
+		</div>
+	</div>
+{/if}
+
+<!-- Grow Pool Modal -->
+{#if showGrowPoolModal && growPool_}
+	<div class="modal-overlay" onclick={() => showGrowPoolModal = false}>
+		<div class="modal" onclick={(e) => e.stopPropagation()}>
+			<div class="modal-header">
+				<h2>{$t.storageManager?.grow?.addDisks || 'Add Disks'} - {growPool_.name}</h2>
+				<button class="close-btn" onclick={() => showGrowPoolModal = false}>
+					<Icon icon="mdi:close" class="w-5 h-5" />
+				</button>
+			</div>
+			<div class="modal-content">
+				<div class="grow-info">
+					<p class="pool-info-text">
+						<Icon icon="mdi:database" class="w-4 h-4" />
+						{growPool_.raid_type.toUpperCase()} - {growPool_.devices.length} {$t.storageManager?.grow?.currentDisks || 'disk(s)'}
+						- {formatBytes(growPool_.total_size)}
+					</p>
+				</div>
+
+				{#if growPool_.raid_type === 'raid10' || growPool_.raid_type === 'btrfs-raid10'}
+					<div class="warning-box">
+						<Icon icon="mdi:alert" class="w-4 h-4" />
+						{$t.storageManager?.grow?.raidConstraint || 'RAID 10 requires an even number of new disks'}
+					</div>
+				{/if}
+
+				<h3>{$t.storageManager?.grow?.selectNewDisks || 'Select new disks'}</h3>
+				{#if candidates.length > 0}
+					<div class="disk-candidates">
+						{#each candidates.filter(c => !growPool_?.devices.includes(c.device_path)) as candidate}
+							<label class="disk-candidate-item">
+								<input
+									type="checkbox"
+									value={candidate.device_path}
+									bind:group={growSelectedDevices}
+								/>
+								<Icon icon={getDiskTypeIcon(candidate.disk_type)} class="w-5 h-5" />
+								<span class="candidate-model">{candidate.model}</span>
+								<span class="candidate-size">{formatBytes(candidate.size)}</span>
+							</label>
+						{/each}
+					</div>
+				{:else}
+					<p class="empty-text">{$t.storageManager?.grow?.noCandidates || 'No available disks'}</p>
+				{/if}
+
+				<label class="checkbox-label mt-3">
+					<input type="checkbox" bind:checked={growWipeDevices} />
+					{$t.storageManager?.grow?.wipeDevices || 'Wipe new disks before adding'}
+				</label>
+			</div>
+			<div class="modal-footer">
+				<button class="btn-secondary" onclick={() => showGrowPoolModal = false}>{$t.common.cancel}</button>
+				<button class="btn-primary" onclick={startGrowPool} disabled={growSelectedDevices.length === 0}>
+					<Icon icon="mdi:harddisk-plus" class="w-4 h-4" />
+					{$t.storageManager?.grow?.startExpand || 'Start Expansion'}
+				</button>
 			</div>
 		</div>
 	</div>
@@ -2916,4 +3507,206 @@
 
 	.preset-chip:hover { border-color: #94a3b8; }
 	.preset-chip.selected { border-color: #3b82f6; background: #eff6ff; color: #2563eb; }
+
+	/* Modal tabs */
+	.modal-tabs {
+		display: flex;
+		border-bottom: 1px solid #e2e8f0;
+		padding: 0 16px;
+	}
+	.modal-tabs button {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		padding: 10px 16px;
+		border: none;
+		background: none;
+		color: #64748b;
+		font-size: 13px;
+		cursor: pointer;
+		border-bottom: 2px solid transparent;
+		transition: all 0.15s;
+	}
+	.modal-tabs button:hover { color: #334155; }
+	.modal-tabs button.active { color: #3b82f6; border-bottom-color: #3b82f6; }
+
+	/* Modal sizes */
+	.modal-lg { max-width: 700px; width: 90vw; }
+	.modal-sm { max-width: 400px; }
+
+	/* SMART test controls */
+	.smart-test-controls { margin-bottom: 16px; }
+	.smart-test-controls h3 { font-size: 14px; font-weight: 600; margin-bottom: 8px; }
+	.test-buttons { display: flex; gap: 8px; margin-bottom: 12px; }
+	.test-progress { margin-top: 8px; }
+	.progress-bar {
+		height: 6px;
+		background: #e2e8f0;
+		border-radius: 3px;
+		overflow: hidden;
+	}
+	.progress-fill {
+		height: 100%;
+		background: #3b82f6;
+		border-radius: 3px;
+		transition: width 0.3s;
+	}
+	.progress-text { font-size: 12px; color: #64748b; margin-top: 4px; }
+
+	/* SMART history table */
+	.smart-history-table { font-size: 13px; }
+	.smart-history-table .table-header,
+	.smart-history-table .table-row {
+		display: grid;
+		grid-template-columns: 40px 1fr 1fr 80px;
+		gap: 8px;
+		padding: 6px 0;
+		align-items: center;
+	}
+	.smart-history-table .table-header {
+		font-weight: 600;
+		color: #64748b;
+		border-bottom: 1px solid #e2e8f0;
+	}
+	.smart-history-table .table-row { border-bottom: 1px solid #f1f5f9; }
+	.status-cell.text-green { color: #16a34a; }
+	.status-cell.text-red { color: #dc2626; }
+
+	/* Schedule items */
+	.schedule-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		margin-bottom: 12px;
+	}
+	.schedule-header h3 { margin: 0; font-size: 14px; }
+	.schedule-item {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		padding: 10px 0;
+		border-bottom: 1px solid #f1f5f9;
+	}
+	.schedule-info { display: flex; gap: 12px; align-items: center; font-size: 13px; }
+	.schedule-type { font-weight: 600; text-transform: capitalize; }
+	.schedule-interval { color: #3b82f6; }
+	.schedule-last { color: #64748b; }
+	.schedule-actions { display: flex; gap: 8px; align-items: center; }
+	.toggle-btn {
+		padding: 4px 12px;
+		border-radius: 12px;
+		font-size: 12px;
+		border: 1px solid #e2e8f0;
+		background: #f8fafc;
+		color: #64748b;
+		cursor: pointer;
+	}
+	.toggle-btn.active { background: #eff6ff; color: #3b82f6; border-color: #bfdbfe; }
+
+	/* Power presets */
+	.power-presets {
+		display: grid;
+		grid-template-columns: repeat(2, 1fr);
+		gap: 8px;
+	}
+	.power-presets button {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		padding: 10px 14px;
+		border: 1px solid #e2e8f0;
+		border-radius: 8px;
+		background: #f8fafc;
+		color: #475569;
+		font-size: 13px;
+		cursor: pointer;
+		transition: all 0.15s;
+	}
+	.power-presets button:hover { border-color: #94a3b8; }
+	.power-presets button.active { border-color: #3b82f6; background: #eff6ff; color: #2563eb; }
+
+	.checkbox-label {
+		display: flex;
+		align-items: flex-start;
+		gap: 8px;
+		font-size: 13px;
+		cursor: pointer;
+	}
+	.checkbox-label input[type="checkbox"] { margin-top: 2px; }
+	.help-text { display: block; font-size: 12px; color: #94a3b8; margin-top: 2px; }
+
+	/* Snapshot UI */
+	.snapshot-create {
+		display: flex;
+		gap: 8px;
+		margin-bottom: 16px;
+	}
+	.snapshot-create input { flex: 1; }
+	.snapshot-list { display: flex; flex-direction: column; gap: 4px; }
+	.snapshot-item {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		padding: 8px 12px;
+		background: #f8fafc;
+		border-radius: 6px;
+	}
+	.snapshot-info { display: flex; gap: 10px; align-items: center; font-size: 13px; }
+	.snapshot-name { font-weight: 500; }
+	.snapshot-date { color: #64748b; }
+	.snapshot-size { color: #94a3b8; }
+	.badge {
+		padding: 2px 8px;
+		background: #eff6ff;
+		color: #3b82f6;
+		border-radius: 10px;
+		font-size: 11px;
+	}
+
+	/* Grow pool */
+	.grow-info { margin-bottom: 16px; }
+	.pool-info-text {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		font-size: 14px;
+		color: #475569;
+		padding: 10px;
+		background: #f8fafc;
+		border-radius: 6px;
+	}
+	.warning-box {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 10px 14px;
+		background: #fff7ed;
+		border: 1px solid #fed7aa;
+		border-radius: 6px;
+		color: #c2410c;
+		font-size: 13px;
+		margin-bottom: 16px;
+	}
+	.disk-candidates { display: flex; flex-direction: column; gap: 4px; }
+	.disk-candidate-item {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		padding: 8px 12px;
+		border: 1px solid #e2e8f0;
+		border-radius: 6px;
+		cursor: pointer;
+		font-size: 13px;
+	}
+	.disk-candidate-item:hover { background: #f8fafc; }
+	.candidate-model { flex: 1; }
+	.candidate-size { color: #64748b; }
+
+	.empty-text { color: #94a3b8; font-size: 13px; text-align: center; padding: 20px; }
+	.mt-3 { margin-top: 12px; }
+	.mt-4 { margin-top: 16px; }
+	.btn-sm { padding: 6px 12px !important; font-size: 12px !important; }
+	.btn-icon { padding: 6px; border-radius: 4px; border: none; background: none; cursor: pointer; color: #64748b; }
+	.btn-icon:hover { background: #f1f5f9; }
+	.btn-icon.danger:hover { background: #fef2f2; color: #dc2626; }
 </style>

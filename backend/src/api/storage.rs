@@ -8,6 +8,8 @@ use axum::{
 use crate::models::storage::{
     CreatePoolRequest, CreateVolumeRequest, UpdatePoolRequest,
     UpdateVolumeRequest, ResizeVolumeRequest, FsckRequest, WipeDiskRequest, WipeMode,
+    CreateSmartScheduleRequest, RunSmartTestRequest, ToggleSmartScheduleRequest,
+    UpdateDiskPowerRequest, CreateSnapshotRequest, GrowPoolRequest,
 };
 use crate::services::storage::StorageService;
 use crate::AppState;
@@ -17,8 +19,17 @@ pub fn router() -> Router<AppState> {
         // Disks
         .route("/disks", get(list_disks))
         .route("/disks/:name/smart", get(get_disk_smart))
+        .route("/disks/:name/smart/test", post(run_smart_test))
+        .route("/disks/:name/smart/history", get(get_smart_test_history))
+        .route("/disks/:name/power", get(get_disk_power))
+        .route("/disks/:name/power", put(set_disk_power))
         .route("/disks/:name/wipe", post(wipe_disk))
         .route("/candidates", get(get_candidates))
+        // SMART schedules
+        .route("/smart/schedules", get(list_smart_schedules))
+        .route("/smart/schedules", post(create_smart_schedule))
+        .route("/smart/schedules/:id", delete(delete_smart_schedule))
+        .route("/smart/schedules/:id/toggle", post(toggle_smart_schedule))
         // Pools
         .route("/pools", get(list_pools))
         .route("/pools", post(create_pool))
@@ -27,6 +38,7 @@ pub fn router() -> Router<AppState> {
         .route("/pools/:id", delete(delete_pool))
         .route("/pools/:id/health", get(get_pool_health))
         .route("/pools/:id/scrub", post(scrub_pool))
+        .route("/pools/:id/grow", post(grow_pool))
         .route("/pools/:id/volumes", post(create_volume))
         // Volumes
         .route("/volumes", get(list_volumes))
@@ -37,6 +49,9 @@ pub fn router() -> Router<AppState> {
         .route("/volumes/:id/unmount", post(unmount_volume))
         .route("/volumes/:id/resize", post(resize_volume))
         .route("/volumes/:id/check", post(check_volume))
+        .route("/volumes/:id/snapshots", get(list_snapshots))
+        .route("/volumes/:id/snapshots", post(create_snapshot))
+        .route("/volumes/:id/snapshots/:snap_id", delete(delete_snapshot))
         // Legacy compatibility
         .route("/filesystems", get(list_filesystems))
 }
@@ -440,6 +455,243 @@ async fn check_volume(
             tracing::error!("Failed to start fsck for volume {}: {}", id, e);
             if e.to_string().contains("unmounted") {
                 (StatusCode::CONFLICT, e.to_string()).into_response()
+            } else {
+                (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+            }
+        }
+    }
+}
+
+// ============ SMART TEST ENDPOINTS ============
+
+/// Run a SMART test on a disk
+async fn run_smart_test(
+    State(state): State<AppState>,
+    Path(name): Path<String>,
+    Json(request): Json<RunSmartTestRequest>,
+) -> impl IntoResponse {
+    let service = StorageService::new(state.db.clone());
+    let status = service.smart_test_start(&name, &request.test_type);
+
+    let task_id = status.task_id.clone();
+    let device_name = name.clone();
+    let test_type = request.test_type.clone();
+    let task_tx = state.task_tx.clone();
+    let dev_mode = std::env::var("PINAS_DEV_MODE")
+        .map(|v| v.to_lowercase() == "true" || v == "1")
+        .unwrap_or(false);
+
+    tokio::spawn(async move {
+        StorageService::smart_test_execute(device_name, test_type, task_id, task_tx, dev_mode).await;
+    });
+
+    (StatusCode::OK, Json(status)).into_response()
+}
+
+/// Get SMART test history for a disk
+async fn get_smart_test_history(
+    State(state): State<AppState>,
+    Path(name): Path<String>,
+) -> impl IntoResponse {
+    let service = StorageService::new(state.db.clone());
+
+    match service.get_smart_test_history(&name).await {
+        Ok(history) => Json(history).into_response(),
+        Err(e) => {
+            tracing::error!("Failed to get SMART history for {}: {}", name, e);
+            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+        }
+    }
+}
+
+/// List all SMART test schedules
+async fn list_smart_schedules(State(state): State<AppState>) -> impl IntoResponse {
+    let service = StorageService::new(state.db.clone());
+
+    match service.list_smart_schedules().await {
+        Ok(schedules) => Json(schedules).into_response(),
+        Err(e) => {
+            tracing::error!("Failed to list SMART schedules: {}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+        }
+    }
+}
+
+/// Create a SMART test schedule
+async fn create_smart_schedule(
+    State(state): State<AppState>,
+    Json(request): Json<CreateSmartScheduleRequest>,
+) -> impl IntoResponse {
+    let service = StorageService::new(state.db.clone());
+
+    match service.create_smart_schedule(request).await {
+        Ok(id) => (StatusCode::CREATED, Json(serde_json::json!({ "id": id }))).into_response(),
+        Err(e) => {
+            tracing::error!("Failed to create SMART schedule: {}", e);
+            (StatusCode::BAD_REQUEST, e.to_string()).into_response()
+        }
+    }
+}
+
+/// Delete a SMART test schedule
+async fn delete_smart_schedule(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> impl IntoResponse {
+    let service = StorageService::new(state.db.clone());
+
+    match service.delete_smart_schedule(&id).await {
+        Ok(_) => StatusCode::NO_CONTENT.into_response(),
+        Err(e) => {
+            tracing::error!("Failed to delete SMART schedule {}: {}", id, e);
+            (StatusCode::NOT_FOUND, e.to_string()).into_response()
+        }
+    }
+}
+
+/// Toggle a SMART test schedule
+async fn toggle_smart_schedule(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(request): Json<ToggleSmartScheduleRequest>,
+) -> impl IntoResponse {
+    let service = StorageService::new(state.db.clone());
+
+    match service.toggle_smart_schedule(&id, request.enabled).await {
+        Ok(_) => StatusCode::NO_CONTENT.into_response(),
+        Err(e) => {
+            tracing::error!("Failed to toggle SMART schedule {}: {}", id, e);
+            (StatusCode::NOT_FOUND, e.to_string()).into_response()
+        }
+    }
+}
+
+// ============ DISK POWER ENDPOINTS ============
+
+/// Get disk power settings
+async fn get_disk_power(
+    State(state): State<AppState>,
+    Path(name): Path<String>,
+) -> impl IntoResponse {
+    let service = StorageService::new(state.db.clone());
+
+    match service.get_disk_power_settings(&name).await {
+        Ok(settings) => Json(settings).into_response(),
+        Err(e) => {
+            tracing::error!("Failed to get power settings for {}: {}", name, e);
+            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+        }
+    }
+}
+
+/// Set disk power settings
+async fn set_disk_power(
+    State(state): State<AppState>,
+    Path(name): Path<String>,
+    Json(request): Json<UpdateDiskPowerRequest>,
+) -> impl IntoResponse {
+    let service = StorageService::new(state.db.clone());
+
+    match service.set_disk_power_settings(&name, request).await {
+        Ok(_) => StatusCode::NO_CONTENT.into_response(),
+        Err(e) => {
+            tracing::error!("Failed to set power settings for {}: {}", name, e);
+            if e.to_string().contains("not supported") {
+                (StatusCode::BAD_REQUEST, e.to_string()).into_response()
+            } else {
+                (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+            }
+        }
+    }
+}
+
+// ============ SNAPSHOT ENDPOINTS ============
+
+/// List snapshots for a volume
+async fn list_snapshots(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> impl IntoResponse {
+    let service = StorageService::new(state.db.clone());
+
+    match service.list_snapshots(&id).await {
+        Ok(snapshots) => Json(snapshots).into_response(),
+        Err(e) => {
+            tracing::error!("Failed to list snapshots for volume {}: {}", id, e);
+            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+        }
+    }
+}
+
+/// Create a snapshot
+async fn create_snapshot(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(request): Json<CreateSnapshotRequest>,
+) -> impl IntoResponse {
+    let service = StorageService::new(state.db.clone());
+
+    match service.create_snapshot(&id, request).await {
+        Ok(snap_id) => (StatusCode::CREATED, Json(serde_json::json!({ "id": snap_id }))).into_response(),
+        Err(e) => {
+            tracing::error!("Failed to create snapshot for volume {}: {}", id, e);
+            if e.to_string().contains("btrfs") || e.to_string().contains("mounted") {
+                (StatusCode::BAD_REQUEST, e.to_string()).into_response()
+            } else {
+                (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+            }
+        }
+    }
+}
+
+/// Delete a snapshot
+async fn delete_snapshot(
+    State(state): State<AppState>,
+    Path((id, snap_id)): Path<(String, String)>,
+) -> impl IntoResponse {
+    let service = StorageService::new(state.db.clone());
+
+    match service.delete_snapshot(&id, &snap_id).await {
+        Ok(_) => StatusCode::NO_CONTENT.into_response(),
+        Err(e) => {
+            tracing::error!("Failed to delete snapshot {} for volume {}: {}", snap_id, id, e);
+            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+        }
+    }
+}
+
+// ============ POOL GROW ENDPOINTS ============
+
+/// Grow a pool by adding disks
+async fn grow_pool(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(request): Json<GrowPoolRequest>,
+) -> impl IntoResponse {
+    let service = StorageService::new(state.db.clone());
+
+    match service.grow_pool_start(&id, &request).await {
+        Ok(grow_status) => {
+            let task_id = grow_status.task_id.clone();
+            let pool_id = id.clone();
+            let db = state.db.clone();
+            let task_tx = state.task_tx.clone();
+            let new_devices = request.devices.clone();
+            let wipe_devices = request.wipe_devices;
+            let dev_mode = std::env::var("PINAS_DEV_MODE")
+                .map(|v| v.to_lowercase() == "true" || v == "1")
+                .unwrap_or(false);
+
+            tokio::spawn(async move {
+                StorageService::grow_pool_execute(db, pool_id, new_devices, wipe_devices, task_id, task_tx, dev_mode).await;
+            });
+
+            (StatusCode::OK, Json(grow_status)).into_response()
+        }
+        Err(e) => {
+            tracing::error!("Failed to start grow for pool {}: {}", id, e);
+            if e.to_string().contains("Cannot grow") || e.to_string().contains("must be") || e.to_string().contains("requires") {
+                (StatusCode::BAD_REQUEST, e.to_string()).into_response()
             } else {
                 (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
             }

@@ -85,10 +85,13 @@ pub enum RaidType {
     Raid0,
     Raid1,
     Raid5,
+    Raid6,
     Raid10,
     BtrfsSingle,
     BtrfsRaid0,
     BtrfsRaid1,
+    BtrfsRaid5,
+    BtrfsRaid6,
     BtrfsRaid10,
 }
 
@@ -100,10 +103,13 @@ impl std::fmt::Display for RaidType {
             RaidType::Raid0 => write!(f, "raid0"),
             RaidType::Raid1 => write!(f, "raid1"),
             RaidType::Raid5 => write!(f, "raid5"),
+            RaidType::Raid6 => write!(f, "raid6"),
             RaidType::Raid10 => write!(f, "raid10"),
             RaidType::BtrfsSingle => write!(f, "btrfs-single"),
             RaidType::BtrfsRaid0 => write!(f, "btrfs-raid0"),
             RaidType::BtrfsRaid1 => write!(f, "btrfs-raid1"),
+            RaidType::BtrfsRaid5 => write!(f, "btrfs-raid5"),
+            RaidType::BtrfsRaid6 => write!(f, "btrfs-raid6"),
             RaidType::BtrfsRaid10 => write!(f, "btrfs-raid10"),
         }
     }
@@ -119,10 +125,13 @@ impl std::str::FromStr for RaidType {
             "raid0" => Ok(RaidType::Raid0),
             "raid1" => Ok(RaidType::Raid1),
             "raid5" => Ok(RaidType::Raid5),
+            "raid6" => Ok(RaidType::Raid6),
             "raid10" => Ok(RaidType::Raid10),
             "btrfs-single" => Ok(RaidType::BtrfsSingle),
             "btrfs-raid0" => Ok(RaidType::BtrfsRaid0),
             "btrfs-raid1" => Ok(RaidType::BtrfsRaid1),
+            "btrfs-raid5" => Ok(RaidType::BtrfsRaid5),
+            "btrfs-raid6" => Ok(RaidType::BtrfsRaid6),
             "btrfs-raid10" => Ok(RaidType::BtrfsRaid10),
             _ => Err(format!("Unknown RAID type: {}", s)),
         }
@@ -136,6 +145,7 @@ pub enum PoolStatus {
     Normal,
     Degraded,
     Rebuilding,
+    Expanding,
     Error,
     Creating,
 }
@@ -152,6 +162,7 @@ impl std::fmt::Display for PoolStatus {
             PoolStatus::Normal => write!(f, "normal"),
             PoolStatus::Degraded => write!(f, "degraded"),
             PoolStatus::Rebuilding => write!(f, "rebuilding"),
+            PoolStatus::Expanding => write!(f, "expanding"),
             PoolStatus::Error => write!(f, "error"),
             PoolStatus::Creating => write!(f, "creating"),
         }
@@ -393,4 +404,157 @@ pub struct ScrubStatus {
     pub progress: f32,           // 0-100
     pub errors_found: u64,
     pub started_at: String,
+}
+
+// ============ SMART Scheduled Tests ============
+
+/// SMART test schedule (DB row)
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct SmartTestSchedule {
+    pub id: String,
+    pub device_path: String,
+    pub device_name: String,
+    pub test_type: String,
+    pub interval_hours: i64,
+    pub last_run: Option<String>,
+    pub next_run: String,
+    pub last_result: Option<String>,
+    pub enabled: bool,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+/// SMART test schedule (API response)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SmartTestScheduleInfo {
+    pub id: String,
+    pub device_path: String,
+    pub device_name: String,
+    pub test_type: String,
+    pub interval_hours: i64,
+    pub last_run: Option<String>,
+    pub next_run: String,
+    pub last_result: Option<SmartTestResult>,
+    pub enabled: bool,
+}
+
+/// Result of a SMART self-test
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SmartTestResult {
+    pub status: String,
+    pub errors: u64,
+    pub duration_secs: u64,
+    pub completed_at: String,
+}
+
+/// Request to create a SMART schedule
+#[derive(Debug, Clone, Deserialize)]
+pub struct CreateSmartScheduleRequest {
+    pub device_path: String,
+    pub test_type: String,
+    pub interval_hours: Option<i64>,
+}
+
+/// Request to run a SMART test on-demand
+#[derive(Debug, Clone, Deserialize)]
+pub struct RunSmartTestRequest {
+    pub test_type: String,
+}
+
+/// Status of a running SMART test
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SmartTestStatus {
+    pub task_id: String,
+    pub device_name: String,
+    pub test_type: String,
+    pub status: String,
+    pub progress: u8,
+}
+
+/// SMART self-test history entry (from smartctl -l selftest)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SmartTestHistoryEntry {
+    pub num: u32,
+    pub test_type: String,
+    pub status: String,
+    pub remaining_percent: u8,
+    pub lifetime_hours: u64,
+    pub lba_of_first_error: Option<u64>,
+}
+
+/// Toggle schedule request
+#[derive(Debug, Clone, Deserialize)]
+pub struct ToggleSmartScheduleRequest {
+    pub enabled: bool,
+}
+
+// ============ Disk Power Management ============
+
+/// Power settings for a disk (DB row + API)
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct DiskPowerSettings {
+    pub device_path: String,
+    pub device_name: String,
+    pub apm_level: Option<i32>,
+    pub spindown_minutes: Option<i32>,
+    pub write_cache: Option<bool>,
+    pub updated_at: String,
+}
+
+/// Request to update disk power settings
+#[derive(Debug, Clone, Deserialize)]
+pub struct UpdateDiskPowerRequest {
+    pub apm_level: Option<i32>,
+    pub spindown_minutes: Option<i32>,
+    pub write_cache: Option<bool>,
+}
+
+// ============ Btrfs Snapshots ============
+
+/// Btrfs snapshot (DB row)
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct BtrfsSnapshot {
+    pub id: String,
+    pub volume_id: String,
+    pub name: String,
+    pub path: String,
+    pub snapshot_type: String,
+    pub size_bytes: Option<i64>,
+    pub created_at: String,
+}
+
+/// Btrfs snapshot (API response)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BtrfsSnapshotInfo {
+    pub id: String,
+    pub volume_id: String,
+    pub name: String,
+    pub path: String,
+    pub snapshot_type: String,
+    pub size_bytes: Option<u64>,
+    pub created_at: String,
+}
+
+/// Request to create a snapshot
+#[derive(Debug, Clone, Deserialize)]
+pub struct CreateSnapshotRequest {
+    pub name: String,
+}
+
+// ============ RAID Grow/Expand ============
+
+/// Request to grow a pool by adding disks
+#[derive(Debug, Clone, Deserialize)]
+pub struct GrowPoolRequest {
+    pub devices: Vec<String>,
+    pub wipe_devices: bool,
+}
+
+/// Status of a pool grow operation
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GrowPoolStatus {
+    pub task_id: String,
+    pub pool_id: String,
+    pub status: String,
+    pub progress: f32,
 }

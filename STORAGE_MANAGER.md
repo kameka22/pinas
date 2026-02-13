@@ -27,18 +27,18 @@ PiNAS dispose d'un Storage Manager fonctionnel (pools, volumes, disques, SMART) 
 
 | # | Feature | Priorité | Effort | Migration DB ? | Statut |
 |---|---------|----------|--------|----------------|--------|
-| 1 | **RAID Health Monitoring** — /proc/mdstat + btrfs device stats | HIGH | Moyen | Non (metadata JSON) | ⬜ TODO |
-| 2 | **Pool Scrub/Check** — btrfs scrub + mdadm --check | HIGH | Moyen | Non (metadata JSON) | ⬜ TODO |
-| 3 | **Volume Resize** — grow filesystem (ext4/btrfs/xfs) | HIGH | Moyen | Non | ⬜ TODO |
-| 4 | **Mount Options** — noatime, discard, ACL, presets | MEDIUM | Faible | Non (champ existe) | ⬜ TODO |
-| 5 | **Filesystem Check (fsck)** — e2fsck, btrfs check, xfs_repair | MEDIUM | Faible | Non | ⬜ TODO |
-| 6 | **Secure Wipe** — mode quick/zeros/secure | MEDIUM | Faible | Non | ⬜ TODO |
-| 7 | **SMART Scheduled Tests** — short/long tests planifiés | MEDIUM | Moyen | Oui (nouvelle table) | ⬜ TODO |
-| 8 | **RAID Grow/Expand** — ajouter disques à un array existant | MEDIUM | Élevé | Non (devices JSON) | ⬜ TODO |
-| 9 | **Disk Power Management** — APM, spindown, write cache | MEDIUM | Moyen | Oui (nouvelle table) | ⬜ TODO |
-| 10 | **Btrfs Snapshots** — create/delete/list snapshots | MEDIUM | Élevé | Oui (nouvelle table) | ⬜ TODO |
-| 11 | **RAID 6** — double parité mdadm | LOW | Faible | Non (validation Rust) | ⬜ TODO |
-| 12 | **Storage Notifications** — alertes WS temps réel | HIGH | Faible | Non (WS existant) | ⬜ TODO |
+| 1 | **RAID Health Monitoring** — /proc/mdstat + btrfs device stats | HIGH | Moyen | Non (metadata JSON) | ✅ DONE |
+| 2 | **Pool Scrub/Check** — btrfs scrub + mdadm --check | HIGH | Moyen | Non (metadata JSON) | ✅ DONE |
+| 3 | **Volume Resize** — grow filesystem (ext4/btrfs/xfs) | HIGH | Moyen | Non | ✅ DONE |
+| 4 | **Mount Options** — noatime, discard, ACL, presets | MEDIUM | Faible | Non (champ existe) | ✅ DONE |
+| 5 | **Filesystem Check (fsck)** — e2fsck, btrfs check, xfs_repair | MEDIUM | Faible | Non | ✅ DONE |
+| 6 | **Secure Wipe** — mode quick/zeros/secure | MEDIUM | Faible | Non | ✅ DONE |
+| 7 | **SMART Scheduled Tests** — short/long tests planifiés | MEDIUM | Moyen | Oui (nouvelle table) | ✅ DONE |
+| 8 | **RAID Grow/Expand** — ajouter disques à un array existant | MEDIUM | Élevé | Non (devices JSON) | ✅ DONE |
+| 9 | **Disk Power Management** — APM, spindown, write cache | MEDIUM | Moyen | Oui (nouvelle table) | ✅ DONE |
+| 10 | **Btrfs Snapshots** — create/delete/list snapshots | MEDIUM | Élevé | Oui (nouvelle table) | ✅ DONE |
+| 11 | **RAID 6** — double parité mdadm + btrfs-raid5/6 | LOW | Faible | Non (validation Rust) | ✅ DONE |
+| 12 | **Storage Notifications** — alertes WS temps réel | HIGH | Faible | Non (WS existant) | ✅ DONE |
 
 **Hors scope** : Quota management (complexité élevée, peu utilisé en home NAS).
 
