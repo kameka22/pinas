@@ -4,8 +4,7 @@ After=network-online.target pinas.service
 Wants=network-online.target
 
 [Service]
-Type=notify
-NotifyAccess=all
+Type=simple
 ExecStart=/usr/sbin/smbd --foreground --no-process-group --configfile=/storage/.pinas/data/samba/smb.conf
 ExecReload=/bin/kill -HUP $MAINPID
 Restart=on-failure

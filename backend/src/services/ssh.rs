@@ -291,23 +291,41 @@ impl SshService {
             return Ok(());
         }
 
-        let mut child = AsyncCommand::new("chpasswd")
+        // LibreELEC doesn't have chpasswd — use openssl + sed on /etc/shadow
+        // 1. Generate SHA-512 hash via openssl (password on stdin, not in CLI args)
+        let mut hash_child = AsyncCommand::new("openssl")
+            .args(["passwd", "-6", "-stdin"])
             .stdin(std::process::Stdio::piped())
-            .stdout(std::process::Stdio::null())
+            .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .spawn()?;
 
-        if let Some(stdin) = child.stdin.as_mut() {
+        if let Some(stdin) = hash_child.stdin.as_mut() {
             use tokio::io::AsyncWriteExt;
-            let input = format!("root:{}\n", new_password);
-            stdin.write_all(input.as_bytes()).await?;
+            stdin.write_all(new_password.as_bytes()).await?;
         }
 
-        let output = child.wait_with_output().await?;
+        let hash_output = hash_child.wait_with_output().await?;
+        if !hash_output.status.success() {
+            let stderr = String::from_utf8_lossy(&hash_output.stderr);
+            anyhow::bail!("Failed to generate password hash: {}", stderr);
+        }
+        let hash = String::from_utf8_lossy(&hash_output.stdout)
+            .trim()
+            .to_string();
 
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            anyhow::bail!("Failed to change password: {}", stderr);
+        // 2. Update /etc/shadow via sed
+        // Note: $ is NOT special in sed replacement text (only in patterns),
+        // and we use | as delimiter, so the hash can be used as-is.
+        let sed_expr = format!("s|^root:[^:]*|root:{}|", hash);
+        let sed_output = AsyncCommand::new("sed")
+            .args(["-i", &sed_expr, "/etc/shadow"])
+            .output()
+            .await?;
+
+        if !sed_output.status.success() {
+            let stderr = String::from_utf8_lossy(&sed_output.stderr);
+            anyhow::bail!("Failed to update shadow file: {}", stderr);
         }
 
         tracing::info!("SSH password changed successfully");
