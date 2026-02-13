@@ -755,6 +755,16 @@ export default {
 				noPartitions: 'Aucune partition trouvée sur ce disque'
 			}
 		},
+		health: {
+			rebuilding: 'Reconstruction',
+			lastScrub: 'Dernière vérification',
+			errorsFound: 'erreurs',
+			deviceErrors: 'Erreurs de périphérique détectées',
+			today: "Aujourd'hui",
+			yesterday: 'Hier',
+			daysAgo: 'jours',
+			noScrub: 'Jamais vérifié'
+		},
 		contextMenu: {
 			createVolume: 'Créer un volume',
 			edit: 'Modifier',

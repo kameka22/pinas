@@ -1,7 +1,8 @@
 <script lang="ts">
 	import Icon from '@iconify/svelte';
 	import { onMount } from 'svelte';
-	import { api, type Disk, type StoragePool, type VolumeInfo, type DiskCandidate, type SmartInfo, type RaidType } from '$lib/stores/api';
+	import { api, type Disk, type StoragePool, type VolumeInfo, type DiskCandidate, type SmartInfo, type RaidType, type PoolHealthInfo, type ScrubStatus } from '$lib/stores/api';
+	import { taskProgress } from '$lib/stores/websocket';
 	import { t } from '$lib/i18n';
 
 	// State
@@ -76,6 +77,10 @@
 
 	// Scrubbing state
 	let scrubbingPools: Set<string> = new Set();
+
+	// Health info per pool
+	let poolHealth: Record<string, PoolHealthInfo> = {};
+	let scrubTaskIds: Record<string, string> = {}; // poolId -> taskId
 
 	// RAID type info - translations are applied in the template via getRaidTypeName/getRaidTypeDesc
 	const raidTypes: { type: RaidType; nameKey: string; minDisks: number; descKey: string }[] = [
@@ -192,11 +197,46 @@
 				}
 			});
 			expandedPools = expandedPools; // Trigger reactivity
+
+			// Load health info for each pool
+			await loadPoolsHealth();
 		} catch (e) {
 			error = e instanceof Error ? e.message : $t.storageManager.errors.loadFailed;
 		} finally {
 			loading = false;
 		}
+	}
+
+	async function loadPoolsHealth() {
+		const healthPromises = pools.map(async (pool) => {
+			try {
+				const health = await api.getPoolHealth(pool.id);
+				poolHealth[pool.id] = health;
+			} catch {
+				// Health info is optional, don't fail on it
+			}
+		});
+		await Promise.all(healthPromises);
+		poolHealth = poolHealth; // Trigger reactivity
+	}
+
+	function formatDuration(secs: number): string {
+		if (secs < 60) return `${secs}s`;
+		if (secs < 3600) return `${Math.floor(secs / 60)}m ${secs % 60}s`;
+		const h = Math.floor(secs / 3600);
+		const m = Math.floor((secs % 3600) / 60);
+		return `${h}h ${m}m`;
+	}
+
+	function formatRelativeDate(dateStr: string): string {
+		const date = new Date(dateStr);
+		const now = new Date();
+		const diffMs = now.getTime() - date.getTime();
+		const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+		if (diffDays === 0) return $t.storageManager.health?.today || 'Today';
+		if (diffDays === 1) return $t.storageManager.health?.yesterday || 'Yesterday';
+		if (diffDays < 30) return `${diffDays} ${$t.storageManager.health?.daysAgo || 'days ago'}`;
+		return date.toLocaleDateString();
 	}
 
 	// Pool operations
@@ -370,11 +410,13 @@
 		scrubbingPools.add(pool.id);
 		scrubbingPools = scrubbingPools;
 		try {
-			await api.scrubPool(pool.id);
-			await loadData();
+			const result = await api.scrubPool(pool.id);
+			scrubTaskIds[pool.id] = result.task_id;
+			scrubTaskIds = scrubTaskIds;
+			// Scrub runs in background - progress comes via WebSocket task.progress
+			// The scrubbingPools set will be cleared when task.progress shows completed/failed
 		} catch (e) {
 			error = e instanceof Error ? e.message : $t.storageManager.errors.scrubFailed;
-		} finally {
 			scrubbingPools.delete(pool.id);
 			scrubbingPools = scrubbingPools;
 		}
@@ -441,7 +483,26 @@
 	onMount(() => {
 		loadData();
 		document.addEventListener('click', handleClickOutside);
-		return () => document.removeEventListener('click', handleClickOutside);
+
+		// Subscribe to task progress to track scrub completion
+		const unsubscribe = taskProgress.subscribe((tasks) => {
+			for (const [poolId, taskId] of Object.entries(scrubTaskIds)) {
+				const progress = tasks[taskId];
+				if (progress && (progress.status === 'completed' || progress.status === 'failed')) {
+					scrubbingPools.delete(poolId);
+					scrubbingPools = scrubbingPools;
+					delete scrubTaskIds[poolId];
+					scrubTaskIds = scrubTaskIds;
+					// Reload health data after scrub completes
+					loadPoolsHealth();
+				}
+			}
+		});
+
+		return () => {
+			document.removeEventListener('click', handleClickOutside);
+			unsubscribe();
+		};
 	});
 </script>
 
@@ -567,6 +628,36 @@
 											<span class="meta-item">{pool.devices.length} {pool.devices.length > 1 ? $t.storageManager.pools.disks : $t.storageManager.pools.disk}</span>
 											<span class="meta-item">{formatBytes(pool.total_size)}</span>
 										</div>
+										{#if poolHealth[pool.id]}
+											<div class="pool-health-row">
+												{#if poolHealth[pool.id].rebuild_progress != null}
+													<span class="health-item rebuild">
+														<Icon icon="mdi:sync" class="w-3.5 h-3.5 animate-spin" />
+														{$t.storageManager.health?.rebuilding || 'Rebuilding'}: {poolHealth[pool.id].rebuild_progress?.toFixed(1)}%
+													</span>
+												{/if}
+												{#if scrubbingPools.has(pool.id)}
+													<span class="health-item scrubbing">
+														<Icon icon="mdi:broom" class="w-3.5 h-3.5 animate-spin" />
+														{$t.storageManager.contextMenu.scrubbing}
+													</span>
+												{:else if poolHealth[pool.id].last_scrub}
+													<span class="health-item scrub-info">
+														<Icon icon="mdi:check-circle-outline" class="w-3.5 h-3.5" />
+														{$t.storageManager.health?.lastScrub || 'Last scrub'}: {formatRelativeDate(poolHealth[pool.id].last_scrub?.date || '')}
+														{#if poolHealth[pool.id].last_scrub?.errors_found && poolHealth[pool.id].last_scrub.errors_found > 0}
+															<span class="scrub-errors">({poolHealth[pool.id].last_scrub?.errors_found} {$t.storageManager.health?.errorsFound || 'errors'})</span>
+														{/if}
+													</span>
+												{/if}
+												{#if poolHealth[pool.id].devices.some(d => d.errors.read_errors > 0 || d.errors.write_errors > 0 || d.errors.corruption_errors > 0)}
+													<span class="health-item errors">
+														<Icon icon="mdi:alert-circle" class="w-3.5 h-3.5" />
+														{$t.storageManager.health?.deviceErrors || 'Device errors detected'}
+													</span>
+												{/if}
+											</div>
+										{/if}
 									</div>
 									<button class="menu-btn menu-trigger" onclick={(e) => openPoolMenu(e, pool)}>
 										<Icon icon="mdi:dots-horizontal" class="w-5 h-5" />
@@ -2296,5 +2387,45 @@
 		gap: 6px;
 		font-size: 12px;
 		color: #3b82f6;
+	}
+
+	/* Pool health row */
+	.pool-health-row {
+		display: flex;
+		align-items: center;
+		gap: 16px;
+		margin-top: 6px;
+	}
+
+	.health-item {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		font-size: 12px;
+		color: #64748b;
+	}
+
+	.health-item.rebuild {
+		color: #7c3aed;
+		font-weight: 500;
+	}
+
+	.health-item.scrubbing {
+		color: #2563eb;
+		font-weight: 500;
+	}
+
+	.health-item.scrub-info {
+		color: #16a34a;
+	}
+
+	.health-item.errors {
+		color: #dc2626;
+		font-weight: 500;
+	}
+
+	.scrub-errors {
+		color: #dc2626;
+		font-weight: 500;
 	}
 </style>

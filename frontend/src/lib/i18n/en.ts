@@ -755,6 +755,16 @@ export default {
 				noPartitions: 'No partitions found on this disk'
 			}
 		},
+		health: {
+			rebuilding: 'Rebuilding',
+			lastScrub: 'Last scrub',
+			errorsFound: 'errors',
+			deviceErrors: 'Device errors detected',
+			today: 'Today',
+			yesterday: 'Yesterday',
+			daysAgo: 'days ago',
+			noScrub: 'Never scrubbed'
+		},
 		contextMenu: {
 			createVolume: 'Create volume',
 			edit: 'Edit',

@@ -3,7 +3,9 @@ use serde::Deserialize;
 use sqlx::SqlitePool;
 use std::collections::HashMap;
 use std::path::Path;
+use std::sync::Arc;
 use tokio::process::Command;
+use tokio::sync::broadcast;
 use uuid::Uuid;
 
 use crate::models::storage::*;
@@ -1363,6 +1365,502 @@ impl StorageService {
         }
 
         Ok(())
+    }
+
+    // ============ HEALTH MONITORING ============
+
+    /// Get pool health information
+    pub async fn get_pool_health(&self, pool_id: &str) -> Result<PoolHealthInfo> {
+        let pool: StoragePool = sqlx::query_as(
+            "SELECT * FROM storage_pools WHERE id = ?"
+        )
+        .bind(pool_id)
+        .fetch_one(&self.db)
+        .await
+        .context("Pool not found")?;
+
+        let devices: Vec<String> = serde_json::from_str(&pool.devices).unwrap_or_default();
+        let raid_type: RaidType = pool.raid_type.parse().unwrap_or(RaidType::Basic);
+        let metadata: serde_json::Value = pool.metadata
+            .as_deref()
+            .and_then(|m| serde_json::from_str(m).ok())
+            .unwrap_or(serde_json::json!({}));
+
+        if self.dev_mode {
+            return Ok(self.get_fake_pool_health(pool_id, &pool.status, &pool.raid_type, &devices));
+        }
+
+        // Parse health based on pool type
+        let (device_health, rebuild_progress) = match raid_type {
+            RaidType::BtrfsSingle | RaidType::BtrfsRaid0 | RaidType::BtrfsRaid1 | RaidType::BtrfsRaid10 => {
+                self.parse_btrfs_health(&devices).await
+            }
+            RaidType::Jbod | RaidType::Raid0 | RaidType::Raid1 | RaidType::Raid5 | RaidType::Raid10 => {
+                let md_device = metadata.get("md_device")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("/dev/md0");
+                self.parse_mdadm_health(md_device).await
+            }
+            _ => (devices.iter().map(|d| DeviceHealthInfo {
+                device_path: d.clone(),
+                state: "active".to_string(),
+                errors: DeviceErrorInfo { read_errors: 0, write_errors: 0, corruption_errors: 0, generation_errors: 0 },
+            }).collect(), None),
+        };
+
+        // Load last scrub from metadata
+        let last_scrub = metadata.get("last_scrub")
+            .and_then(|v| serde_json::from_value::<ScrubInfo>(v.clone()).ok());
+
+        let status = match pool.status.as_str() {
+            "normal" => PoolStatus::Normal,
+            "degraded" => PoolStatus::Degraded,
+            "rebuilding" => PoolStatus::Rebuilding,
+            "creating" => PoolStatus::Creating,
+            _ => PoolStatus::Error,
+        };
+
+        Ok(PoolHealthInfo {
+            pool_id: pool_id.to_string(),
+            status,
+            raid_type: pool.raid_type,
+            devices: device_health,
+            rebuild_progress,
+            last_scrub,
+        })
+    }
+
+    /// Fake pool health for dev mode
+    fn get_fake_pool_health(&self, pool_id: &str, status: &str, raid_type: &str, devices: &[String]) -> PoolHealthInfo {
+        PoolHealthInfo {
+            pool_id: pool_id.to_string(),
+            status: match status {
+                "normal" => PoolStatus::Normal,
+                "degraded" => PoolStatus::Degraded,
+                "rebuilding" => PoolStatus::Rebuilding,
+                _ => PoolStatus::Normal,
+            },
+            raid_type: raid_type.to_string(),
+            devices: devices.iter().map(|d| DeviceHealthInfo {
+                device_path: d.clone(),
+                state: "active".to_string(),
+                errors: DeviceErrorInfo { read_errors: 0, write_errors: 0, corruption_errors: 0, generation_errors: 0 },
+            }).collect(),
+            rebuild_progress: None,
+            last_scrub: Some(ScrubInfo {
+                date: chrono::Utc::now().checked_sub_signed(chrono::Duration::days(3))
+                    .unwrap_or(chrono::Utc::now()).to_rfc3339(),
+                duration_secs: Some(1234),
+                result: "ok".to_string(),
+                errors_found: 0,
+            }),
+        }
+    }
+
+    /// Parse btrfs device stats for health info
+    async fn parse_btrfs_health(&self, devices: &[String]) -> (Vec<DeviceHealthInfo>, Option<f32>) {
+        let mut health = Vec::new();
+
+        for device in devices {
+            let output = Command::new("btrfs")
+                .args(["device", "stats", device])
+                .output()
+                .await;
+
+            let mut errors = DeviceErrorInfo {
+                read_errors: 0, write_errors: 0,
+                corruption_errors: 0, generation_errors: 0,
+            };
+
+            if let Ok(output) = output {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                for line in stdout.lines() {
+                    let parts: Vec<&str> = line.split_whitespace().collect();
+                    if parts.len() >= 2 {
+                        let val: u64 = parts.last().and_then(|v| v.parse().ok()).unwrap_or(0);
+                        if line.contains("read_io_errs") { errors.read_errors = val; }
+                        else if line.contains("write_io_errs") { errors.write_errors = val; }
+                        else if line.contains("corruption_errs") { errors.corruption_errors = val; }
+                        else if line.contains("generation_errs") { errors.generation_errors = val; }
+                    }
+                }
+            }
+
+            let has_errors = errors.read_errors > 0 || errors.write_errors > 0
+                || errors.corruption_errors > 0 || errors.generation_errors > 0;
+
+            health.push(DeviceHealthInfo {
+                device_path: device.clone(),
+                state: if has_errors { "error".to_string() } else { "active".to_string() },
+                errors,
+            });
+        }
+
+        (health, None)
+    }
+
+    /// Parse /proc/mdstat for mdadm RAID health
+    async fn parse_mdadm_health(&self, md_device: &str) -> (Vec<DeviceHealthInfo>, Option<f32>) {
+        let md_name = md_device.trim_start_matches("/dev/");
+        let mdstat = tokio::fs::read_to_string("/proc/mdstat").await.unwrap_or_default();
+
+        let mut devices = Vec::new();
+        let mut rebuild_progress = None;
+        let mut in_section = false;
+
+        for line in mdstat.lines() {
+            if line.starts_with(md_name) {
+                in_section = true;
+                // Parse device list: md0 : active raid1 sda1[0] sdb1[1]
+                let parts: Vec<&str> = line.split_whitespace().collect();
+                for part in &parts[4..] {
+                    let dev_name = part.split('[').next().unwrap_or(part);
+                    let state = if part.contains("(F)") { "faulty" }
+                        else if part.contains("(S)") { "spare" }
+                        else { "active" };
+                    devices.push(DeviceHealthInfo {
+                        device_path: format!("/dev/{}", dev_name),
+                        state: state.to_string(),
+                        errors: DeviceErrorInfo { read_errors: 0, write_errors: 0, corruption_errors: 0, generation_errors: 0 },
+                    });
+                }
+            } else if in_section && line.contains("recovery") {
+                // Parse: [==>..................] recovery = 12.6% ...
+                if let Some(pct_str) = line.split('=').nth(1) {
+                    if let Some(pct) = pct_str.trim().split('%').next() {
+                        rebuild_progress = pct.trim().parse().ok();
+                    }
+                }
+            } else if in_section && line.trim().is_empty() {
+                in_section = false;
+            }
+        }
+
+        (devices, rebuild_progress)
+    }
+
+    // ============ HEALTH MONITOR BACKGROUND TASK ============
+
+    /// Start background health monitor (runs every 60s, broadcasts alerts on status change)
+    pub fn start_health_monitor(
+        db: SqlitePool,
+        storage_tx: broadcast::Sender<StorageAlertEvent>,
+        dev_mode: bool,
+    ) {
+        tokio::spawn(async move {
+            let mut previous_statuses: HashMap<String, String> = HashMap::new();
+            let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(60));
+
+            loop {
+                interval.tick().await;
+
+                let service = StorageService::new(db.clone());
+                let pools = match service.list_pools().await {
+                    Ok(p) => p,
+                    Err(e) => {
+                        tracing::warn!("Health monitor: failed to list pools: {}", e);
+                        continue;
+                    }
+                };
+
+                for pool in &pools {
+                    let health = match service.get_pool_health(&pool.id).await {
+                        Ok(h) => h,
+                        Err(_) => continue,
+                    };
+
+                    let new_status = health.status.to_string();
+                    let prev_status = previous_statuses.get(&pool.id).cloned()
+                        .unwrap_or_else(|| "normal".to_string());
+
+                    if new_status != prev_status {
+                        let alert_type = match new_status.as_str() {
+                            "degraded" => "degraded",
+                            "error" => "error",
+                            "normal" if prev_status == "rebuilding" => "rebuilt",
+                            _ => "status_change",
+                        };
+
+                        let alert = StorageAlertEvent {
+                            pool_id: pool.id.clone(),
+                            pool_name: pool.name.clone(),
+                            alert_type: alert_type.to_string(),
+                            previous_status: prev_status.clone(),
+                            new_status: new_status.clone(),
+                            message: format!("Pool '{}' status changed from {} to {}",
+                                pool.name, prev_status, new_status),
+                        };
+
+                        tracing::warn!("Storage alert: {}", alert.message);
+                        let _ = storage_tx.send(alert);
+
+                        // Update DB status if changed
+                        let now = chrono::Utc::now().to_rfc3339();
+                        let _ = sqlx::query("UPDATE storage_pools SET status = ?, updated_at = ? WHERE id = ?")
+                            .bind(&new_status)
+                            .bind(&now)
+                            .bind(&pool.id)
+                            .execute(&db)
+                            .await;
+                    }
+
+                    previous_statuses.insert(pool.id.clone(), new_status);
+                }
+            }
+        });
+    }
+
+    // ============ SCRUB OPERATIONS ============
+
+    /// Start a scrub operation (returns task_id immediately)
+    pub async fn scrub_pool_start(&self, pool_id: &str) -> Result<ScrubStatus> {
+        let pool: StoragePool = sqlx::query_as(
+            "SELECT * FROM storage_pools WHERE id = ?"
+        )
+        .bind(pool_id)
+        .fetch_one(&self.db)
+        .await
+        .context("Pool not found")?;
+
+        let task_id = Uuid::new_v4().to_string();
+        let now = chrono::Utc::now().to_rfc3339();
+
+        Ok(ScrubStatus {
+            task_id,
+            pool_id: pool_id.to_string(),
+            status: "running".to_string(),
+            progress: 0.0,
+            errors_found: 0,
+            started_at: now,
+        })
+    }
+
+    /// Execute scrub in background (btrfs scrub or mdadm check)
+    pub async fn scrub_pool_execute(
+        db: SqlitePool,
+        pool_id: String,
+        task_id: String,
+        task_tx: broadcast::Sender<crate::api::ws::TaskProgressEvent>,
+        dev_mode: bool,
+    ) {
+        let pool: StoragePool = match sqlx::query_as::<_, StoragePool>(
+            "SELECT * FROM storage_pools WHERE id = ?"
+        )
+        .bind(&pool_id)
+        .fetch_one(&db)
+        .await {
+            Ok(p) => p,
+            Err(e) => {
+                tracing::error!("Scrub: pool not found: {}", e);
+                return;
+            }
+        };
+
+        let raid_type: RaidType = pool.raid_type.parse().unwrap_or(RaidType::Basic);
+        let metadata: serde_json::Value = pool.metadata
+            .as_deref()
+            .and_then(|m| serde_json::from_str(m).ok())
+            .unwrap_or(serde_json::json!({}));
+        let devices: Vec<String> = serde_json::from_str(&pool.devices).unwrap_or_default();
+        let started_at = chrono::Utc::now();
+
+        // Send initial progress
+        let _ = task_tx.send(crate::api::ws::TaskProgressEvent {
+            task_id: task_id.clone(),
+            package_id: pool_id.clone(),
+            status: "running".to_string(),
+            progress: 0,
+            total_steps: 1,
+            progress_percent: 0,
+            current_step: Some("Starting scrub...".to_string()),
+            error_message: None,
+        });
+
+        if dev_mode {
+            // Simulate scrub progress
+            for pct in (0..=100).step_by(10) {
+                tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+                let _ = task_tx.send(crate::api::ws::TaskProgressEvent {
+                    task_id: task_id.clone(),
+                    package_id: pool_id.clone(),
+                    status: "running".to_string(),
+                    progress: 1,
+                    total_steps: 1,
+                    progress_percent: pct,
+                    current_step: Some(format!("Scrubbing... {}%", pct)),
+                    error_message: None,
+                });
+            }
+        } else {
+            // Real scrub
+            let result = match raid_type {
+                RaidType::BtrfsSingle | RaidType::BtrfsRaid0 | RaidType::BtrfsRaid1 | RaidType::BtrfsRaid10 => {
+                    Self::scrub_btrfs(&devices, &task_id, &pool_id, &task_tx).await
+                }
+                RaidType::Jbod | RaidType::Raid0 | RaidType::Raid1 | RaidType::Raid5 | RaidType::Raid10 => {
+                    let md_device = metadata.get("md_device")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("/dev/md0");
+                    Self::scrub_mdadm(md_device, &task_id, &pool_id, &task_tx).await
+                }
+                _ => Ok(0u64),
+            };
+
+            if let Err(e) = result {
+                let _ = task_tx.send(crate::api::ws::TaskProgressEvent {
+                    task_id: task_id.clone(),
+                    package_id: pool_id.clone(),
+                    status: "failed".to_string(),
+                    progress: 1,
+                    total_steps: 1,
+                    progress_percent: 100,
+                    current_step: None,
+                    error_message: Some(e.to_string()),
+                });
+                return;
+            }
+        }
+
+        // Save last scrub info to pool metadata
+        let duration = (chrono::Utc::now() - started_at).num_seconds().max(0) as u64;
+        let scrub_info = ScrubInfo {
+            date: started_at.to_rfc3339(),
+            duration_secs: Some(duration),
+            result: "ok".to_string(),
+            errors_found: 0,
+        };
+
+        let mut meta = metadata.clone();
+        meta["last_scrub"] = serde_json::to_value(&scrub_info).unwrap_or_default();
+
+        let now = chrono::Utc::now().to_rfc3339();
+        let _ = sqlx::query("UPDATE storage_pools SET metadata = ?, updated_at = ? WHERE id = ?")
+            .bind(meta.to_string())
+            .bind(&now)
+            .bind(&pool_id)
+            .execute(&db)
+            .await;
+
+        // Send completion
+        let _ = task_tx.send(crate::api::ws::TaskProgressEvent {
+            task_id: task_id.clone(),
+            package_id: pool_id.clone(),
+            status: "completed".to_string(),
+            progress: 1,
+            total_steps: 1,
+            progress_percent: 100,
+            current_step: Some("Scrub completed".to_string()),
+            error_message: None,
+        });
+    }
+
+    /// Run btrfs scrub and monitor progress
+    async fn scrub_btrfs(
+        devices: &[String],
+        task_id: &str,
+        pool_id: &str,
+        task_tx: &broadcast::Sender<crate::api::ws::TaskProgressEvent>,
+    ) -> Result<u64> {
+        let mount_point = devices.first().ok_or_else(|| anyhow!("No devices in pool"))?;
+
+        // Start scrub
+        let output = Command::new("btrfs")
+            .args(["scrub", "start", mount_point])
+            .output()
+            .await?;
+
+        if !output.status.success() {
+            return Err(anyhow!("Failed to start btrfs scrub: {}", String::from_utf8_lossy(&output.stderr)));
+        }
+
+        // Poll scrub status until complete
+        loop {
+            tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+
+            let status = Command::new("btrfs")
+                .args(["scrub", "status", mount_point])
+                .output()
+                .await?;
+
+            let stdout = String::from_utf8_lossy(&status.stdout);
+
+            // Check if scrub is finished
+            if stdout.contains("finished") || stdout.contains("aborted") {
+                break;
+            }
+
+            // Try to extract progress (btrfs scrub status shows bytes scrubbed)
+            let _ = task_tx.send(crate::api::ws::TaskProgressEvent {
+                task_id: task_id.to_string(),
+                package_id: pool_id.to_string(),
+                status: "running".to_string(),
+                progress: 1,
+                total_steps: 1,
+                progress_percent: 50, // btrfs doesn't give precise %
+                current_step: Some("Scrubbing filesystem...".to_string()),
+                error_message: None,
+            });
+        }
+
+        Ok(0)
+    }
+
+    /// Run mdadm check and monitor progress
+    async fn scrub_mdadm(
+        md_device: &str,
+        task_id: &str,
+        pool_id: &str,
+        task_tx: &broadcast::Sender<crate::api::ws::TaskProgressEvent>,
+    ) -> Result<u64> {
+        let md_name = md_device.trim_start_matches("/dev/");
+
+        // Trigger check via sysfs
+        let check_path = format!("/sys/block/{}/md/sync_action", md_name);
+        tokio::fs::write(&check_path, "check").await
+            .context("Failed to start mdadm check")?;
+
+        // Poll progress
+        let progress_path = format!("/sys/block/{}/md/sync_completed", md_name);
+        loop {
+            tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+
+            let action = tokio::fs::read_to_string(&check_path).await.unwrap_or_default();
+            if action.trim() == "idle" {
+                break;
+            }
+
+            // Parse progress: "123456 / 789012"
+            let completed = tokio::fs::read_to_string(&progress_path).await.unwrap_or_default();
+            let parts: Vec<&str> = completed.split('/').collect();
+            let pct = if parts.len() == 2 {
+                let current: f64 = parts[0].trim().parse().unwrap_or(0.0);
+                let total: f64 = parts[1].trim().parse().unwrap_or(1.0);
+                ((current / total) * 100.0) as i32
+            } else {
+                50
+            };
+
+            let _ = task_tx.send(crate::api::ws::TaskProgressEvent {
+                task_id: task_id.to_string(),
+                package_id: pool_id.to_string(),
+                status: "running".to_string(),
+                progress: 1,
+                total_steps: 1,
+                progress_percent: pct,
+                current_step: Some(format!("Checking RAID array... {}%", pct)),
+                error_message: None,
+            });
+        }
+
+        // Check for mismatches
+        let mismatch_path = format!("/sys/block/{}/md/mismatch_cnt", md_name);
+        let mismatches: u64 = tokio::fs::read_to_string(&mismatch_path).await
+            .unwrap_or_default()
+            .trim()
+            .parse()
+            .unwrap_or(0);
+
+        Ok(mismatches)
     }
 }
 

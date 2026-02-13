@@ -25,6 +25,7 @@ mod services;
 
 use crate::api::ws::{FileTaskEvent, TaskProgressEvent};
 use crate::config::AppConfig;
+use crate::models::storage::StorageAlertEvent;
 use crate::services::update::UpdateAppliedInfo;
 
 /// Application state shared across handlers
@@ -34,6 +35,7 @@ pub struct AppState {
     pub db: sqlx::SqlitePool,
     pub task_tx: broadcast::Sender<TaskProgressEvent>,
     pub file_task_tx: broadcast::Sender<FileTaskEvent>,
+    pub storage_tx: broadcast::Sender<StorageAlertEvent>,
     pub just_updated: Arc<Mutex<Option<UpdateAppliedInfo>>>,
     pub tls_enabled: bool,
 }
@@ -65,6 +67,9 @@ async fn main() -> anyhow::Result<()> {
     // Create broadcast channel for file task events
     let (file_task_tx, _) = broadcast::channel::<FileTaskEvent>(100);
 
+    // Create broadcast channel for storage alert events
+    let (storage_tx, _) = broadcast::channel::<StorageAlertEvent>(50);
+
     // Check if an update was just applied (flag file from previous version)
     let data_dir = std::env::var("PINAS_DATA_DIR")
         .unwrap_or_else(|_| "/storage/.pinas".to_string());
@@ -79,15 +84,25 @@ async fn main() -> anyhow::Result<()> {
 
     let tls_enabled = config.tls_enabled;
 
+    let dev_mode = std::env::var("PINAS_DEV_MODE")
+        .map(|v| v.to_lowercase() == "true" || v == "1")
+        .unwrap_or(false);
+
     // Create app state
     let state = AppState {
         config: Arc::new(config),
-        db,
+        db: db.clone(),
         task_tx,
         file_task_tx,
+        storage_tx: storage_tx.clone(),
         just_updated: Arc::new(Mutex::new(just_updated)),
         tls_enabled,
     };
+
+    // Start storage health monitor (background task every 60s)
+    services::storage::StorageService::start_health_monitor(
+        db, storage_tx, dev_mode,
+    );
 
     // Capture TLS paths before state is moved into router
     let tls_cert_path = state.config.tls_cert_path.clone();

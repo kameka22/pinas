@@ -227,8 +227,12 @@ class ApiClient {
 		return this.delete(`/storage/pools/${id}`);
 	}
 
-	async scrubPool(id: string): Promise<void> {
-		return this.post(`/storage/pools/${id}/scrub`);
+	async scrubPool(id: string): Promise<ScrubStatus> {
+		return this.post<ScrubStatus>(`/storage/pools/${id}/scrub`);
+	}
+
+	async getPoolHealth(id: string): Promise<PoolHealthInfo> {
+		return this.get<PoolHealthInfo>(`/storage/pools/${id}/health`);
 	}
 
 	// Storage endpoints - Volumes
@@ -814,6 +818,54 @@ export interface UpdatePoolRequest {
 export interface CreateVolumeRequest {
 	name: string;
 	fs_type: string;
+}
+
+// Health & Scrub types
+export interface DeviceErrorInfo {
+	read_errors: number;
+	write_errors: number;
+	corruption_errors: number;
+	generation_errors: number;
+}
+
+export interface DeviceHealthInfo {
+	device_path: string;
+	state: string;
+	errors: DeviceErrorInfo;
+}
+
+export interface ScrubInfo {
+	date: string;
+	duration_secs: number | null;
+	result: string;
+	errors_found: number;
+}
+
+export interface PoolHealthInfo {
+	pool_id: string;
+	status: PoolStatus;
+	raid_type: string;
+	devices: DeviceHealthInfo[];
+	rebuild_progress: number | null;
+	last_scrub: ScrubInfo | null;
+}
+
+export interface ScrubStatus {
+	task_id: string;
+	pool_id: string;
+	status: string;
+	progress: number;
+	errors_found: number;
+	started_at: string;
+}
+
+export interface StorageAlertEvent {
+	pool_id: string;
+	pool_name: string;
+	alert_type: string;
+	previous_status: string;
+	new_status: string;
+	message: string;
 }
 
 // Process types

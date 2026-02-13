@@ -14,6 +14,7 @@ use tokio::sync::broadcast;
 use tokio::time::interval;
 
 use crate::api::cookies;
+use crate::models::storage::StorageAlertEvent;
 use crate::services::auth::validate_jwt;
 use crate::AppState;
 
@@ -34,6 +35,8 @@ pub enum WsEvent {
     TaskProgress(TaskProgressEvent),
     #[serde(rename = "file.task")]
     FileTask(FileTaskEvent),
+    #[serde(rename = "storage.alert")]
+    StorageAlert(StorageAlertEvent),
 }
 
 #[derive(Debug, Serialize)]
@@ -101,7 +104,8 @@ pub async fn ws_handler(
 
     let task_rx = state.task_tx.subscribe();
     let file_task_rx = state.file_task_tx.subscribe();
-    ws.on_upgrade(move |socket| handle_socket(socket, task_rx, file_task_rx))
+    let storage_rx = state.storage_tx.subscribe();
+    ws.on_upgrade(move |socket| handle_socket(socket, task_rx, file_task_rx, storage_rx))
         .into_response()
 }
 
@@ -110,6 +114,7 @@ async fn handle_socket(
     socket: WebSocket,
     mut task_rx: broadcast::Receiver<TaskProgressEvent>,
     mut file_task_rx: broadcast::Receiver<FileTaskEvent>,
+    mut storage_rx: broadcast::Receiver<StorageAlertEvent>,
 ) {
     let (mut sender, mut receiver) = socket.split();
 
@@ -168,6 +173,23 @@ async fn handle_socket(
                         }
                         Err(broadcast::error::RecvError::Lagged(n)) => {
                             tracing::warn!("WebSocket file task receiver lagged by {} messages", n);
+                        }
+                        Err(broadcast::error::RecvError::Closed) => {
+                            break;
+                        }
+                    }
+                }
+                result = storage_rx.recv() => {
+                    match result {
+                        Ok(alert) => {
+                            let event = WsEvent::StorageAlert(alert);
+                            let msg = serde_json::to_string(&event).unwrap();
+                            if sender.send(Message::Text(msg)).await.is_err() {
+                                break;
+                            }
+                        }
+                        Err(broadcast::error::RecvError::Lagged(n)) => {
+                            tracing::warn!("WebSocket storage alert receiver lagged by {} messages", n);
                         }
                         Err(broadcast::error::RecvError::Closed) => {
                             break;

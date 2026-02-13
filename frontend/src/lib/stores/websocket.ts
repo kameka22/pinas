@@ -181,6 +181,11 @@ export function connectWebSocket(): () => void {
 					});
 				}
 				break;
+			case 'storage.alert':
+				if (data.data) {
+					console.warn('[WS] Storage alert:', data.data.message, data.data.alert_type);
+				}
+				break;
 			case 'notification':
 				console.log('[WS] Notification:', data.message || data.data?.message);
 				break;

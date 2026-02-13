@@ -24,6 +24,7 @@ pub fn router() -> Router<AppState> {
         .route("/pools/:id", get(get_pool))
         .route("/pools/:id", put(update_pool))
         .route("/pools/:id", delete(delete_pool))
+        .route("/pools/:id/health", get(get_pool_health))
         .route("/pools/:id/scrub", post(scrub_pool))
         .route("/pools/:id/volumes", post(create_volume))
         // Volumes
@@ -189,14 +190,51 @@ async fn delete_pool(
     }
 }
 
-/// Start a scrub operation on a pool (RAID verification)
-async fn scrub_pool(
-    State(_state): State<AppState>,
+/// Get health information for a pool
+async fn get_pool_health(
+    State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> impl IntoResponse {
-    // TODO: Implement scrub for btrfs/mdadm
-    tracing::info!("Scrub requested for pool {}", id);
-    (StatusCode::NOT_IMPLEMENTED, "Scrub not yet implemented").into_response()
+    let service = StorageService::new(state.db.clone());
+
+    match service.get_pool_health(&id).await {
+        Ok(health) => Json(health).into_response(),
+        Err(e) => {
+            tracing::error!("Failed to get pool health {}: {}", id, e);
+            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+        }
+    }
+}
+
+/// Start a scrub operation on a pool (RAID verification)
+async fn scrub_pool(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> impl IntoResponse {
+    let service = StorageService::new(state.db.clone());
+
+    match service.scrub_pool_start(&id).await {
+        Ok(scrub_status) => {
+            let task_id = scrub_status.task_id.clone();
+            let pool_id = id.clone();
+            let db = state.db.clone();
+            let task_tx = state.task_tx.clone();
+            let dev_mode = std::env::var("PINAS_DEV_MODE")
+                .map(|v| v.to_lowercase() == "true" || v == "1")
+                .unwrap_or(false);
+
+            // Execute scrub in background
+            tokio::spawn(async move {
+                StorageService::scrub_pool_execute(db, pool_id, task_id, task_tx, dev_mode).await;
+            });
+
+            (StatusCode::OK, Json(scrub_status)).into_response()
+        }
+        Err(e) => {
+            tracing::error!("Failed to start scrub for pool {}: {}", id, e);
+            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+        }
+    }
 }
 
 // ============ VOLUME ENDPOINTS ============

@@ -273,3 +273,64 @@ pub struct DiskCandidate {
     pub disk_type: DiskType,
     pub is_empty: bool,        // No partitions or all partitions unmounted
 }
+
+// ============ Health Monitoring ============
+
+/// Santé d'un pool (RAID health)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PoolHealthInfo {
+    pub pool_id: String,
+    pub status: PoolStatus,
+    pub raid_type: String,
+    pub devices: Vec<DeviceHealthInfo>,
+    pub rebuild_progress: Option<f32>,    // 0-100 if rebuilding
+    pub last_scrub: Option<ScrubInfo>,
+}
+
+/// Santé d'un device dans un pool
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeviceHealthInfo {
+    pub device_path: String,
+    pub state: String,          // "active", "spare", "faulty", "removed"
+    pub errors: DeviceErrorInfo,
+}
+
+/// Erreurs d'un device
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeviceErrorInfo {
+    pub read_errors: u64,
+    pub write_errors: u64,
+    pub corruption_errors: u64,
+    pub generation_errors: u64,
+}
+
+/// Alerte stockage envoyée via WebSocket
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StorageAlertEvent {
+    pub pool_id: String,
+    pub pool_name: String,
+    pub alert_type: String,     // "degraded", "error", "rebuilt", "scrub_error"
+    pub previous_status: String,
+    pub new_status: String,
+    pub message: String,
+}
+
+/// Informations sur le dernier scrub
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScrubInfo {
+    pub date: String,
+    pub duration_secs: Option<u64>,
+    pub result: String,          // "ok", "errors_found", "cancelled"
+    pub errors_found: u64,
+}
+
+/// Statut d'un scrub en cours
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScrubStatus {
+    pub task_id: String,
+    pub pool_id: String,
+    pub status: String,          // "running", "completed", "error"
+    pub progress: f32,           // 0-100
+    pub errors_found: u64,
+    pub started_at: String,
+}
