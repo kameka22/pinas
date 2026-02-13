@@ -205,12 +205,17 @@ ls -la /storage/.pinas/
 | Variable | Défaut | Description |
 |----------|--------|-------------|
 | `PINAS_BIND_ADDRESS` | `0.0.0.0:3000` | Adresse d'écoute |
-| `PINAS_DATABASE_URL` | `sqlite:./data/pinas.db` | Chemin base de données |
-| `PINAS_FILES_ROOT` | `./data/files` | Racine du gestionnaire de fichiers |
-| `PINAS_STATIC_DIR` | _(none)_ | Dossier des fichiers frontend |
+| `PINAS_DB_PATH` | `/storage/.pinas/pinas.db` | Chemin base de données SQLite |
+| `PINAS_CONFIG_PATH` | `/storage/.pinas/config.toml` | Fichier de configuration |
+| `PINAS_LOG_PATH` | `/storage/.pinas/logs` | Dossier des logs |
 | `PINAS_LOG_LEVEL` | `info` | Niveau de log |
+| `PINAS_JWT_SECRET` | _(auto-généré)_ | Secret JWT (généré au premier boot) |
+| `PINAS_SHARES_ROOT` | `/storage/shares` | Racine des partages |
+| `PINAS_WWW_PATH` | `/storage/.pinas/www` | Dossier des fichiers frontend |
+| `PINAS_PACKAGES_DIR` | `/storage/.pinas/packages` | Dossier des packages |
+| `PINAS_DATA_DIR` | `/storage/.pinas/data` | Dossier des données |
+| `PINAS_HOMES_ROOT` | `/storage/homes` | Dossier des homes utilisateurs |
+| `PINAS_HOME_ON_DELETE` | `archive` | Action à la suppression user (archive/delete/keep) |
+| `PINAS_DEV_MODE` | `false` | Mode dev (simule les opérations) |
 
-Sur LibreELEC, les valeurs sont configurées dans `/usr/lib/systemd/system/pinas.service` :
-- `PINAS_FILES_ROOT=/storage/.pinas/files`
-- `PINAS_DATABASE_URL=sqlite:/storage/.pinas/data/pinas.db?mode=rwc`
-- `PINAS_STATIC_DIR=/storage/.pinas/www`
+Sur LibreELEC, les valeurs sont configurées dans `/usr/lib/systemd/system/pinas.service`.

@@ -1,0 +1,15 @@
+[package]
+name = "pinas-installer"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+eframe = { version = "0.31", default-features = false, features = ["glow", "default_fonts"] }
+flate2 = "1"
+plist = "1"
+bytesize = "2"
+
+[profile.release]
+strip = true
+opt-level = "s"
+lto = true

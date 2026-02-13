@@ -38,11 +38,11 @@ PiNAS est un système d'exploitation NAS moderne, inspiré de Synology DSM, con�
 │   │   ├── models/           # Structs DB
 │   │   ├── config/           # Configuration
 │   │   └── db/               # Pool SQLite
-│   └── migrations/           # Migrations SQLite (001-004)
+│   └── migrations/           # Migrations SQLite (001-010)
 ├── frontend/                 # UI SvelteKit (voir frontend/CLAUDE.md)
 │   └── src/lib/
 │       ├── components/       # desktop/, apps/, ui/, auth/, modals/, onboarding/
-│       ├── stores/           # api, desktop, windows, websocket, system, update, onboarding
+│       ├── stores/           # api, desktop, windows, websocket, system, update, onboarding, power, taskManager
 │       └── i18n/             # en, fr
 ├── libreelec/                # Package LibreELEC (voir libreelec/CLAUDE.md)
 │   └── packages/pinas/      # package.mk, bin/, system.d/, tmpfiles.d/

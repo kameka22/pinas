@@ -119,12 +119,13 @@
 - [x] RAID 0, 1, 5, 10
 - [x] Btrfs RAID (single, raid0, raid1, raid10 natif)
 
-### 2.3 Share Service
-- [ ] `GET /api/shares` - Liste des partages
-- [ ] `POST /api/shares` - Créer partage
-- [ ] `GET /api/shares/:id` - Détails partage
-- [ ] `PUT /api/shares/:id` - Modifier partage
-- [ ] `DELETE /api/shares/:id` - Supprimer partage
+### 2.3 Share Service ✅
+- [x] `GET /api/shares` - Liste des partages
+- [x] `POST /api/shares` - Créer partage
+- [x] `PUT /api/shares/:id` - Modifier partage
+- [x] `DELETE /api/shares/:id` - Supprimer partage
+- [x] Génération dynamique smb.conf depuis la base de données
+- [x] Reload Samba après modification
 
 ### 2.4 User Service ✅
 - [x] `GET /api/users` - Liste utilisateurs
@@ -395,7 +396,7 @@
 - [x] Interface avec onglets (SMB, NFS, FTP)
 - [x] Intégration dans Control Panel (section "File Service")
 - [x] i18n complet (EN/FR)
-- [ ] Onglet SMB (placeholder)
+- [x] Onglet SMB (fonctionnel - configuration partages, enable/disable)
 - [ ] Onglet NFS (placeholder)
 - [ ] Onglet FTP (placeholder)
 
@@ -508,8 +509,8 @@
 - [x] Portainer manifest (Docker + IframeApp)
 - [x] Plex manifest (Docker + WebviewApp)
 - [x] Pi-hole manifest (Docker + IframeApp)
-- [x] Samba manifest (Binaire + ServiceApp)
-- [x] 25 apps converties depuis Umbrel (Nextcloud, Jellyfin, Home Assistant, etc.)
+- [x] ~~Samba manifest~~ (retiré du catalogue, SMB géré nativement par le backend)
+- [x] 25 apps converties depuis Umbrel (Nextcloud, Jellyfin, Home Assistant, etc.) - 27 total dans catalogue
 
 ### 8.4 Script Conversion Umbrel ✅ NOUVEAU
 - [x] `scripts/convert-umbrel.py` - Convertit apps Umbrel → manifests PiNAS
@@ -569,7 +570,7 @@
 
 ### App Catalog (GitHub)
 - **Repository** : `kameka22/pinas-app-catalog`
-- **Apps disponibles** : 28 apps (Docker, Portainer, Samba + 25 apps converties depuis Umbrel)
+- **Apps disponibles** : 27 apps (Docker, Portainer + 25 apps converties depuis Umbrel)
 - **Catégories** : containers, media, network, utilities
 - **Format** : Manifest JSON avec frontend config + i18n
 - **Compose** : Support multi-container (Nextcloud, PhotoPrism, Paperless-ngx)
@@ -599,12 +600,21 @@
 - [x] **Network Settings**
   - [x] Backend: Service Network (connman, interfaces, DNS, hostname)
   - [x] Frontend: NetworkSettings.svelte dans Control Panel
+- [x] **Audit de sécurité complet**
+  - [x] Tous les problèmes critiques et hauts corrigés (JWT, CORS, tar slip, HTTPS, etc.)
+  - [x] Voir SECURITY_AUDIT.md pour détails
+- [x] **Display App (Kodi configuration)**
+  - [x] DisplayApp.svelte pour gérer les paramètres d'affichage/Kodi
+  - [x] Ajoutée dans la catégorie Services de l'AppLauncher
+- [x] **Docker restart policy fix**
+  - [x] Tous les containers utilisent `unless-stopped` (au lieu de `on-failure`)
+  - [x] Survie au reboot garantie pour toutes les apps Docker
 - [x] **Docker Compose & Umbrel Apps**
   - [x] ComposeUp/ComposeDown steps dans package.rs
   - [x] ContainerConfig étendu (cap_add, user, command, tmpfs, etc.)
   - [x] Fix network_mode dans create_container()
   - [x] Script convert-umbrel.py + batch conversion
-  - [x] 25 apps converties depuis Umbrel (28 total dans le catalogue)
+  - [x] 25 apps converties depuis Umbrel (27 total dans le catalogue)
 - [x] **Onboarding étendu à 7 étapes**
 - [x] **Installation packages en background** (tokio::spawn + WebSocket progress)
 - [x] **Storage Manager complet** (pools, RAID, volumes, S.M.A.R.T.)
@@ -619,7 +629,7 @@
 ### Moyen terme
 - [ ] Connexion complète UI ↔ Backend pour toutes les apps
 - [x] Gestion utilisateurs fonctionnelle
-- [ ] Partages SMB via interface
+- [x] Partages SMB via interface
 - [x] Storage Manager connecté au backend
 - [x] File Manager avec locations dynamiques
 - [ ] Volume resize
@@ -636,5 +646,5 @@
 
 ---
 
-*Dernière mise à jour : 10 Février 2026*
+*Dernière mise à jour : 12 Février 2026*
 *Cible OS : LibreELEC 12.x (package intégré à l'image)*

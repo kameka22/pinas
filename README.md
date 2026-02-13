@@ -15,7 +15,7 @@ PiNAS transforms your Raspberry Pi into a full-featured NAS with a modern web in
 - **Storage management** — Pools (RAID 0/1/5/10, JBOD, Btrfs), volumes, S.M.A.R.T. monitoring
 - **Share management** — SMB/Samba shares configuration
 - **User & group management** — Multi-user with RBAC permissions per folder
-- **App Center** — Install 28+ apps from catalog (Docker-based)
+- **App Center** — Install 27 apps from catalog (Docker-based)
 - **Docker Compose** — Multi-container apps (Nextcloud, PhotoPrism, etc.)
 - **Network configuration** — Interfaces, DNS, hostname (connman)
 - **SSH management** — Enable/disable, password change
@@ -106,7 +106,7 @@ Access at `http://localhost:5173`
 ```
 ├── backend/              # Rust API server (Axum)
 ├── frontend/             # SvelteKit web interface
-├── app-catalog/          # App catalog (28 apps)
+├── app-catalog/          # App catalog (27 apps)
 │   ├── catalog.json
 │   └── apps/
 ├── libreelec/            # LibreELEC packages
@@ -125,13 +125,13 @@ Access at `http://localhost:5173`
 
 ## App Catalog
 
-28 apps available across 4 categories:
+27 apps available across 4 categories:
 
 | Category | Apps |
 |----------|------|
 | **Containers** | Docker, Portainer |
 | **Media** | Plex, Jellyfin, Emby, Sonarr, Radarr, Lidarr, qBittorrent, Transmission, SABnzbd, PhotoPrism |
-| **Network** | Samba, Pi-hole, AdGuard Home, WireGuard, Nginx Proxy Manager |
+| **Network** | Pi-hole, AdGuard Home, WireGuard, Nginx Proxy Manager |
 | **Utilities** | Nextcloud, Home Assistant, Syncthing, Vaultwarden, Grafana, Uptime Kuma, File Browser, Code Server, Node-RED, Paperless-ngx, Duplicati |
 
 Apps are installed via the App Center UI. Single-container apps use Docker pull/create/start steps. Multi-container apps (Nextcloud, PhotoPrism, etc.) use Docker Compose.
@@ -160,6 +160,10 @@ See [app-catalog/README.md](app-catalog/README.md) for details.
 | SSH | `/api/ssh/status`, `/enable`, `/disable`, `/password` |
 | CUPS | `/api/cups/status`, `/printers`, `/detect`, `/jobs` |
 | Terminal | `/api/terminal/exec` |
+| Display | `/api/display/settings` |
+| Kodi | `/api/kodi/settings`, `/restart` |
+| Update | `/api/update/check`, `/install`, `/progress/:id` |
+| Preferences | `/api/preferences` (CRUD) |
 | WebSocket | `/api/ws` (real-time events) |
 
 ## Roadmap
@@ -171,7 +175,7 @@ See [app-catalog/README.md](app-catalog/README.md) for details.
 - [x] User & group management with RBAC permissions
 - [x] Storage Manager (pools, volumes, RAID, S.M.A.R.T.)
 - [x] File Manager with dynamic locations (home, shares, volumes)
-- [x] App Center with 28 Docker apps
+- [x] App Center with 27 Docker apps
 - [x] Docker Compose support (multi-container apps)
 - [x] Network configuration (interfaces, DNS, hostname)
 - [x] SSH management (enable/disable, password)
@@ -182,10 +186,13 @@ See [app-catalog/README.md](app-catalog/README.md) for details.
 - [x] i18n (English + French)
 - [x] LibreELEC package + ARM64 build pipeline
 - [x] Umbrel app conversion script (Python)
+- [x] SMB/Samba share configuration (backend API + frontend UI)
+- [x] Display/Kodi configuration app
+- [x] Security audit (all critical/high issues fixed)
 
 ### In Progress
 
-- [ ] SMB/NFS/FTP share configuration UI (placeholders exist)
+- [ ] NFS/FTP share configuration UI (placeholders exist)
 - [ ] Real-time Storage Manager updates via WebSocket
 - [ ] Upload files in File Manager
 - [ ] Drag & drop in File Manager
