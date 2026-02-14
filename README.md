@@ -245,12 +245,38 @@ See [app-catalog/README.md](app-catalog/README.md) for details.
 
 ### Planned
 
-- [ ] NFS support
+**Services & Sharing:**
+- [ ] NFS shares (export configuration, client restrictions)
+- [ ] FTP/SFTP server (ProFTPD, TLS, user restrictions)
+
+**System Management:**
+- [ ] Email notifications (SMTP relay, S.M.A.R.T. alerts, disk space alerts)
+- [ ] Scheduled tasks / cron jobs (reboot, shutdown, scripts)
+- [ ] Power management (CPU frequency scaling, Wake-on-LAN, scheduled shutdown)
+- [ ] SSL/TLS certificates (Let's Encrypt, CSR generation)
+- [ ] Firewall (iptables/nftables, IPv4/IPv6, port forwarding)
+- [ ] Disk quotas (per user/group, soft/hard limits)
+
+**Backup & Sync:**
+- [ ] Rsync backup (scheduled jobs, push/pull, SSH transport)
+- [ ] USB backup (auto-sync on plug, udev detection)
+- [ ] Cloud sync (rclone — OneDrive, Google Drive, S3)
+
+**Monitoring:**
+- [ ] RRD graphs (CPU/RAM/disk/network history over 1h/1d/1w/1m)
+- [ ] UPS support (Network UPS Tools, auto-shutdown on low battery)
+- [ ] SNMP agent (external monitoring)
+- [ ] Remote syslog (forward logs to external server)
+
+**Advanced Storage:**
 - [ ] Volume resize
-- [ ] Cloud sync (rclone)
-- [ ] Backup/Restore system
-- [ ] CI/CD (GitHub Actions)
+- [ ] LVM (Logical Volume Management)
+- [ ] Bcache SSD caching
+- [ ] S3/MinIO (object storage)
+
+**UI & Infra:**
 - [ ] Dark theme
+- [ ] CI/CD (GitHub Actions)
 
 ## License
 

@@ -312,7 +312,8 @@ create_disk_image() {
 }
 
 # Check and install system dependencies if missing
-if ! command -v gperf >/dev/null 2>&1 || ! command -v musl-gcc >/dev/null 2>&1; then
+if ! command -v gperf >/dev/null 2>&1 || ! command -v musl-gcc >/dev/null 2>&1 \
+   || ! command -v qemu-img >/dev/null 2>&1 || ! command -v parted >/dev/null 2>&1; then
     install_system_deps
 fi
 
