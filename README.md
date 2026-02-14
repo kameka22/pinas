@@ -37,7 +37,7 @@ PiNAS transforms your Raspberry Pi into a full-featured NAS with a modern web in
 | Database | SQLite |
 | Style | TailwindCSS v4 |
 | Icons | Iconify (MDI) |
-| Target | Raspberry Pi 5 (ARM64) |
+| Target | Raspberry Pi 5 (ARM64), ARM64 VM, x86_64 VM |
 
 ## Requirements
 
@@ -75,30 +75,72 @@ npm run dev
 
 Access at `http://localhost:5173`
 
-### Build (x86 dev image)
+### Build Scripts
+
+All build scripts run on a Linux VM (native ARM64 or x86_64). They share common options:
 
 ```bash
-./scripts/build-x86.sh
+--backend-only      # Only build the Rust backend
+--frontend-only     # Only build the SvelteKit frontend
+--skip-libreelec    # Skip LibreELEC image generation
+--clean             # Clean build directories first
 ```
 
-### Build (ARM64 production)
+| Script | Target | Output |
+|--------|--------|--------|
+| `build-arm64.sh` | Raspberry Pi 5 | `.img.gz` (flash to SD) |
+| `build-arm64-vm.sh` | ARM64 VM (QEMU, UTM, Proxmox) | `.qcow2` + `KERNEL` |
+| `build-x86.sh` | x86_64 VM/PC | `.img.gz` (+ `--vmdk` option) |
 
 ```bash
-# Full build (backend + frontend + LibreELEC image)
+# ARM64 RPi5
 ./scripts/build-arm64.sh
 
-# Options
-./scripts/build-arm64.sh --skip-libreelec   # Skip image generation
-./scripts/build-arm64.sh --frontend-only     # Frontend only
-./scripts/build-arm64.sh --backend-only      # Backend only
-./scripts/build-arm64.sh --clean             # Clean build
+# ARM64 VM (QCOW2 for QEMU/UTM)
+./scripts/build-arm64-vm.sh
+./scripts/build-arm64-vm.sh --raw    # Raw .img instead of QCOW2
+
+# x86_64
+./scripts/build-x86.sh
+./scripts/build-x86.sh --vmdk       # With VMDK conversion
 ```
+
+### Remote Build (recommended)
+
+Build on a remote Linux VM via SSH — the script handles sync, build, and copies artifacts back:
+
+```bash
+./scripts/remote-build.sh                       # ARM64 RPi5 (default)
+./scripts/remote-build.sh --arch arm64-vm       # ARM64 VM (QCOW2)
+./scripts/remote-build.sh --arch x86            # x86_64
+./scripts/remote-build.sh --arch x86 --vmdk     # x86_64 + VMDK
+./scripts/remote-build.sh --new                 # Reconfigure VM connection
+```
+
+On first run, it asks for the VM's IP and username, then saves the config in `.vm-config`. All build options (`--skip-libreelec`, `--backend-only`, etc.) are forwarded to the underlying build script.
+
+### Run ARM64 VM
+
+```bash
+# With QEMU (direct kernel boot)
+./scripts/run-vm-qemu.sh
+
+# Or manually
+qemu-system-aarch64 -machine virt -cpu cortex-a72 -smp 2 -m 2048 \
+  -kernel target/pinas-arm64-vm-*-KERNEL \
+  -append "boot=LABEL=LIBREELEC disk=LABEL=STORAGE quiet console=ttyAMA0,115200" \
+  -drive file=target/pinas-arm64-vm-*.qcow2,format=qcow2,if=virtio \
+  -netdev user,id=net0,hostfwd=tcp::3000-:3000,hostfwd=tcp::2222-:22 \
+  -device virtio-net-pci,netdev=net0 -nographic
+```
+
+For **UTM (macOS Apple Silicon)**: New VM > Virtualize > Linux, set Kernel to `KERNEL` file, boot args `boot=LABEL=LIBREELEC disk=LABEL=STORAGE quiet console=ttyAMA0,115200`, import `.qcow2` as VirtIO drive, port forward 3000.
 
 ### Deploy to Pi
 
 ```bash
-./scripts/deploy-pi.sh <pi-ip>               # Deploy via SSH
-./scripts/remote-build.sh <vm-ip>            # Build on remote ARM64 VM
+./scripts/deploy-pi.sh          # Hot deploy backend/frontend via SSH
+./scripts/connect-pi.sh         # Discover Pi on LAN and SSH into it
 ```
 
 ## Project Structure
@@ -109,17 +151,21 @@ Access at `http://localhost:5173`
 ├── app-catalog/          # App catalog (27 apps)
 │   ├── catalog.json
 │   └── apps/
-├── libreelec/            # LibreELEC packages
-│   └── packages/
-│       ├── pinas/        # Main PiNAS package
-│       └── cups/         # Printer sharing (CUPS)
+├── libreelec/            # LibreELEC integration
+│   ├── packages/
+│   │   ├── pinas/        # Main PiNAS package
+│   │   └── cups/         # Printer sharing (CUPS)
+│   └── projects/
+│       └── Virtual/      # ARM64 VM project (kernel config, options)
 ├── scripts/              # Build & deploy scripts
-│   ├── build-arm64.sh
-│   ├── build-x86.sh
-│   ├── build-libreelec-image.sh
-│   ├── deploy-pi.sh
-│   ├── remote-build.sh
-│   └── convert-umbrel.py
+│   ├── build-arm64.sh         # RPi5 build
+│   ├── build-arm64-vm.sh      # ARM64 VM build (QCOW2)
+│   ├── build-x86.sh           # x86_64 build
+│   ├── remote-build.sh        # Remote build via SSH
+│   ├── run-vm-qemu.sh         # Launch ARM64 VM
+│   ├── deploy-pi.sh           # Hot deploy to Pi
+│   ├── connect-pi.sh          # SSH to Pi (auto-discover)
+│   └── convert-umbrel.py      # Umbrel app converter
 └── docker/               # Dev environment
 ```
 

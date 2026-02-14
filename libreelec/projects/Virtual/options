@@ -1,0 +1,41 @@
+# SPDX-License-Identifier: GPL-2.0
+# PiNAS Virtual ARM64 project - for QEMU/UTM/Proxmox VMs
+# Uses mainline kernel with virtio drivers
+
+# Architecture
+case $TARGET_ARCH in
+  aarch64)
+    TARGET_CPU="cortex-a53"
+    TARGET_CPU_FLAGS="+crc+crypto"
+    ;;
+esac
+
+# Boot
+BOOTLOADER="u-boot"
+KERNEL_TARGET="Image"
+LINUX="default"
+EXTRA_CMDLINE="console=ttyAMA0,115200 console=tty0"
+
+# Build
+SQUASHFS_COMPRESSION="zstd"
+
+# Graphics (minimal for VM)
+OPENGL="no"
+OPENGLES="mesa"
+VULKAN="no"
+DISPLAYSERVER="no"
+WINDOWMANAGER="no"
+GRAPHIC_DRIVERS="virtio"
+KODIPLAYER_DRIVER="mesa"
+
+# No hardware firmware needed
+FIRMWARE=""
+ADDITIONAL_DRIVERS=""
+INSTALLER_SUPPORT="no"
+ADDON_PROJECT="ARMv8"
+DEBUG_TTY="/dev/ttyAMA0"
+
+# System size minimum 1GB (like Generic)
+if [ ${SYSTEM_SIZE} -lt 1024 ]; then
+  SYSTEM_SIZE=1024
+fi

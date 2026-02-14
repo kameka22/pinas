@@ -34,7 +34,7 @@ usage() {
     echo "Usage: $0 [OPTIONS]"
     echo ""
     echo "Options:"
-    echo "  --arch <arch>        Target architecture: arm64 (default) or x86"
+    echo "  --arch <arch>        Target architecture: arm64 (default), arm64-vm, or x86"
     echo "  --new                Reset VM configuration (re-enter IP, user)"
     echo "  --backend-only       Only build the Rust backend"
     echo "  --frontend-only      Only build the SvelteKit frontend"
@@ -44,15 +44,17 @@ usage() {
     echo "  -h, --help           Show this help message"
     echo ""
     echo "Architectures:"
-    echo "  arm64    Raspberry Pi 5 (aarch64) - default"
-    echo "  x86      Generic x86_64 (VM, Synology NAS, PC)"
+    echo "  arm64      Raspberry Pi 5 (aarch64) - default"
+    echo "  arm64-vm   ARM64 VM (QEMU, UTM, Proxmox)"
+    echo "  x86        Generic x86_64 (VM, Synology NAS, PC)"
     echo ""
     echo "Examples:"
-    echo "  $0                       # Full ARM64 build (default)"
-    echo "  $0 --arch x86            # Full x86_64 build"
-    echo "  $0 --arch x86 --vmdk     # x86 build with VMDK conversion"
-    echo "  $0 --arch x86 --new      # x86 build with VM reconfiguration"
-    echo "  $0 --skip-libreelec      # Build PiNAS only (no LibreELEC image)"
+    echo "  $0                           # Full ARM64 build (default)"
+    echo "  $0 --arch arm64-vm         # Full ARM64 VM build (QCOW2)"
+    echo "  $0 --arch x86              # Full x86_64 build"
+    echo "  $0 --arch x86 --vmdk       # x86 build with VMDK conversion"
+    echo "  $0 --arch x86 --new        # x86 build with VM reconfiguration"
+    echo "  $0 --skip-libreelec        # Build PiNAS only (no LibreELEC image)"
     exit 0
 }
 
@@ -67,11 +69,14 @@ while [[ $# -gt 0 ]]; do
                 arm64|aarch64)
                     BUILD_ARCH="arm64"
                     ;;
+                arm64-vm|arm64vm|aarch64-vm)
+                    BUILD_ARCH="arm64-vm"
+                    ;;
                 x86|x86_64|x64)
                     BUILD_ARCH="x86"
                     ;;
                 *)
-                    echo -e "${RED}Error: Unknown architecture '$2'. Use 'arm64' or 'x86'${NC}"
+                    echo -e "${RED}Error: Unknown architecture '$2'. Use 'arm64', 'arm64-vm', or 'x86'${NC}"
                     exit 1
                     ;;
             esac
@@ -100,6 +105,10 @@ if [ "$BUILD_ARCH" = "arm64" ]; then
     BUILD_SCRIPT="build-arm64.sh"
     IMAGE_PATTERN="LibreELEC-RPi*.aarch64-*.img.gz"
     ARCH_DISPLAY="ARM64 (Raspberry Pi 5)"
+elif [ "$BUILD_ARCH" = "arm64-vm" ]; then
+    BUILD_SCRIPT="build-arm64-vm.sh"
+    IMAGE_PATTERN="pinas-arm64-vm-*.qcow2"
+    ARCH_DISPLAY="ARM64 VM (QEMU/UTM/Proxmox)"
 else
     BUILD_SCRIPT="build-x86.sh"
     IMAGE_PATTERN="LibreELEC-Generic.x86_64-*.img.gz"
@@ -264,7 +273,11 @@ fi
 # Remote paths
 REMOTE_PROJECT_DIR="/home/$VM_USER/pinas"
 REMOTE_SCRIPTS_DIR="$REMOTE_PROJECT_DIR/scripts"
-REMOTE_TARGET_DIR="$REMOTE_PROJECT_DIR/extra/LibreELEC.tv/target"
+if [ "$BUILD_ARCH" = "arm64-vm" ]; then
+    REMOTE_TARGET_DIR="$REMOTE_PROJECT_DIR/target"
+else
+    REMOTE_TARGET_DIR="$REMOTE_PROJECT_DIR/extra/LibreELEC.tv/target"
+fi
 
 echo ""
 echo -e "${CYAN}>>> Cleaning local target directory...${NC}"
@@ -324,6 +337,12 @@ echo -e "${CYAN}>>> Checking for built images...${NC}"
 # Step 5: Find and copy the image (using architecture-specific pattern)
 IMAGE_NAME=$(run_remote "ls -1 $REMOTE_TARGET_DIR/$IMAGE_PATTERN 2>/dev/null | head -1 | xargs -r basename" 2>/dev/null || echo "")
 
+# For arm64-vm, also grab the KERNEL file
+KERNEL_NAME=""
+if [ "$BUILD_ARCH" = "arm64-vm" ]; then
+    KERNEL_NAME=$(run_remote "ls -1 $REMOTE_TARGET_DIR/*-KERNEL 2>/dev/null | head -1 | xargs -r basename" 2>/dev/null || echo "")
+fi
+
 # Also check for VMDK file if --vmdk was used
 VMDK_NAME=$(run_remote "ls -1 $REMOTE_TARGET_DIR/*.vmdk 2>/dev/null | head -1 | xargs -r basename" 2>/dev/null || echo "")
 
@@ -352,6 +371,17 @@ if [ -n "$VMDK_NAME" ]; then
         echo -n "    Cleaning up remote VMDK... "
         run_remote "rm -f $REMOTE_TARGET_DIR/$VMDK_NAME"
         echo -e "${GREEN}done${NC}"
+    fi
+fi
+
+# Copy KERNEL file for arm64-vm (needed for direct kernel boot)
+if [ -n "$KERNEL_NAME" ]; then
+    echo -e "${GREEN}Found kernel: $KERNEL_NAME${NC}"
+    echo -e "${CYAN}>>> Copying kernel to local machine...${NC}"
+    copy_from_remote "$REMOTE_TARGET_DIR/$KERNEL_NAME" "$TARGET_DIR/$KERNEL_NAME"
+    if [ -f "$TARGET_DIR/$KERNEL_NAME" ]; then
+        echo -e "    ${GREEN}✓${NC} Kernel copied"
+        run_remote "rm -f $REMOTE_TARGET_DIR/$KERNEL_NAME"
     fi
 fi
 
@@ -406,6 +436,16 @@ echo ""
 if [ "$BUILD_ARCH" = "arm64" ]; then
     echo "To flash to SD card (Raspberry Pi):"
     echo -e "  ${YELLOW}gunzip -c $FINAL_IMAGE | sudo dd of=/dev/sdX bs=4M status=progress conv=fsync${NC}"
+elif [ "$BUILD_ARCH" = "arm64-vm" ]; then
+    echo "To run with QEMU:"
+    echo -e "  ${YELLOW}./scripts/run-vm-qemu.sh${NC}"
+    echo ""
+    echo "For UTM (macOS Apple Silicon):"
+    echo "  1. New VM > Virtualize > Linux"
+    echo "  2. Kernel: $TARGET_DIR/$KERNEL_NAME"
+    echo "  3. Boot args: boot=LABEL=LIBREELEC disk=LABEL=STORAGE quiet console=ttyAMA0,115200"
+    echo "  4. Drive: import $FINAL_IMAGE, interface VirtIO"
+    echo "  5. Network: Shared Network, port forward 3000>3000"
 elif [ "$IS_VMDK" = true ]; then
     echo -e "${GREEN}VMDK file ready to use with VMware or Synology VMM${NC}"
     echo ""
