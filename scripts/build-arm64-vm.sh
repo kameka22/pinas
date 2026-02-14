@@ -534,15 +534,15 @@ echo ">>> Generating VM kernel config from RPi5 base..."
 cp -r "${PROJECT_ROOT}/libreelec/projects/Virtual" "${LIBREELEC_DIR}/projects/"
 
 # Force kernel rebuild to pick up new config
-# Must delete the entire kernel build + stamps, otherwise LibreELEC skips it
+# Must delete kernel build + install + image staging + ALL stamps
 echo ">>> Cleaning previous kernel build to pick up new config..."
-rm -rf "${LIBREELEC_DIR}/build.LibreELEC-Virtual.aarch64-"*/build/linux-*
-rm -rf "${LIBREELEC_DIR}/build.LibreELEC-Virtual.aarch64-"*/install_pkg/linux-*
-rm -rf "${LIBREELEC_DIR}/build.LibreELEC-Virtual.aarch64-"*/.stamps/build/build/linux-*
-rm -rf "${LIBREELEC_DIR}/build.LibreELEC-Virtual.aarch64-"*/.stamps/install_pkg/linux-*
-# Also clean target kernel/system so they get regenerated
-rm -f "${LIBREELEC_DIR}/target/LibreELEC-Virtual.aarch64-"*.kernel
-rm -f "${LIBREELEC_DIR}/target/LibreELEC-Virtual.aarch64-"*.system
+BUILD_PREFIX="${LIBREELEC_DIR}/build.LibreELEC-Virtual.aarch64-"
+rm -rf ${BUILD_PREFIX}*/build/linux-*
+rm -rf ${BUILD_PREFIX}*/install_pkg/linux-*
+rm -rf ${BUILD_PREFIX}*/image/
+rm -rf ${BUILD_PREFIX}*/.stamps/
+# Also clean target artifacts so they get regenerated
+rm -f "${LIBREELEC_DIR}/target/LibreELEC-Virtual.aarch64-"*
 
 # 6. Build LibreELEC (without make image — we create the disk image ourselves)
 CURRENT_STEP=$((CURRENT_STEP + 1))
