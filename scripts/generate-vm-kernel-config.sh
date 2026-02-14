@@ -34,46 +34,45 @@ if [ ! -f "$SOURCE_CONFIG" ]; then
     exit 1
 fi
 
-# Use scripts/config from LibreELEC kernel source if available, otherwise use sed
-SCRIPTS_CONFIG=""
-KERNEL_SRC=$(find "${LIBREELEC_DIR}/build.LibreELEC-"*/linux-* -maxdepth 0 -type d 2>/dev/null | head -1)
-if [ -n "$KERNEL_SRC" ] && [ -f "${KERNEL_SRC}/scripts/config" ]; then
-    SCRIPTS_CONFIG="${KERNEL_SRC}/scripts/config"
-    echo "Using kernel scripts/config from: ${SCRIPTS_CONFIG}"
-fi
-
-# Helper functions for config manipulation
-enable_config() {
+# Config manipulation: replace in-place if line exists, otherwise append after
+# a related option. This avoids appending at EOF where make olddefconfig ignores them.
+set_config_y() {
     local opt="$1"
-    if [ -n "$SCRIPTS_CONFIG" ]; then
-        "$SCRIPTS_CONFIG" --file "$TARGET_CONFIG" --enable "$opt"
+    local config_line="CONFIG_${opt}=y"
+    local not_set_line="# CONFIG_${opt} is not set"
+
+    # If "# CONFIG_X is not set" exists, replace it in-place
+    if grep -q "^${not_set_line}$" "$TARGET_CONFIG"; then
+        sed -i "s|^${not_set_line}$|${config_line}|" "$TARGET_CONFIG"
+    # If "CONFIG_X=" already exists, replace the value
+    elif grep -q "^CONFIG_${opt}=" "$TARGET_CONFIG"; then
+        sed -i "s|^CONFIG_${opt}=.*|${config_line}|" "$TARGET_CONFIG"
     else
-        # Remove any existing line for this option
-        sed -i "/^CONFIG_${opt}[ =]/d" "$TARGET_CONFIG"
-        sed -i "/^# CONFIG_${opt} is not set/d" "$TARGET_CONFIG"
-        echo "CONFIG_${opt}=y" >> "$TARGET_CONFIG"
+        # Option doesn't exist at all — append at end
+        echo "${config_line}" >> "$TARGET_CONFIG"
     fi
 }
 
-module_config() {
+set_config_m() {
     local opt="$1"
-    if [ -n "$SCRIPTS_CONFIG" ]; then
-        "$SCRIPTS_CONFIG" --file "$TARGET_CONFIG" --module "$opt"
+    local config_line="CONFIG_${opt}=m"
+    local not_set_line="# CONFIG_${opt} is not set"
+
+    if grep -q "^${not_set_line}$" "$TARGET_CONFIG"; then
+        sed -i "s|^${not_set_line}$|${config_line}|" "$TARGET_CONFIG"
+    elif grep -q "^CONFIG_${opt}=" "$TARGET_CONFIG"; then
+        sed -i "s|^CONFIG_${opt}=.*|${config_line}|" "$TARGET_CONFIG"
     else
-        sed -i "/^CONFIG_${opt}[ =]/d" "$TARGET_CONFIG"
-        sed -i "/^# CONFIG_${opt} is not set/d" "$TARGET_CONFIG"
-        echo "CONFIG_${opt}=m" >> "$TARGET_CONFIG"
+        echo "${config_line}" >> "$TARGET_CONFIG"
     fi
 }
 
-disable_config() {
+set_config_off() {
     local opt="$1"
-    if [ -n "$SCRIPTS_CONFIG" ]; then
-        "$SCRIPTS_CONFIG" --file "$TARGET_CONFIG" --disable "$opt"
-    else
-        sed -i "/^CONFIG_${opt}[ =]/d" "$TARGET_CONFIG"
-        sed -i "/^# CONFIG_${opt} is not set/d" "$TARGET_CONFIG"
-        echo "# CONFIG_${opt} is not set" >> "$TARGET_CONFIG"
+    local not_set_line="# CONFIG_${opt} is not set"
+
+    if grep -q "^CONFIG_${opt}=" "$TARGET_CONFIG"; then
+        sed -i "s|^CONFIG_${opt}=.*|${not_set_line}|" "$TARGET_CONFIG"
     fi
 }
 
@@ -89,28 +88,38 @@ echo -e "${GREEN}✓${NC} Copied RPi5 config as base"
 
 # 2. Enable QEMU virt platform
 echo ">>> Enabling QEMU virt platform..."
-enable_config ARCH_VEXPRESS
+set_config_y ARCH_VEXPRESS
 echo -e "${GREEN}✓${NC} ARCH_VEXPRESS enabled"
 
-# 3. Enable virtio drivers
+# 3. Enable virtio drivers (transport + devices + GPU)
 echo ">>> Enabling virtio drivers..."
-for opt in VIRTIO VIRTIO_PCI VIRTIO_BLK VIRTIO_NET VIRTIO_CONSOLE \
-           VIRTIO_MMIO VIRTIO_INPUT VIRTIO_BALLOON SCSI_VIRTIO \
-           DRM_VIRTIO_GPU; do
-    enable_config "$opt"
-done
-module_config HW_RANDOM_VIRTIO
-module_config VIRTIO_FS
+# Transport layer (CRITICAL — without these, QEMU virt devices are invisible)
+set_config_y VIRTIO
+set_config_y VIRTIO_PCI
+set_config_y VIRTIO_PCI_LIB
+set_config_y VIRTIO_PCI_LEGACY
+set_config_y VIRTIO_MMIO
+# Device drivers
+set_config_y VIRTIO_BLK
+set_config_y VIRTIO_NET
+set_config_y VIRTIO_CONSOLE
+set_config_y VIRTIO_BALLOON
+set_config_y VIRTIO_INPUT
+set_config_y SCSI_VIRTIO
+set_config_m HW_RANDOM_VIRTIO
+set_config_m VIRTIO_FS
+# GPU
+set_config_y DRM_VIRTIO_GPU
 echo -e "${GREEN}✓${NC} Virtio drivers enabled"
 
 # 4. Enable RAID support (disabled in RPi5 config)
 echo ">>> Enabling RAID support..."
-for opt in BLK_DEV_MD MD_AUTODETECT; do
-    enable_config "$opt"
-done
-for opt in MD_RAID0 MD_RAID1 MD_RAID10 MD_RAID456; do
-    module_config "$opt"
-done
+set_config_y BLK_DEV_MD
+set_config_y MD_AUTODETECT
+set_config_m MD_RAID0
+set_config_m MD_RAID1
+set_config_m MD_RAID10
+set_config_m MD_RAID456
 echo -e "${GREEN}✓${NC} RAID support enabled"
 
 # 5. Disable RPi/SoC-specific drivers (not needed in VM)
@@ -119,9 +128,30 @@ for opt in ARCH_BCM ARCH_BCM2835 ARCH_BRCMSTB \
            BCM2835_WDT BCM2835_THERMAL BCM2711_THERMAL \
            SERIAL_8250_BCM2835AUX BCM2835_VCHIQ \
            SND_BCM2835_SOC_I2S DRM_VC4; do
-    disable_config "$opt"
+    set_config_off "$opt"
 done
 echo -e "${GREEN}✓${NC} RPi-specific drivers disabled"
+
+# 6. Verify critical options are set
+echo ""
+echo ">>> Verifying critical options..."
+MISSING=0
+for opt in VIRTIO VIRTIO_PCI VIRTIO_BLK VIRTIO_NET DRM_VIRTIO_GPU PCI SERIAL_AMBA_PL011 ARM_GIC; do
+    if grep -q "^CONFIG_${opt}=y" "$TARGET_CONFIG"; then
+        echo -e "    ${GREEN}✓${NC} CONFIG_${opt}=y"
+    elif grep -q "^CONFIG_${opt}=m" "$TARGET_CONFIG"; then
+        echo -e "    ${GREEN}✓${NC} CONFIG_${opt}=m"
+    else
+        echo -e "    ${RED}✗${NC} CONFIG_${opt} MISSING"
+        MISSING=$((MISSING + 1))
+    fi
+done
+
+if [ $MISSING -gt 0 ]; then
+    echo -e "${RED}Warning: $MISSING critical option(s) missing!${NC}"
+else
+    echo -e "${GREEN}All critical options verified${NC}"
+fi
 
 echo ""
 echo "=== Kernel Config Generated ==="

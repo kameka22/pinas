@@ -526,14 +526,17 @@ else
     echo -e "    ${GREEN}✓${NC} Added PiNAS to mediacenter dependencies"
 fi
 
-# Generate kernel config if missing
-if [ ! -f "${PROJECT_ROOT}/libreelec/projects/Virtual/linux/linux.aarch64.conf" ]; then
-    echo ""
-    echo ">>> Generating VM kernel config from RPi5 base..."
-    "${SCRIPT_DIR}/generate-vm-kernel-config.sh"
-    # Re-inject the updated Virtual project
-    cp -r "${PROJECT_ROOT}/libreelec/projects/Virtual" "${LIBREELEC_DIR}/projects/"
-fi
+# Always regenerate kernel config to ensure virtio options are correct
+echo ""
+echo ">>> Generating VM kernel config from RPi5 base..."
+"${SCRIPT_DIR}/generate-vm-kernel-config.sh"
+# Re-inject the updated Virtual project
+cp -r "${PROJECT_ROOT}/libreelec/projects/Virtual" "${LIBREELEC_DIR}/projects/"
+
+# Force kernel rebuild to pick up new config
+echo ">>> Cleaning previous kernel build to pick up new config..."
+rm -rf "${LIBREELEC_DIR}/build.LibreELEC-Virtual.aarch64-"*/build/linux-*/.config
+rm -rf "${LIBREELEC_DIR}/build.LibreELEC-Virtual.aarch64-"*/build/linux-*/.config.old
 
 # 6. Build LibreELEC (without make image — we create the disk image ourselves)
 CURRENT_STEP=$((CURRENT_STEP + 1))
