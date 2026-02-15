@@ -538,7 +538,9 @@ echo ">>> Cleaning previous kernel build to pick up new config..."
 BUILD_PREFIX="${LIBREELEC_DIR}/build.LibreELEC-Virtual.aarch64-"
 rm -rf ${BUILD_PREFIX}*/build/linux-*
 rm -rf ${BUILD_PREFIX}*/install_pkg/linux-*
+rm -rf ${BUILD_PREFIX}*/image/
 find ${BUILD_PREFIX}*/.stamps/ -name "*linux*" -delete 2>/dev/null || true
+find ${BUILD_PREFIX}*/.stamps/ -name "*image*" -delete 2>/dev/null || true
 rm -f "${LIBREELEC_DIR}/target/LibreELEC-Virtual.aarch64-"*
 
 # 6. Build LibreELEC (without make image — we create the disk image ourselves)
