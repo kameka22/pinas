@@ -533,20 +533,12 @@ echo ">>> Generating VM kernel config from RPi5 base..."
 # Re-inject the updated Virtual project
 cp -r "${PROJECT_ROOT}/libreelec/projects/Virtual" "${LIBREELEC_DIR}/projects/"
 
-# Force kernel rebuild to pick up new config
+# Force kernel rebuild to pick up new config (surgical — only kernel, not other packages)
 echo ">>> Cleaning previous kernel build to pick up new config..."
 BUILD_PREFIX="${LIBREELEC_DIR}/build.LibreELEC-Virtual.aarch64-"
-# Delete kernel build + install
 rm -rf ${BUILD_PREFIX}*/build/linux-*
 rm -rf ${BUILD_PREFIX}*/install_pkg/linux-*
-# Delete kernel-related stamps only (not all stamps to avoid parallel rebuild issues)
-find ${BUILD_PREFIX}*/.stamps/ -name "linux-*" -exec rm -rf {} + 2>/dev/null || true
-find ${BUILD_PREFIX}*/.stamps/ -name "linux:*" -exec rm -rf {} + 2>/dev/null || true
-# Delete image staging (must be rebuilt with new kernel modules)
-rm -rf ${BUILD_PREFIX}*/image/
-# Delete image stamp to force image recreation
-find ${BUILD_PREFIX}*/.stamps/ -name "image" -exec rm -rf {} + 2>/dev/null || true
-# Clean target artifacts
+find ${BUILD_PREFIX}*/.stamps/ -name "*linux*" -delete 2>/dev/null || true
 rm -f "${LIBREELEC_DIR}/target/LibreELEC-Virtual.aarch64-"*
 
 # 6. Build LibreELEC (without make image — we create the disk image ourselves)
