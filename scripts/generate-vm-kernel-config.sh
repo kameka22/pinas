@@ -91,8 +91,17 @@ echo ">>> Enabling QEMU virt platform..."
 set_config_y ARCH_VEXPRESS
 echo -e "${GREEN}✓${NC} ARCH_VEXPRESS enabled"
 
-# 3. Enable virtio drivers (transport + devices + GPU)
+# 3. Enable PCI host controller for QEMU virt machine
+# RPi5 uses Broadcom PCIE_BRCMSTB, QEMU virt uses generic ECAM PCI host
+echo ">>> Enabling generic PCI host controller..."
+set_config_y PCI_HOST_COMMON
+set_config_y PCI_HOST_GENERIC
+echo -e "${GREEN}✓${NC} PCI_HOST_GENERIC enabled"
+
+# 4. Enable virtio drivers (transport + devices + GPU)
 echo ">>> Enabling virtio drivers..."
+# Parent menuconfig — gates ALL virtio options below. Without this, make olddefconfig drops them.
+set_config_y VIRTIO_MENU
 # Transport layer (CRITICAL — without these, QEMU virt devices are invisible)
 set_config_y VIRTIO
 set_config_y VIRTIO_PCI
@@ -112,7 +121,7 @@ set_config_m VIRTIO_FS
 set_config_y DRM_VIRTIO_GPU
 echo -e "${GREEN}✓${NC} Virtio drivers enabled"
 
-# 4. Enable RAID support (disabled in RPi5 config)
+# 5. Enable RAID support (disabled in RPi5 config)
 echo ">>> Enabling RAID support..."
 set_config_y BLK_DEV_MD
 set_config_y MD_AUTODETECT
@@ -122,7 +131,7 @@ set_config_m MD_RAID10
 set_config_m MD_RAID456
 echo -e "${GREEN}✓${NC} RAID support enabled"
 
-# 5. Disable RPi/SoC-specific drivers (not needed in VM)
+# 6. Disable RPi/SoC-specific drivers (not needed in VM)
 echo ">>> Disabling RPi-specific drivers..."
 for opt in ARCH_BCM ARCH_BCM2835 ARCH_BRCMSTB \
            BCM2835_WDT BCM2835_THERMAL BCM2711_THERMAL \
@@ -132,11 +141,11 @@ for opt in ARCH_BCM ARCH_BCM2835 ARCH_BRCMSTB \
 done
 echo -e "${GREEN}✓${NC} RPi-specific drivers disabled"
 
-# 6. Verify critical options are set
+# 7. Verify critical options are set
 echo ""
 echo ">>> Verifying critical options..."
 MISSING=0
-for opt in VIRTIO VIRTIO_PCI VIRTIO_BLK VIRTIO_NET DRM_VIRTIO_GPU PCI SERIAL_AMBA_PL011 ARM_GIC; do
+for opt in PCI_HOST_GENERIC VIRTIO VIRTIO_PCI VIRTIO_BLK VIRTIO_NET VIRTIO_MMIO DRM_VIRTIO_GPU PCI SERIAL_AMBA_PL011 ARM_GIC; do
     if grep -q "^CONFIG_${opt}=y" "$TARGET_CONFIG"; then
         echo -e "    ${GREEN}✓${NC} CONFIG_${opt}=y"
     elif grep -q "^CONFIG_${opt}=m" "$TARGET_CONFIG"; then
