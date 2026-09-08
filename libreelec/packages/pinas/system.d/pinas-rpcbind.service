@@ -1,0 +1,13 @@
+[Unit]
+Description=PiNAS RPC port mapper (for NFS)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/bin/sh -c 'exec "$(command -v rpcbind)" -f -w'
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

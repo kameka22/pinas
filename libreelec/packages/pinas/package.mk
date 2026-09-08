@@ -6,7 +6,7 @@ PKG_VERSION="0.10.0"
 PKG_LICENSE="GPL-3.0"
 PKG_SITE="https://github.com/kameka22/pinas"
 PKG_URL=""
-PKG_DEPENDS_TARGET="toolchain cups"
+PKG_DEPENDS_TARGET="toolchain cups pinas-nfs-server"
 PKG_LONGDESC="PiNAS - Modern NAS management interface for Raspberry Pi"
 PKG_TOOLCHAIN="manual"
 
@@ -63,6 +63,9 @@ makeinstall_target() {
   cp ${PKG_DIR}/system.d/pinas-kodi-config.service ${INSTALL}/usr/lib/systemd/system/
   cp ${PKG_DIR}/system.d/pinas-smbd.service ${INSTALL}/usr/lib/systemd/system/
   cp ${PKG_DIR}/system.d/pinas-nmbd.service ${INSTALL}/usr/lib/systemd/system/
+  # NFS (enabled on demand from the UI, see pinas-nfs-server package for the daemons)
+  cp ${PKG_DIR}/system.d/pinas-rpcbind.service ${INSTALL}/usr/lib/systemd/system/
+  cp ${PKG_DIR}/system.d/pinas-nfs-server.service ${INSTALL}/usr/lib/systemd/system/
 
   # Activer le service pinas au démarrage
   mkdir -p ${INSTALL}/usr/lib/systemd/system/default.target.wants

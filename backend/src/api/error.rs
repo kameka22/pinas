@@ -165,6 +165,7 @@ impl From<ShareError> for ApiError {
             ShareError::DuplicateName => (StatusCode::CONFLICT, "DUPLICATE_NAME"),
             ShareError::DatabaseError(_) => (StatusCode::INTERNAL_SERVER_ERROR, "DATABASE_ERROR"),
             ShareError::SystemError(_) => (StatusCode::INTERNAL_SERVER_ERROR, "SYSTEM_ERROR"),
+            ShareError::InvalidConfig(_) => (StatusCode::BAD_REQUEST, "INVALID_SHARE_CONFIG"),
         };
         ApiError::new(status, code, err.to_string())
     }

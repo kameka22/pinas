@@ -247,8 +247,6 @@ export default {
 		serviceAccess: {
 			title: 'Service Access',
 			smb: 'SMB (Windows)',
-			nfs: 'NFS (Linux)',
-			ftp: 'FTP',
 			noAccess: 'No access'
 		},
 		permissions: {
@@ -1351,10 +1349,21 @@ export default {
 			globalConfig: 'Global Configuration'
 		},
 		nfs: {
-			description: 'Network File System for Unix/Linux'
-		},
-		ftp: {
-			description: 'File Transfer Protocol'
+			description: 'Network File System for Linux, macOS and media players',
+			exports: 'Exports',
+			exportsCount: '{n} active exports',
+			addExport: 'Add export',
+			exportCreated: 'Export created',
+			noExports: 'No NFS export yet',
+			name: 'Name',
+			path: 'Folder',
+			clients: 'Allowed clients',
+			clientsHint: 'IP, CIDR range or hostname, separated by spaces. * allows everyone on the LAN.',
+			readOnly: 'Read only',
+			sync: 'Synchronous writes (safer)',
+			squash: 'Root mapping',
+			notAvailable: 'The NFS server (nfsd) is not part of this image. Rebuild the image with the pinas-nfs-server package.',
+			mountHint: 'Mount from a client:'
 		},
 		cups: {
 			title: 'Printer Sharing',

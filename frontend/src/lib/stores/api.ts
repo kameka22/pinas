@@ -397,6 +397,18 @@ class ApiClient {
 		return this.post<ShareInfo>(`/shares/${id}/toggle`, { enabled });
 	}
 
+	async getNfsStatus(): Promise<NfsStatus> {
+		return this.get<NfsStatus>('/shares/nfs/status');
+	}
+
+	async enableNfs(): Promise<NfsStatus> {
+		return this.post<NfsStatus>('/shares/nfs/enable');
+	}
+
+	async disableNfs(): Promise<NfsStatus> {
+		return this.post<NfsStatus>('/shares/nfs/disable');
+	}
+
 	async getSambaStatus(): Promise<SambaStatus> {
 		return this.get<SambaStatus>('/shares/samba/status');
 	}
@@ -1232,23 +1244,40 @@ export interface ShareInfo {
 	enabled: boolean;
 	description?: string;
 	config: SmbShareConfig;
+	/** Present for NFS exports */
+	nfs?: NfsShareConfig;
 	permissions: PermissionEntry[];
 	created_at: string;
 	updated_at: string;
 }
 
+export interface NfsShareConfig {
+	clients: string[];
+	read_only: boolean;
+	sync: boolean;
+	squash: 'root_squash' | 'no_root_squash' | 'all_squash' | string;
+	subtree_check: boolean;
+}
+
+export interface NfsStatus {
+	enabled: boolean;
+	running: boolean;
+	export_count: number;
+	nfsd_available: boolean;
+}
+
 export interface CreateShareRequest {
 	name: string;
 	path: string;
-	share_type?: string;
+	share_type?: 'smb' | 'nfs' | string;
 	description?: string;
-	config?: Partial<SmbShareConfig>;
+	config?: Partial<SmbShareConfig> | Partial<NfsShareConfig>;
 }
 
 export interface UpdateShareRequest {
 	name?: string;
 	description?: string | null;
-	config?: Partial<SmbShareConfig>;
+	config?: Partial<SmbShareConfig> | Partial<NfsShareConfig>;
 }
 
 export interface SambaStatus {

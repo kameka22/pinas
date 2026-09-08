@@ -13,7 +13,7 @@ PiNAS transforms your Raspberry Pi into a full-featured NAS with a modern web in
 - **Desktop-like web interface** — Windows, dock, topbar, and widgets
 - **File management** — Browse, upload, download, rename, create folders across locations
 - **Storage management** — Pools (RAID 0/1/5/10, JBOD, Btrfs), volumes, S.M.A.R.T. monitoring
-- **Share management** — SMB/Samba shares configuration
+- **Share management** — SMB/Samba shares and NFS exports (per-client access, ro/rw, root squash)
 - **User & group management** — Multi-user with RBAC permissions per folder
 - **App Center** — Install 27 apps from catalog (Docker-based)
 - **Docker Compose** — Multi-container apps (Nextcloud, PhotoPrism, etc.)
@@ -238,7 +238,6 @@ See [app-catalog/README.md](app-catalog/README.md) for details.
 
 ### In Progress
 
-- [ ] NFS/FTP share configuration UI (placeholders exist)
 - [ ] Real-time Storage Manager updates via WebSocket
 - [ ] Upload files in File Manager
 - [ ] Drag & drop in File Manager
@@ -246,8 +245,8 @@ See [app-catalog/README.md](app-catalog/README.md) for details.
 ### Planned
 
 **Services & Sharing:**
-- [ ] NFS shares (export configuration, client restrictions)
-- [ ] FTP/SFTP server (ProFTPD, TLS, user restrictions)
+- [x] NFS shares (export configuration, client restrictions)
+- [ ] ~~FTP/SFTP server~~ — dropped: LibreELEC has a single Unix account; SFTP is available for root over SSH
 
 **System Management:**
 - [ ] Email notifications (SMTP relay, S.M.A.R.T. alerts, disk space alerts)

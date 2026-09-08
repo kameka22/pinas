@@ -124,6 +124,10 @@ jobs:
       - name: Install PiNAS package
         run: |
           cp -r libreelec/packages/pinas LibreELEC.tv/packages/
+          cp -r libreelec/packages/cups LibreELEC.tv/packages/
+          rm -rf LibreELEC.tv/packages/addons/addon-depends/chrome-depends/cups
+          cp -r libreelec/packages/pinas-nfs-server LibreELEC.tv/packages/
+          scripts/lib/apply-kernel-config.sh LibreELEC.tv/projects/RPi/devices/RPi5/linux/linux.aarch64.conf
           echo 'PKG_DEPENDS_TARGET="$PKG_DEPENDS_TARGET pinas"' >> \
             LibreELEC.tv/packages/virtual/mediacenter/package.mk
 

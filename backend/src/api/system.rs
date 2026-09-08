@@ -193,12 +193,13 @@ async fn get_services(State(state): State<AppState>) -> impl IntoResponse {
         });
     }
 
-    // NFS and SSH remain simple checks for now
-    services.push(ServiceStatus {
-        name: "nfs".to_string(),
-        status: "stopped".to_string(),
-        enabled: false,
-    });
+    if let Ok(nfs) = share_svc.get_nfs_status().await {
+        services.push(ServiceStatus {
+            name: "nfs".to_string(),
+            status: if nfs.running { "running".to_string() } else { "stopped".to_string() },
+            enabled: nfs.enabled,
+        });
+    }
     services.push(ServiceStatus {
         name: "ssh".to_string(),
         status: "running".to_string(),

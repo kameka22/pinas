@@ -228,7 +228,7 @@
 		return serviceAccess.find(sa => sa.user_id === userId);
 	}
 
-	async function toggleServiceAccess(userId: string, service: 'smb' | 'nfs' | 'ftp', enabled: boolean) {
+	async function toggleServiceAccess(userId: string, service: 'smb', enabled: boolean) {
 		try {
 			const result = await api.updateUserServiceAccess(userId, { [service]: enabled });
 			// Update local state
@@ -654,22 +654,6 @@
 												on:change={(e) => toggleServiceAccess(user.id, 'smb', e.currentTarget.checked)}
 											/>
 											<span class="service-label">SMB</span>
-										</label>
-										<label class="service-toggle" title={$t.userManager.serviceAccess.nfs}>
-											<input
-												type="checkbox"
-												checked={getUserServiceAccess(user.id)?.nfs || false}
-												on:change={(e) => toggleServiceAccess(user.id, 'nfs', e.currentTarget.checked)}
-											/>
-											<span class="service-label">NFS</span>
-										</label>
-										<label class="service-toggle" title={$t.userManager.serviceAccess.ftp}>
-											<input
-												type="checkbox"
-												checked={getUserServiceAccess(user.id)?.ftp || false}
-												on:change={(e) => toggleServiceAccess(user.id, 'ftp', e.currentTarget.checked)}
-											/>
-											<span class="service-label">FTP</span>
 										</label>
 									</div>
 								</td>

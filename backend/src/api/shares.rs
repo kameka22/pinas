@@ -8,7 +8,7 @@ use axum::{
 use serde::Deserialize;
 
 use crate::api::middleware::AdminUser;
-use crate::models::{SmbGlobalConfig, SmbShareConfig};
+use crate::models::SmbGlobalConfig;
 use crate::services::share::ShareService;
 use crate::AppState;
 use crate::api::error::ApiError;
@@ -21,6 +21,9 @@ pub fn router() -> Router<AppState> {
         .route("/{id}", put(update_share))
         .route("/{id}", delete(delete_share_handler))
         .route("/{id}/toggle", post(toggle_share))
+        .route("/nfs/status", get(get_nfs_status))
+        .route("/nfs/enable", post(enable_nfs))
+        .route("/nfs/disable", post(disable_nfs))
         .route("/samba/status", get(get_samba_status))
         .route("/samba/enable", post(enable_samba))
         .route("/samba/disable", post(disable_samba))
@@ -37,7 +40,8 @@ pub struct CreateShareRequest {
     #[serde(default = "default_share_type")]
     pub share_type: String,
     pub description: Option<String>,
-    pub config: Option<SmbShareConfig>,
+    /// SMB or NFS options depending on `share_type`
+    pub config: Option<serde_json::Value>,
 }
 
 fn default_share_type() -> String {
@@ -48,7 +52,7 @@ fn default_share_type() -> String {
 pub struct UpdateShareRequest {
     pub name: Option<String>,
     pub description: Option<Option<String>>,
-    pub config: Option<SmbShareConfig>,
+    pub config: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -273,4 +277,22 @@ async fn update_smb_config(
             ApiError::from(e).into_response()
         }
     }
+}
+
+// ─── NFS service handlers ──────────────────────────────────────────
+
+async fn get_nfs_status(State(state): State<AppState>, _admin: AdminUser) -> Result<impl IntoResponse, ApiError> {
+    Ok(Json(ShareService::new(state.db.clone()).get_nfs_status().await?))
+}
+
+async fn enable_nfs(State(state): State<AppState>, _admin: AdminUser) -> Result<impl IntoResponse, ApiError> {
+    let svc = ShareService::new(state.db.clone());
+    svc.enable_nfs().await?;
+    Ok(Json(svc.get_nfs_status().await?))
+}
+
+async fn disable_nfs(State(state): State<AppState>, _admin: AdminUser) -> Result<impl IntoResponse, ApiError> {
+    let svc = ShareService::new(state.db.clone());
+    svc.disable_nfs().await?;
+    Ok(Json(svc.get_nfs_status().await?))
 }

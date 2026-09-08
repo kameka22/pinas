@@ -97,6 +97,11 @@ echo "    Package installed to packages/pinas/"
 rm -rf "${LIBREELEC_DIR}/packages/cups"
 rm -rf "${LIBREELEC_DIR}/packages/addons/addon-depends/chrome-depends/cups"
 cp -r "${PROJECT_ROOT}/libreelec/packages/cups" "${LIBREELEC_DIR}/packages/"
+
+# NFS server daemons (built from LibreELEC's nfs-utils) + kernel nfsd
+rm -rf "${LIBREELEC_DIR}/packages/pinas-nfs-server"
+cp -r "${PROJECT_ROOT}/libreelec/packages/pinas-nfs-server" "${LIBREELEC_DIR}/packages/"
+"${PROJECT_ROOT}/scripts/lib/apply-kernel-config.sh" "${LIBREELEC_DIR}/projects/RPi/devices/RPi5/linux/linux.aarch64.conf"
 echo "    CUPS package installed to packages/cups/"
 
 # 6. Add PiNAS as dependency

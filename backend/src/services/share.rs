@@ -5,6 +5,7 @@ use tokio::process::Command as AsyncCommand;
 
 use std::collections::HashSet;
 
+use crate::models::share::{NfsShareConfig, NfsStatus};
 use crate::models::{
     SambaStatus, Share, ShareInfo, SmbGlobalConfig, SmbShareConfig,
 };
@@ -28,10 +29,14 @@ pub enum ShareError {
 
     #[error("System error: {0}")]
     SystemError(String),
+
+    #[error("Invalid share configuration: {0}")]
+    InvalidConfig(String),
 }
 
 // Dev mode state
 static DEV_SAMBA_ENABLED: AtomicBool = AtomicBool::new(false);
+static DEV_NFS_ENABLED: AtomicBool = AtomicBool::new(false);
 
 /// Share and Samba service manager
 pub struct ShareService {
@@ -95,7 +100,7 @@ impl ShareService {
         path: &str,
         share_type: &str,
         description: Option<String>,
-        config: Option<SmbShareConfig>,
+        config: Option<serde_json::Value>,
     ) -> Result<ShareInfo, ShareError> {
         // Check for duplicate name
         let existing = sqlx::query_as::<_, Share>(
@@ -116,8 +121,20 @@ impl ShareService {
             description,
         );
 
-        if let Some(cfg) = &config {
-            share.set_smb_config(cfg);
+        match (share_type, config) {
+            ("nfs", cfg) => {
+                let nfs: NfsShareConfig = match cfg {
+                    Some(v) => serde_json::from_value(v).map_err(|e| ShareError::InvalidConfig(format!("NFS: {}", e)))?,
+                    None => NfsShareConfig::default(),
+                };
+                nfs.validate().map_err(ShareError::InvalidConfig)?;
+                share.set_nfs_config(&nfs);
+            }
+            (_, Some(v)) => {
+                let smb: SmbShareConfig = serde_json::from_value(v).map_err(|e| ShareError::InvalidConfig(format!("SMB: {}", e)))?;
+                share.set_smb_config(&smb);
+            }
+            (_, None) => {}
         }
 
         sqlx::query(
@@ -141,9 +158,11 @@ impl ShareService {
         // Create physical directory
         self.ensure_share_directory(path).await;
 
-        // Regenerate smb.conf and reload
+        // Regenerate smb.conf and reload / re-export NFS
         if share.share_type == "smb" {
             self.regenerate_and_reload().await;
+        } else if share.share_type == "nfs" {
+            self.apply_nfs_exports().await;
         }
 
         let perm_svc = PermissionService::new(self.db.clone());
@@ -158,7 +177,7 @@ impl ShareService {
         id: &str,
         name: Option<&str>,
         description: Option<Option<String>>,
-        config: Option<SmbShareConfig>,
+        config: Option<serde_json::Value>,
     ) -> Result<ShareInfo, ShareError> {
         let existing = sqlx::query_as::<_, Share>(
             "SELECT * FROM shares WHERE id = ?",
@@ -192,7 +211,15 @@ impl ShareService {
             None => existing.description.clone(),
         };
         let final_config = match config {
-            Some(cfg) => serde_json::to_string(&cfg).ok(),
+            Some(v) if existing.share_type == "nfs" => {
+                let nfs: NfsShareConfig = serde_json::from_value(v).map_err(|e| ShareError::InvalidConfig(format!("NFS: {}", e)))?;
+                nfs.validate().map_err(ShareError::InvalidConfig)?;
+                serde_json::to_string(&nfs).ok()
+            }
+            Some(v) => {
+                let smb: SmbShareConfig = serde_json::from_value(v).map_err(|e| ShareError::InvalidConfig(format!("SMB: {}", e)))?;
+                serde_json::to_string(&smb).ok()
+            }
             None => existing.config.clone(),
         };
 
@@ -213,6 +240,8 @@ impl ShareService {
 
         if existing.share_type == "smb" {
             self.regenerate_and_reload().await;
+        } else if existing.share_type == "nfs" {
+            self.apply_nfs_exports().await;
         }
 
         self.get_share(id).await
@@ -242,6 +271,8 @@ impl ShareService {
 
         if share.share_type == "smb" {
             self.regenerate_and_reload().await;
+        } else if share.share_type == "nfs" {
+            self.apply_nfs_exports().await;
         }
 
         Ok(())
@@ -268,9 +299,123 @@ impl ShareService {
 
         if existing.share_type == "smb" {
             self.regenerate_and_reload().await;
+        } else if existing.share_type == "nfs" {
+            self.apply_nfs_exports().await;
         }
 
         self.get_share(id).await
+    }
+
+    // ─── NFS Service Control ─────────────────────────────────────────
+
+    /// (Re)publish every enabled NFS export with exportfs. The kernel table is the
+    /// source of truth at runtime; the database is re-applied at service start.
+    pub async fn apply_nfs_exports(&self) {
+        let shares = match sqlx::query_as::<_, Share>(
+            "SELECT * FROM shares WHERE share_type = 'nfs' AND enabled = TRUE ORDER BY name",
+        )
+        .fetch_all(&self.db)
+        .await
+        {
+            Ok(s) => s,
+            Err(e) => {
+                tracing::error!("Cannot list NFS shares: {}", e);
+                return;
+            }
+        };
+        let exports: Vec<(String, String)> = shares
+            .iter()
+            .flat_map(|s| {
+                let cfg = s.nfs_config();
+                let opts = cfg.export_options();
+                let path = s.path.clone();
+                cfg.clients.into_iter().map(move |c| (format!("{}:{}", c, path), opts.clone()))
+            })
+            .collect();
+
+        if self.dev_mode {
+            tracing::info!("[DEV MODE] Would export {} NFS entries: {:?}", exports.len(), exports);
+            return;
+        }
+        if !self.is_service_active("pinas-nfs-server").await {
+            tracing::debug!("NFS server not running; exports will be applied when it starts");
+            return;
+        }
+        let _ = AsyncCommand::new("exportfs").arg("-ua").output().await;
+        for (target, opts) in exports {
+            match AsyncCommand::new("exportfs").args(["-o", &opts, &target]).output().await {
+                Ok(o) if o.status.success() => {}
+                Ok(o) => tracing::warn!("exportfs {} failed: {}", target, String::from_utf8_lossy(&o.stderr).trim()),
+                Err(e) => tracing::warn!("exportfs unavailable: {}", e),
+            }
+        }
+    }
+
+    pub async fn get_nfs_status(&self) -> Result<NfsStatus, ShareError> {
+        let export_count = sqlx::query_as::<_, (i64,)>(
+            "SELECT COUNT(*) FROM shares WHERE share_type = 'nfs' AND enabled = TRUE",
+        )
+        .fetch_one(&self.db)
+        .await?
+        .0 as u32;
+
+        if self.dev_mode {
+            let enabled = DEV_NFS_ENABLED.load(Ordering::Relaxed);
+            return Ok(NfsStatus { enabled, running: enabled, export_count, nfsd_available: true });
+        }
+        let running = self.is_service_active("pinas-nfs-server").await;
+        let enabled = self.is_service_enabled("pinas-nfs-server").await || running;
+        let nfsd_available = tokio::fs::metadata("/usr/sbin/rpc.nfsd").await.is_ok()
+            && tokio::fs::metadata("/proc/fs/nfsd").await.is_ok();
+        Ok(NfsStatus { enabled, running, export_count, nfsd_available })
+    }
+
+    pub async fn enable_nfs(&self) -> Result<(), ShareError> {
+        if self.dev_mode {
+            DEV_NFS_ENABLED.store(true, Ordering::Relaxed);
+            tracing::info!("[DEV MODE] NFS server enabled");
+            return Ok(());
+        }
+        for unit in ["pinas-rpcbind", "pinas-nfs-server"] {
+            let output = AsyncCommand::new("systemctl")
+                .args(["enable", "--now", unit])
+                .output()
+                .await
+                .map_err(|e| ShareError::SystemError(format!("systemctl: {}", e)))?;
+            if !output.status.success() {
+                return Err(ShareError::SystemError(format!(
+                    "Failed to start {}: {}",
+                    unit,
+                    String::from_utf8_lossy(&output.stderr).trim()
+                )));
+            }
+        }
+        self.apply_nfs_exports().await;
+        Ok(())
+    }
+
+    pub async fn disable_nfs(&self) -> Result<(), ShareError> {
+        if self.dev_mode {
+            DEV_NFS_ENABLED.store(false, Ordering::Relaxed);
+            tracing::info!("[DEV MODE] NFS server disabled");
+            return Ok(());
+        }
+        let _ = AsyncCommand::new("exportfs").arg("-ua").output().await;
+        for unit in ["pinas-nfs-server", "pinas-rpcbind"] {
+            let output = AsyncCommand::new("systemctl")
+                .args(["disable", "--now", unit])
+                .output()
+                .await
+                .map_err(|e| ShareError::SystemError(format!("systemctl: {}", e)))?;
+            if !output.status.success() {
+                return Err(ShareError::SystemError(format!(
+                    "Failed to stop {}: {}",
+                    unit,
+                    String::from_utf8_lossy(&output.stderr).trim()
+                )));
+            }
+        }
+        Ok(())
     }
 
     // ─── Samba Service Control ───────────────────────────────────────

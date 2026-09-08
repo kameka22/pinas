@@ -3,19 +3,99 @@
 	import { onMount } from 'svelte';
 	import { t } from '$lib/i18n';
 	import { api } from '$lib/stores/api';
-	import type { SambaStatus, SmbGlobalConfig, ShareInfo } from '$lib/stores/api';
+	import type { SambaStatus, SmbGlobalConfig, ShareInfo, NfsStatus, NfsShareConfig } from '$lib/stores/api';
+	import { toasts, errorMessage } from '$stores/toasts';
+	import FolderPicker from '$lib/components/ui/FolderPicker.svelte';
 	import { openWindow } from '$lib/stores/windows';
 	import { getAppById } from '$lib/stores/desktop';
 
 	// Tabs
-	type TabId = 'smb' | 'nfs' | 'ftp';
+	type TabId = 'smb' | 'nfs';
 	let activeTab: TabId = 'smb';
 
 	const tabs: { id: TabId; icon: string; label: string }[] = [
 		{ id: 'smb', icon: 'mdi:microsoft-windows', label: 'SMB/CIFS' },
-		{ id: 'nfs', icon: 'mdi:folder-network', label: 'NFS' },
-		{ id: 'ftp', icon: 'mdi:folder-upload', label: 'FTP' }
+		{ id: 'nfs', icon: 'mdi:folder-network', label: 'NFS' }
 	];
+
+	// NFS state
+	let nfsStatus: NfsStatus | null = null;
+	let nfsExports: ShareInfo[] = [];
+	let nfsLoading = false;
+	let nfsBusy = false;
+	let showNfsForm = false;
+	let nfsForm: { name: string; path: string; clients: string; read_only: boolean; sync: boolean; squash: NfsShareConfig['squash'] } = {
+		name: '', path: '', clients: '192.168.1.0/24', read_only: false, sync: true, squash: 'root_squash'
+	};
+
+	async function loadNfsData() {
+		nfsLoading = true;
+		try {
+			const [status, shares] = await Promise.all([api.getNfsStatus(), api.getShares()]);
+			nfsStatus = status;
+			nfsExports = shares.filter((s) => s.share_type === 'nfs');
+		} catch (e) {
+			toasts.error(errorMessage(e, $t.common.errors.loadFailed));
+		} finally {
+			nfsLoading = false;
+		}
+	}
+
+	async function toggleNfs() {
+		if (!nfsStatus) return;
+		nfsBusy = true;
+		try {
+			nfsStatus = nfsStatus.enabled ? await api.disableNfs() : await api.enableNfs();
+		} catch (e) {
+			toasts.error(errorMessage(e, $t.common.errors.generic));
+		} finally {
+			nfsBusy = false;
+		}
+	}
+
+	async function createNfsExport() {
+		nfsBusy = true;
+		try {
+			await api.createShare({
+				name: nfsForm.name.trim(),
+				path: nfsForm.path.trim(),
+				share_type: 'nfs',
+				config: {
+					clients: nfsForm.clients.split(/[\s,]+/).filter(Boolean),
+					read_only: nfsForm.read_only,
+					sync: nfsForm.sync,
+					squash: nfsForm.squash,
+					subtree_check: false
+				}
+			});
+			showNfsForm = false;
+			nfsForm = { ...nfsForm, name: '', path: '' };
+			toasts.success($t.fileService.nfs.exportCreated);
+			await loadNfsData();
+		} catch (e) {
+			toasts.error(errorMessage(e, $t.common.errors.saveFailed));
+		} finally {
+			nfsBusy = false;
+		}
+	}
+
+	async function toggleExport(share: ShareInfo) {
+		try {
+			await api.toggleShare(share.id, !share.enabled);
+			await loadNfsData();
+		} catch (e) {
+			toasts.error(errorMessage(e, $t.common.errors.saveFailed));
+		}
+	}
+
+	async function deleteExport(share: ShareInfo) {
+		try {
+			await api.deleteShare(share.id);
+			await loadNfsData();
+		} catch (e) {
+			toasts.error(errorMessage(e, $t.common.errors.generic));
+		}
+	}
 
 	// SMB state
 	let sambaStatus: SambaStatus | null = null;
@@ -34,9 +114,8 @@
 
 	function selectTab(tabId: TabId) {
 		activeTab = tabId;
-		if (tabId === 'smb') {
-			loadSmbData();
-		}
+		if (tabId === 'smb') loadSmbData();
+		if (tabId === 'nfs') loadNfsData();
 	}
 
 	onMount(() => {
@@ -267,34 +346,85 @@
 				{/if}
 			</div>
 		{:else if activeTab === 'nfs'}
-			<!-- NFS Tab -->
 			<div class="tab-panel">
 				<div class="panel-header">
 					<Icon icon="mdi:folder-network" class="w-6 h-6" />
 					<div class="panel-info">
 						<h2>NFS</h2>
-						<p>{$t.fileService?.nfs?.description || 'Network File System for Unix/Linux'}</p>
+						<p>{$t.fileService.nfs.description}</p>
 					</div>
 				</div>
-				<div class="placeholder-content">
-					<Icon icon="mdi:cog" class="w-12 h-12" />
-					<span>{$t.controlPanel.underDevelopment}</span>
-				</div>
-			</div>
-		{:else if activeTab === 'ftp'}
-			<!-- FTP Tab -->
-			<div class="tab-panel">
-				<div class="panel-header">
-					<Icon icon="mdi:folder-upload" class="w-6 h-6" />
-					<div class="panel-info">
-						<h2>FTP</h2>
-						<p>{$t.fileService?.ftp?.description || 'File Transfer Protocol'}</p>
+
+				{#if nfsLoading && !nfsStatus}
+					<p class="nfs-hint">{$t.common.loading}</p>
+				{:else if nfsStatus}
+					<div class="nfs-status-card">
+						<div class="nfs-status-main">
+							<span class="nfs-badge" class:on={nfsStatus.running}>{nfsStatus.running ? $t.fileService.smb.running : $t.fileService.smb.stopped}</span>
+							<span>{$t.fileService.nfs.exportsCount.replace('{n}', String(nfsStatus.export_count))}</span>
+						</div>
+						<label class="toggle">
+							<input type="checkbox" checked={nfsStatus.enabled} disabled={nfsBusy || !nfsStatus.nfsd_available} on:change={toggleNfs} />
+							<span class="toggle-slider"></span>
+						</label>
 					</div>
-				</div>
-				<div class="placeholder-content">
-					<Icon icon="mdi:cog" class="w-12 h-12" />
-					<span>{$t.controlPanel.underDevelopment}</span>
-				</div>
+					{#if !nfsStatus.nfsd_available}
+						<p class="nfs-warning"><Icon icon="mdi:alert-outline" class="w-4 h-4" />{$t.fileService.nfs.notAvailable}</p>
+					{/if}
+
+					<div class="nfs-exports">
+						<div class="nfs-exports-header">
+							<h3>{$t.fileService.nfs.exports}</h3>
+							<button class="btn-primary" on:click={() => (showNfsForm = !showNfsForm)}>
+								<Icon icon={showNfsForm ? 'mdi:close' : 'mdi:plus'} class="w-4 h-4" />
+								{showNfsForm ? $t.common.cancel : $t.fileService.nfs.addExport}
+							</button>
+						</div>
+
+						{#if showNfsForm}
+							<div class="nfs-form">
+								<label>{$t.fileService.nfs.name}<input class="nfs-input" bind:value={nfsForm.name} placeholder="media" /></label>
+								<FolderPicker bind:value={nfsForm.path} label={$t.fileService.nfs.path} placeholder="/storage/shares/media" />
+								<label>{$t.fileService.nfs.clients}<input class="nfs-input" bind:value={nfsForm.clients} placeholder="192.168.1.0/24 10.0.0.5 *" /></label>
+								<span class="nfs-hint">{$t.fileService.nfs.clientsHint}</span>
+								<div class="nfs-form-row">
+									<label class="nfs-check"><input type="checkbox" bind:checked={nfsForm.read_only} />{$t.fileService.nfs.readOnly}</label>
+									<label class="nfs-check"><input type="checkbox" bind:checked={nfsForm.sync} />{$t.fileService.nfs.sync}</label>
+									<label>{$t.fileService.nfs.squash}
+										<select class="nfs-input" bind:value={nfsForm.squash}>
+											<option value="root_squash">root_squash</option>
+											<option value="no_root_squash">no_root_squash</option>
+											<option value="all_squash">all_squash</option>
+										</select>
+									</label>
+								</div>
+								<div class="nfs-form-actions">
+									<button class="btn-primary" on:click={createNfsExport} disabled={nfsBusy || !nfsForm.name.trim() || !nfsForm.path.trim() || !nfsForm.clients.trim()}>{$t.common.create}</button>
+								</div>
+							</div>
+						{/if}
+
+						{#if nfsExports.length === 0}
+							<p class="nfs-hint">{$t.fileService.nfs.noExports}</p>
+						{:else}
+							<div class="nfs-list">
+								{#each nfsExports as share (share.id)}
+									<div class="nfs-row" class:disabled={!share.enabled}>
+										<Icon icon="mdi:folder-network-outline" class="w-5 h-5" />
+										<div class="nfs-row-main">
+											<span class="nfs-row-name">{share.name}</span>
+											<span class="nfs-row-path mono">{share.path}</span>
+											<span class="nfs-row-opts">{(share.nfs?.clients || ['*']).join(', ')} · {share.nfs?.read_only ? 'ro' : 'rw'} · {share.nfs?.squash}</span>
+										</div>
+										<label class="toggle"><input type="checkbox" checked={share.enabled} on:change={() => toggleExport(share)} /><span class="toggle-slider"></span></label>
+										<button class="nfs-icon-btn" on:click={() => deleteExport(share)} title={$t.common.delete}><Icon icon="mdi:delete-outline" class="w-4 h-4" /></button>
+									</div>
+								{/each}
+							</div>
+						{/if}
+					</div>
+					<p class="nfs-hint">{$t.fileService.nfs.mountHint} <span class="mono">mount -t nfs {window.location.hostname}:/storage/shares/&lt;name&gt; /mnt</span></p>
+				{/if}
 			</div>
 		{/if}
 	</div>
@@ -653,4 +783,30 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 	}
+
+	.nfs-status-card { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 0.75rem 1rem; background: #f8fafc; border-radius: 0.75rem; margin: 1rem 0; font-size: 0.8125rem; }
+	.nfs-status-main { display: flex; align-items: center; gap: 0.75rem; }
+	.nfs-badge { font-size: 0.6875rem; padding: 0.125rem 0.5rem; border-radius: 999px; background: #fee2e2; color: #b91c1c; }
+	.nfs-badge.on { background: #dcfce7; color: #15803d; }
+	.nfs-warning { display: flex; align-items: center; gap: 0.5rem; font-size: 0.8125rem; color: #92400e; background: #fffbeb; padding: 0.5rem 0.75rem; border-radius: 0.5rem; }
+	.nfs-exports-header { display: flex; align-items: center; justify-content: space-between; margin-top: 1rem; }
+	.nfs-exports-header h3 { font-size: 0.9375rem; font-weight: 600; margin: 0; }
+	.nfs-form { display: flex; flex-direction: column; gap: 0.625rem; padding: 1rem; margin-top: 0.75rem; border: 1px dashed #cbd5e1; border-radius: 0.75rem; font-size: 0.8125rem; }
+	.nfs-form label { display: flex; flex-direction: column; gap: 0.25rem; color: #334155; }
+	.nfs-form-row { display: flex; gap: 1.25rem; align-items: flex-end; flex-wrap: wrap; }
+	.nfs-check { flex-direction: row !important; align-items: center; gap: 0.5rem !important; }
+	.nfs-input { border: 1px solid #cbd5e1; border-radius: 0.5rem; padding: 0.375rem 0.625rem; font-size: 0.8125rem; background: white; }
+	.nfs-form-actions { display: flex; justify-content: flex-end; }
+	.nfs-hint { font-size: 0.75rem; color: #64748b; margin: 0.5rem 0; }
+	.nfs-list { display: flex; flex-direction: column; margin-top: 0.75rem; }
+	.nfs-row { display: flex; align-items: center; gap: 0.75rem; padding: 0.625rem 0; border-top: 1px solid #f1f5f9; font-size: 0.8125rem; }
+	.nfs-row.disabled { opacity: 0.55; }
+	.nfs-row-main { flex: 1; display: flex; flex-direction: column; gap: 0.125rem; }
+	.nfs-row-name { font-weight: 500; }
+	.nfs-row-path, .nfs-row-opts { font-size: 0.75rem; color: #64748b; }
+	.nfs-icon-btn { padding: 0.25rem; border-radius: 0.375rem; color: #64748b; }
+	.nfs-icon-btn:hover { color: #dc2626; background: #fef2f2; }
+	.mono { font-family: ui-monospace, monospace; }
+	.btn-primary { display: inline-flex; align-items: center; gap: 0.375rem; padding: 0.4rem 0.875rem; border-radius: 0.5rem; font-size: 0.8125rem; font-weight: 500; background: #3b82f6; color: white; }
+	.btn-primary:disabled { opacity: 0.5; }
 </style>

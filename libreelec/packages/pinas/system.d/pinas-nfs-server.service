@@ -1,0 +1,25 @@
+[Unit]
+Description=PiNAS NFS server (nfsd + mountd + statd)
+After=network-online.target pinas-rpcbind.service pinas.service
+Requires=pinas-rpcbind.service
+Wants=network-online.target
+
+[Service]
+Type=forking
+# kernel nfsd filesystem and lock manager
+ExecStartPre=/bin/sh -c 'mountpoint -q /proc/fs/nfsd || mount -t nfsd nfsd /proc/fs/nfsd'
+ExecStartPre=/bin/sh -c 'mountpoint -q /var/lib/nfs/rpc_pipefs || mount -t rpc_pipefs sunrpc /var/lib/nfs/rpc_pipefs'
+ExecStartPre=/usr/sbin/exportfs -r
+ExecStartPre=/usr/sbin/rpc.statd --no-notify
+ExecStartPre=/usr/sbin/rpc.nfsd 8
+ExecStart=/usr/sbin/rpc.mountd --manage-gids
+# Re-publish the exports stored in the PiNAS database (needs the PiNAS API up)
+ExecStartPost=/bin/sh -c 'sleep 2; curl -s -o /dev/null -X POST -H "X-PiNAS-Internal: 1" http://127.0.0.1:3000/api/internal/nfs/reexport || true'
+ExecStop=/usr/sbin/rpc.nfsd 0
+ExecStopPost=/usr/sbin/exportfs -au
+ExecStopPost=/bin/sh -c 'pkill -x rpc.statd || true'
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
