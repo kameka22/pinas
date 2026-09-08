@@ -12,7 +12,8 @@ export default defineConfig({
 	server: {
 		proxy: {
 			'/api': {
-				target: 'http://localhost:3388',
+				// Backend dev server (backend/.env.dev). Overridden in docker-compose (service name).
+				target: process.env.VITE_API_PROXY || 'http://localhost:3388',
 				changeOrigin: true
 			}
 		}

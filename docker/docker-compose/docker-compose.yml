@@ -44,6 +44,8 @@ services:
       - frontend-node-modules:/app/node_modules
     environment:
       - NODE_ENV=development
+      # Le proxy Vite /api doit viser le conteneur backend, pas localhost
+      - VITE_API_PROXY=http://backend:3388
     command: npm run dev -- --host 0.0.0.0
     depends_on:
       - backend
