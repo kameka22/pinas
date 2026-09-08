@@ -3,7 +3,7 @@ name: Build LibreELEC Image with PiNAS
 on:
   workflow_dispatch:  # Manual trigger
   push:
-    branches: [main]
+    branches: [master]
     paths:
       - 'backend/**'
       - 'frontend/**'
@@ -149,7 +149,7 @@ jobs:
           retention-days: 7
 
       - name: Create Release
-        if: github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/master'
         uses: softprops/action-gh-release@v1
         with:
           tag_name: v${{ github.run_number }}

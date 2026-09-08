@@ -1,5 +1,5 @@
 # Development Dockerfile for Rust backend
-FROM rust:1.75-slim
+FROM rust:1.89-slim
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
@@ -24,7 +24,7 @@ RUN mkdir src && \
     rm -rf src
 
 # Expose port
-EXPOSE 3000
+EXPOSE 3388
 
 # Default command
 CMD ["cargo", "watch", "-x", "run"]

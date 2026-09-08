@@ -28,9 +28,10 @@ build.log
 # External sources (not part of this project)
 extra/*
 
-# Remote build outputs and config
+# Remote build / deploy config (contains host credentials)
 target/
 .vm-config
+.pi-deploy.conf
 
 backend/data
 app-catalog/

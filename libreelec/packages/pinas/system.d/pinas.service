@@ -9,7 +9,7 @@ Environment=PINAS_FILES_ROOT=/storage/.pinas/files
 Environment=PINAS_HOMES_ROOT=/storage/.pinas/homes
 Environment=PINAS_DATABASE_URL=sqlite:/storage/.pinas/data/pinas.db?mode=rwc
 Environment=PINAS_BIND_ADDRESS=0.0.0.0:3000
-Environment=PINAS_LOG_LEVEL=info
+Environment=RUST_LOG=pinas=info,tower_http=info
 Environment=PINAS_STATIC_DIR=/storage/.pinas/www
 Environment=PINAS_TLS_ENABLED=false
 Environment=PINAS_KODI_USERNAME=kodi

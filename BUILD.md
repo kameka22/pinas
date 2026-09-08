@@ -9,7 +9,7 @@
 ## Build rapide (une commande)
 
 ```bash
-git clone https://github.com/ton-user/pinas.git
+git clone https://github.com/kameka22/pinas.git
 cd pinas
 ./scripts/build-arm64.sh
 ```
@@ -54,7 +54,7 @@ sudo apt-get install -y nodejs
 ### 4. Cloner et builder
 
 ```bash
-git clone https://github.com/ton-user/pinas.git
+git clone https://github.com/kameka22/pinas.git
 cd pinas
 
 # Backend (binaire statique avec musl)

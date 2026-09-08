@@ -35,7 +35,7 @@ PiNAS transforms your Raspberry Pi into a full-featured NAS with a modern web in
 | Backend | Rust (Axum + Tokio) |
 | Frontend | SvelteKit + Svelte 5 (SSG) |
 | Database | SQLite |
-| Style | TailwindCSS v4 |
+| Style | TailwindCSS 3.4 |
 | Icons | Iconify (MDI) |
 | Target | Raspberry Pi 5 (ARM64), ARM64 VM, x86_64 VM |
 
@@ -49,13 +49,13 @@ PiNAS transforms your Raspberry Pi into a full-featured NAS with a modern web in
 
 ### Pre-built Image
 
-1. Download the latest PiNAS image from [Releases](https://github.com/your-repo/pinas/releases)
+1. Download the latest PiNAS image from [Releases](https://github.com/kameka22/pinas/releases)
 2. Flash to SD card:
    ```bash
    gunzip -c LibreELEC-RPi5.aarch64-*.img.gz | sudo dd of=/dev/sdX bs=4M status=progress conv=fsync
    ```
 3. Insert SD card and boot your Pi
-4. Access PiNAS at `http://<pi-ip>:3000`
+4. Access PiNAS at `http://<pi-ip>:3000` (HTTPS with a self-signed certificate if `PINAS_TLS_ENABLED=true` in `pinas.service`; disabled by default)
 5. Follow the onboarding wizard to set up your admin account
 
 ## Development

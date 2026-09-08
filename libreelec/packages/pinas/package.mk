@@ -2,9 +2,9 @@
 # PiNAS - NAS Management for LibreELEC
 
 PKG_NAME="pinas"
-PKG_VERSION="0.1.0"
+PKG_VERSION="0.10.0"
 PKG_LICENSE="GPL-3.0"
-PKG_SITE="https://github.com/your-repo/pinas"
+PKG_SITE="https://github.com/kameka22/pinas"
 PKG_URL=""
 PKG_DEPENDS_TARGET="toolchain cups"
 PKG_LONGDESC="PiNAS - Modern NAS management interface for Raspberry Pi"

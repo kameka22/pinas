@@ -38,7 +38,7 @@ PiNAS est un système d'exploitation NAS moderne, inspiré de Synology DSM, con�
 │   │   ├── models/           # Structs DB
 │   │   ├── config/           # Configuration
 │   │   └── db/               # Pool SQLite
-│   └── migrations/           # Migrations SQLite (001-010)
+│   └── migrations/           # Migrations SQLite (001-011)
 ├── frontend/                 # UI SvelteKit (voir frontend/CLAUDE.md)
 │   └── src/lib/
 │       ├── components/       # desktop/, apps/, ui/, auth/, modals/, onboarding/
@@ -67,25 +67,42 @@ PiNAS est un système d'exploitation NAS moderne, inspiré de Synology DSM, con�
 
 ## Variables d'environnement
 
-```bash
-# Backend (production sur LibreELEC)
-PINAS_DB_PATH=/storage/.pinas/pinas.db
-PINAS_CONFIG_PATH=/storage/.pinas/config.toml
-PINAS_LOG_PATH=/storage/.pinas/logs
-PINAS_JWT_SECRET=<generated-on-first-run>
-PINAS_BIND_ADDRESS=0.0.0.0:3000
-PINAS_LOG_LEVEL=info
-PINAS_SHARES_ROOT=/storage/shares
-PINAS_WWW_PATH=/storage/.pinas/www
-PINAS_PACKAGES_DIR=/storage/.pinas/packages
-PINAS_DATA_DIR=/storage/.pinas/data
-PINAS_HOMES_ROOT=/storage/homes
-PINAS_HOME_ON_DELETE=archive           # archive, delete, ou keep
-PINAS_DEV_MODE=false                   # true pour simuler les opérations
+Le backend lit ses variables via `config::Environment::with_prefix("PINAS")` (`backend/src/config/mod.rs`) : chaque champ `snake_case` de `AppConfig` correspond à `PINAS_<CHAMP>`. Les valeurs ci-dessous sont celles de `libreelec/packages/pinas/system.d/pinas.service` (production) ; `backend/.env.dev` fournit l'équivalent dev (port 3388, `PINAS_DEV_MODE=true`).
 
-# Frontend (build-time)
-PUBLIC_API_URL=/api
+```bash
+# --- AppConfig (production sur LibreELEC) ---
+PINAS_BIND_ADDRESS=0.0.0.0:3000
+PINAS_DATABASE_URL=sqlite:/storage/.pinas/data/pinas.db?mode=rwc
+PINAS_JWT_SECRET=<auto-généré au 1er démarrage dans ${PINAS_DATA_DIR}/.jwt_secret>
+PINAS_JWT_EXPIRATION_HOURS=24
+PINAS_FILES_ROOT=/storage/.pinas/files
+PINAS_HOMES_ROOT=/storage/.pinas/homes
+PINAS_HOME_ON_DELETE=archive           # archive, delete, ou keep
+PINAS_STATIC_DIR=/storage/.pinas/www   # frontend servi par tower-http
+PINAS_DEV_MODE=false                   # true pour simuler les opérations système
+PINAS_KODI_USERNAME=kodi
+PINAS_KODI_PASSWORD=<auto-généré dans ${PINAS_DATA_DIR}/.kodi_password>
+PINAS_TLS_ENABLED=false                # true = HTTPS auto-signé (rcgen) dans ${PINAS_DATA_DIR}/.tls/
+
+# --- Lus directement via std::env::var (services) ---
+PINAS_DATA_DIR=/storage/.pinas/data    # secrets, TLS, samba/, etc.
+PINAS_PACKAGES_DIR=/storage/.pinas/packages
+PINAS_DOWNLOADS_DIR=/storage/.pinas/downloads
+PINAS_BIN_DIR=/storage/.pinas/bin
+PINAS_POOLS_PATH=<override du chemin de montage des pools>
+PINAS_CATALOG_URL=https://raw.githubusercontent.com/kameka22/pinas-app-catalog/master/catalog.json
+PINAS_GITHUB_OWNER=kameka22            # source des releases pour l'auto-update
+PINAS_GITHUB_REPO=pinas
+DOCKER_HOST=<socket Docker, optionnel>
+
+# --- Logs : tracing EnvFilter (défaut si absent : pinas=debug,tower_http=debug) ---
+RUST_LOG=pinas=info,tower_http=info
+
+# Frontend : API_BASE est codé en dur à '/api' dans src/lib/stores/api.ts
+# (proxy Vite → http://localhost:3388 en dev, même origine en prod).
 ```
+
+> Seul `RUST_LOG` est lu pour le niveau de log (`PINAS_LOG_LEVEL` n'existe pas côté code).
 
 ---
 
