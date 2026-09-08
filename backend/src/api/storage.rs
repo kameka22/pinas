@@ -18,40 +18,40 @@ pub fn router() -> Router<AppState> {
     Router::new()
         // Disks
         .route("/disks", get(list_disks))
-        .route("/disks/:name/smart", get(get_disk_smart))
-        .route("/disks/:name/smart/test", post(run_smart_test))
-        .route("/disks/:name/smart/history", get(get_smart_test_history))
-        .route("/disks/:name/power", get(get_disk_power))
-        .route("/disks/:name/power", put(set_disk_power))
-        .route("/disks/:name/wipe", post(wipe_disk))
+        .route("/disks/{name}/smart", get(get_disk_smart))
+        .route("/disks/{name}/smart/test", post(run_smart_test))
+        .route("/disks/{name}/smart/history", get(get_smart_test_history))
+        .route("/disks/{name}/power", get(get_disk_power))
+        .route("/disks/{name}/power", put(set_disk_power))
+        .route("/disks/{name}/wipe", post(wipe_disk))
         .route("/candidates", get(get_candidates))
         // SMART schedules
         .route("/smart/schedules", get(list_smart_schedules))
         .route("/smart/schedules", post(create_smart_schedule))
-        .route("/smart/schedules/:id", delete(delete_smart_schedule))
-        .route("/smart/schedules/:id/toggle", post(toggle_smart_schedule))
+        .route("/smart/schedules/{id}", delete(delete_smart_schedule))
+        .route("/smart/schedules/{id}/toggle", post(toggle_smart_schedule))
         // Pools
         .route("/pools", get(list_pools))
         .route("/pools", post(create_pool))
-        .route("/pools/:id", get(get_pool))
-        .route("/pools/:id", put(update_pool))
-        .route("/pools/:id", delete(delete_pool))
-        .route("/pools/:id/health", get(get_pool_health))
-        .route("/pools/:id/scrub", post(scrub_pool))
-        .route("/pools/:id/grow", post(grow_pool))
-        .route("/pools/:id/volumes", post(create_volume))
+        .route("/pools/{id}", get(get_pool))
+        .route("/pools/{id}", put(update_pool))
+        .route("/pools/{id}", delete(delete_pool))
+        .route("/pools/{id}/health", get(get_pool_health))
+        .route("/pools/{id}/scrub", post(scrub_pool))
+        .route("/pools/{id}/grow", post(grow_pool))
+        .route("/pools/{id}/volumes", post(create_volume))
         // Volumes
         .route("/volumes", get(list_volumes))
-        .route("/volumes/:id", get(get_volume))
-        .route("/volumes/:id", put(update_volume))
-        .route("/volumes/:id", delete(delete_volume))
-        .route("/volumes/:id/mount", post(mount_volume))
-        .route("/volumes/:id/unmount", post(unmount_volume))
-        .route("/volumes/:id/resize", post(resize_volume))
-        .route("/volumes/:id/check", post(check_volume))
-        .route("/volumes/:id/snapshots", get(list_snapshots))
-        .route("/volumes/:id/snapshots", post(create_snapshot))
-        .route("/volumes/:id/snapshots/:snap_id", delete(delete_snapshot))
+        .route("/volumes/{id}", get(get_volume))
+        .route("/volumes/{id}", put(update_volume))
+        .route("/volumes/{id}", delete(delete_volume))
+        .route("/volumes/{id}/mount", post(mount_volume))
+        .route("/volumes/{id}/unmount", post(unmount_volume))
+        .route("/volumes/{id}/resize", post(resize_volume))
+        .route("/volumes/{id}/check", post(check_volume))
+        .route("/volumes/{id}/snapshots", get(list_snapshots))
+        .route("/volumes/{id}/snapshots", post(create_snapshot))
+        .route("/volumes/{id}/snapshots/{snap_id}", delete(delete_snapshot))
         // Legacy compatibility
         .route("/filesystems", get(list_filesystems))
 }
@@ -118,9 +118,7 @@ async fn wipe_disk(
                     let task_id = wipe_status.task_id.clone();
                     let device_name = name.clone();
                     let task_tx = state.task_tx.clone();
-                    let dev_mode = std::env::var("PINAS_DEV_MODE")
-                        .map(|v| v.to_lowercase() == "true" || v == "1")
-                        .unwrap_or(false);
+                    let dev_mode = crate::config::AppConfig::global().dev_mode;
 
                     tokio::spawn(async move {
                         StorageService::wipe_disk_execute(device_name, mode, task_id, task_tx, dev_mode).await;
@@ -272,9 +270,7 @@ async fn scrub_pool(
             let pool_id = id.clone();
             let db = state.db.clone();
             let task_tx = state.task_tx.clone();
-            let dev_mode = std::env::var("PINAS_DEV_MODE")
-                .map(|v| v.to_lowercase() == "true" || v == "1")
-                .unwrap_or(false);
+            let dev_mode = crate::config::AppConfig::global().dev_mode;
 
             // Execute scrub in background
             tokio::spawn(async move {
@@ -441,9 +437,7 @@ async fn check_volume(
             let db = state.db.clone();
             let task_tx = state.task_tx.clone();
             let repair = request.repair;
-            let dev_mode = std::env::var("PINAS_DEV_MODE")
-                .map(|v| v.to_lowercase() == "true" || v == "1")
-                .unwrap_or(false);
+            let dev_mode = crate::config::AppConfig::global().dev_mode;
 
             tokio::spawn(async move {
                 StorageService::fsck_volume_execute(db, volume_id, task_id, task_tx, repair, dev_mode).await;
@@ -477,9 +471,7 @@ async fn run_smart_test(
     let device_name = name.clone();
     let test_type = request.test_type.clone();
     let task_tx = state.task_tx.clone();
-    let dev_mode = std::env::var("PINAS_DEV_MODE")
-        .map(|v| v.to_lowercase() == "true" || v == "1")
-        .unwrap_or(false);
+    let dev_mode = crate::config::AppConfig::global().dev_mode;
 
     tokio::spawn(async move {
         StorageService::smart_test_execute(device_name, test_type, task_id, task_tx, dev_mode).await;
@@ -678,9 +670,7 @@ async fn grow_pool(
             let task_tx = state.task_tx.clone();
             let new_devices = request.devices.clone();
             let wipe_devices = request.wipe_devices;
-            let dev_mode = std::env::var("PINAS_DEV_MODE")
-                .map(|v| v.to_lowercase() == "true" || v == "1")
-                .unwrap_or(false);
+            let dev_mode = crate::config::AppConfig::global().dev_mode;
 
             tokio::spawn(async move {
                 StorageService::grow_pool_execute(db, pool_id, new_devices, wipe_devices, task_id, task_tx, dev_mode).await;

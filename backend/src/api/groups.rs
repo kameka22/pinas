@@ -20,12 +20,12 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/", get(list_groups))
         .route("/", post(create_group))
-        .route("/:id", get(get_group))
-        .route("/:id", put(update_group))
-        .route("/:id", delete(delete_group))
-        .route("/:id/members", get(list_group_members))
-        .route("/:id/members", post(add_group_member))
-        .route("/:id/members/:user_id", delete(remove_group_member))
+        .route("/{id}", get(get_group))
+        .route("/{id}", put(update_group))
+        .route("/{id}", delete(delete_group))
+        .route("/{id}/members", get(list_group_members))
+        .route("/{id}/members", post(add_group_member))
+        .route("/{id}/members/{user_id}", delete(remove_group_member))
 }
 
 #[derive(Debug, Serialize)]

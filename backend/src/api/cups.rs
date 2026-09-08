@@ -46,13 +46,13 @@ pub fn router() -> Router<AppState> {
         .route("/disable", post(disable))
         .route("/printers", get(get_printers))
         .route("/printers", post(add_printer))
-        .route("/printers/:name", delete(remove_printer))
-        .route("/printers/:name", put(update_printer))
-        .route("/printers/:name/test", post(test_page))
+        .route("/printers/{name}", delete(remove_printer))
+        .route("/printers/{name}", put(update_printer))
+        .route("/printers/{name}/test", post(test_page))
         .route("/detect", get(detect_printers))
         .route("/drivers", get(get_drivers))
         .route("/jobs", get(get_jobs))
-        .route("/jobs/:id", delete(cancel_job))
+        .route("/jobs/{id}", delete(cancel_job))
 }
 
 /// Get CUPS service status

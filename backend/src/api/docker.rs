@@ -18,25 +18,25 @@ pub fn router() -> Router<AppState> {
         // Containers
         .route("/containers", get(list_containers))
         .route("/containers", post(create_container))
-        .route("/containers/:id", get(get_container))
-        .route("/containers/:id", delete(remove_container))
-        .route("/containers/:id/start", post(start_container))
-        .route("/containers/:id/stop", post(stop_container))
-        .route("/containers/:id/restart", post(restart_container))
-        .route("/containers/:id/logs", get(get_logs))
-        .route("/containers/:id/stats", get(get_container_stats))
+        .route("/containers/{id}", get(get_container))
+        .route("/containers/{id}", delete(remove_container))
+        .route("/containers/{id}/start", post(start_container))
+        .route("/containers/{id}/stop", post(stop_container))
+        .route("/containers/{id}/restart", post(restart_container))
+        .route("/containers/{id}/logs", get(get_logs))
+        .route("/containers/{id}/stats", get(get_container_stats))
         // Images
         .route("/images", get(list_images))
         .route("/images/pull", post(pull_image))
         .route("/images/prune", post(prune_images))
-        .route("/images/:id", delete(remove_image))
+        .route("/images/{id}", delete(remove_image))
         // Volumes
         .route("/volumes", get(list_volumes))
         .route("/volumes/prune", post(prune_volumes))
-        .route("/volumes/:name", delete(remove_volume))
+        .route("/volumes/{name}", delete(remove_volume))
         // Networks
         .route("/networks", get(list_networks))
-        .route("/networks/:id", delete(remove_network))
+        .route("/networks/{id}", delete(remove_network))
 }
 
 /// Get Docker status

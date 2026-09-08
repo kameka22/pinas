@@ -14,10 +14,6 @@ use crate::models::manifest::{InstallStep, PackageManifest};
 use crate::models::package::{InstalledPackage, PackageTask};
 use crate::services::docker::DockerService;
 
-/// Default catalog when `PINAS_CATALOG_URL` is not set
-pub const DEFAULT_CATALOG_URL: &str =
-    "https://raw.githubusercontent.com/kameka22/pinas-app-catalog/master/catalog.json";
-
 /// Package service handles installation, updates, and removal of packages
 pub struct PackageService {
     db: SqlitePool,
@@ -38,12 +34,9 @@ impl PackageService {
     }
 
     pub async fn new(db: SqlitePool, task_tx: broadcast::Sender<TaskProgressEvent>) -> Self {
-        let data_dir = std::env::var("PINAS_DATA_DIR")
-            .unwrap_or_else(|_| "/storage/.pinas".to_string());
-
-        let dev_mode = std::env::var("PINAS_DEV_MODE")
-            .map(|v| v.to_lowercase() == "true" || v == "1")
-            .unwrap_or(false);
+        let cfg = crate::config::AppConfig::global();
+        let data_dir = cfg.data_dir();
+        let dev_mode = cfg.dev_mode;
 
         if dev_mode {
             tracing::info!("PackageService running in dev mode - fake installation with simulated steps");
@@ -51,15 +44,11 @@ impl PackageService {
 
         Self {
             db,
-            catalog_url: std::env::var("PINAS_CATALOG_URL")
-                .unwrap_or_else(|_| DEFAULT_CATALOG_URL.to_string()),
-            data_dir: data_dir.clone(),
-            packages_dir: std::env::var("PINAS_PACKAGES_DIR")
-                .unwrap_or_else(|_| format!("{}/apps", data_dir)),
-            downloads_dir: std::env::var("PINAS_DOWNLOADS_DIR")
-                .unwrap_or_else(|_| format!("{}/downloads", data_dir)),
-            bin_dir: std::env::var("PINAS_BIN_DIR")
-                .unwrap_or_else(|_| format!("{}/bin", data_dir)),
+            catalog_url: cfg.catalog_url.clone(),
+            data_dir,
+            packages_dir: cfg.packages_dir(),
+            downloads_dir: cfg.downloads_dir(),
+            bin_dir: cfg.bin_dir(),
             docker_service: DockerService::new().await,
             dev_mode,
             task_tx,

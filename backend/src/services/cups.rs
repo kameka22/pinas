@@ -101,9 +101,7 @@ fn dev_job_counter() -> &'static Mutex<u32> {
 
 impl CupsService {
     pub fn new() -> Self {
-        let dev_mode = std::env::var("PINAS_DEV_MODE")
-            .map(|v| v.to_lowercase() == "true" || v == "1")
-            .unwrap_or(false);
+        let dev_mode = crate::config::AppConfig::global().dev_mode;
 
         if dev_mode {
             tracing::debug!("CupsService running in dev mode - using fake printer data");

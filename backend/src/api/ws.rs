@@ -106,13 +106,15 @@ pub async fn ws_handler(
     let task_rx = state.task_tx.subscribe();
     let file_task_rx = state.file_task_tx.subscribe();
     let storage_rx = state.storage_tx.subscribe();
-    ws.on_upgrade(move |socket| handle_socket(socket, task_rx, file_task_rx, storage_rx))
+    let system = state.system.clone();
+    ws.on_upgrade(move |socket| handle_socket(socket, system, task_rx, file_task_rx, storage_rx))
         .into_response()
 }
 
 /// Handle individual WebSocket connection
 async fn handle_socket(
     socket: WebSocket,
+    system: std::sync::Arc<tokio::sync::RwLock<System>>,
     mut task_rx: broadcast::Receiver<TaskProgressEvent>,
     mut file_task_rx: broadcast::Receiver<FileTaskEvent>,
     mut storage_rx: broadcast::Receiver<StorageAlertEvent>,
@@ -122,16 +124,14 @@ async fn handle_socket(
     // Spawn task to send periodic system stats, task progress, and file task events
     let send_task = tokio::spawn(async move {
         let mut stats_interval = interval(Duration::from_secs(2));
-        let mut sys = System::new_all();
 
         loop {
             tokio::select! {
                 _ = stats_interval.tick() => {
-                    sys.refresh_all();
-
-                    let cpu_usage = sys.global_cpu_usage();
-                    let memory_total = sys.total_memory();
-                    let memory_used = sys.used_memory();
+                    let (cpu_usage, memory_total, memory_used) = {
+                        let sys = system.read().await;
+                        (sys.global_cpu_usage(), sys.total_memory(), sys.used_memory())
+                    };
                     let memory_usage = (memory_used as f32 / memory_total as f32) * 100.0;
 
                     let event = WsEvent::SystemStats(SystemStats {

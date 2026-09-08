@@ -14,13 +14,13 @@ use crate::AppState;
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/", get(list_services))
-        .route("/:name/status", get(get_service_status))
-        .route("/:name/start", post(start_service))
-        .route("/:name/stop", post(stop_service))
-        .route("/:name/restart", post(restart_service))
-        .route("/:name/enable", post(enable_service))
-        .route("/:name/disable", post(disable_service))
-        .route("/:name/logs", get(get_service_logs))
+        .route("/{name}/status", get(get_service_status))
+        .route("/{name}/start", post(start_service))
+        .route("/{name}/stop", post(stop_service))
+        .route("/{name}/restart", post(restart_service))
+        .route("/{name}/enable", post(enable_service))
+        .route("/{name}/disable", post(disable_service))
+        .route("/{name}/logs", get(get_service_logs))
 }
 
 /// List all PiNAS-managed services

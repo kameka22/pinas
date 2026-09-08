@@ -8,7 +8,8 @@ use axum::{
     middleware,
 };
 use serde::Serialize;
-use tokio::sync::{broadcast, Mutex};
+use tokio::sync::{broadcast, Mutex, RwLock};
+use sysinfo::{ProcessesToUpdate, System};
 use axum::http::{header, Method};
 use tower_http::cors::CorsLayer;
 use tower_http::set_header::SetResponseHeaderLayer;
@@ -37,6 +38,9 @@ pub struct AppState {
     pub storage_tx: broadcast::Sender<StorageAlertEvent>,
     pub just_updated: Arc<Mutex<Option<UpdateAppliedInfo>>>,
     pub tls_enabled: bool,
+    /// Single sysinfo snapshot, refreshed every 2s by a background task
+    /// (CPU usage needs two samples, and `System::new_all()` per request is expensive on a Pi).
+    pub system: Arc<RwLock<System>>,
 }
 
 #[tokio::main]
@@ -52,6 +56,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Load configuration
     let config = AppConfig::load()?;
+    AppConfig::init_global(config.clone());
     let bind_addr = config.bind_address.clone();
 
     // Initialize database
@@ -87,6 +92,22 @@ async fn main() -> anyhow::Result<()> {
         .map(|v| v.to_lowercase() == "true" || v == "1")
         .unwrap_or(false);
 
+    // Shared system snapshot + refresher
+    let system = Arc::new(RwLock::new(System::new_all()));
+    {
+        let system = system.clone();
+        tokio::spawn(async move {
+            let mut ticker = tokio::time::interval(std::time::Duration::from_secs(2));
+            loop {
+                ticker.tick().await;
+                let mut sys = system.write().await;
+                sys.refresh_cpu_usage();
+                sys.refresh_memory();
+                sys.refresh_processes(ProcessesToUpdate::All, true);
+            }
+        });
+    }
+
     // Create app state
     let state = AppState {
         config: Arc::new(config),
@@ -96,6 +117,7 @@ async fn main() -> anyhow::Result<()> {
         storage_tx: storage_tx.clone(),
         just_updated: Arc::new(Mutex::new(just_updated)),
         tls_enabled,
+        system,
     };
 
     // Start storage health monitor (background task every 60s)

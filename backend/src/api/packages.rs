@@ -29,9 +29,9 @@ pub fn router() -> Router<AppState> {
         .route("/", get(list_packages))
         .route("/catalog", get(get_catalog))
         .route("/install", post(install_package))
-        .route("/:id", get(get_package))
-        .route("/:id", delete(uninstall_package))
-        .route("/task/:id", get(get_task))
+        .route("/{id}", get(get_package))
+        .route("/{id}", delete(uninstall_package))
+        .route("/task/{id}", get(get_task))
 }
 
 /// List installed packages

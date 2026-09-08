@@ -51,9 +51,7 @@ pub struct NetworkService {
 
 impl NetworkService {
     pub fn new() -> Self {
-        let dev_mode = std::env::var("PINAS_DEV_MODE")
-            .map(|v| v.to_lowercase() == "true" || v == "1")
-            .unwrap_or(false);
+        let dev_mode = crate::config::AppConfig::global().dev_mode;
 
         if dev_mode {
             tracing::info!("NetworkService running in dev mode - using fake network data");

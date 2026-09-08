@@ -1,5 +1,9 @@
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
+
+/// Process-wide configuration, set once by `main` (see `AppConfig::init_global`).
+static GLOBAL_CONFIG: OnceLock<AppConfig> = OnceLock::new();
 
 /// Marker value indicating no JWT secret was configured
 const DEFAULT_JWT_SECRET_MARKER: &str = "change-me-in-production";
@@ -62,6 +66,57 @@ pub struct AppConfig {
     /// Path to TLS private key PEM file (auto-computed)
     #[serde(skip)]
     pub tls_key_path: PathBuf,
+
+    /// Data directory: secrets, TLS material, package state, update staging.
+    /// Defaults to the directory containing the SQLite database.
+    #[serde(default)]
+    pub data_dir: Option<String>,
+
+    /// Where installed packages live (default: `{data_dir}/apps`)
+    #[serde(default)]
+    pub packages_dir: Option<String>,
+
+    /// Package download cache (default: `{data_dir}/downloads`)
+    #[serde(default)]
+    pub downloads_dir: Option<String>,
+
+    /// Symlinked binaries of installed packages (default: `{data_dir}/bin`)
+    #[serde(default)]
+    pub bin_dir: Option<String>,
+
+    /// Mount root for storage pools
+    #[serde(default = "default_pools_path")]
+    pub pools_path: String,
+
+    /// App catalog index URL
+    #[serde(default = "default_catalog_url")]
+    pub catalog_url: String,
+
+    /// GitHub owner/repo hosting the system update releases
+    #[serde(default = "default_github_owner")]
+    pub github_owner: String,
+    #[serde(default = "default_github_repo")]
+    pub github_repo: String,
+
+    /// Docker daemon socket (`unix:///var/run/docker.sock` when unset)
+    #[serde(default)]
+    pub docker_host: Option<String>,
+}
+
+fn default_pools_path() -> String {
+    "/storage/pools".to_string()
+}
+
+fn default_catalog_url() -> String {
+    "https://raw.githubusercontent.com/kameka22/pinas-app-catalog/master/catalog.json".to_string()
+}
+
+fn default_github_owner() -> String {
+    "kameka22".to_string()
+}
+
+fn default_github_repo() -> String {
+    "pinas".to_string()
 }
 
 fn default_bind_address() -> String {
@@ -107,17 +162,9 @@ fn default_kodi_password() -> String {
 /// Marker value indicating no Kodi password was configured
 const DEFAULT_KODI_PASSWORD_MARKER: &str = "auto-generate";
 
-impl AppConfig {
-    /// Load configuration from environment variables
-    pub fn load() -> anyhow::Result<Self> {
-        // Load .env file if present
-        dotenvy::dotenv().ok();
-
-        let config = config::Config::builder()
-            .add_source(config::Environment::with_prefix("PINAS"))
-            .build()?;
-
-        let mut app_config: AppConfig = config.try_deserialize().unwrap_or_else(|_| AppConfig {
+impl Default for AppConfig {
+    fn default() -> Self {
+        Self {
             bind_address: default_bind_address(),
             database_url: default_database_url(),
             jwt_secret: default_jwt_secret(),
@@ -132,7 +179,35 @@ impl AppConfig {
             tls_enabled: false,
             tls_cert_path: PathBuf::new(),
             tls_key_path: PathBuf::new(),
-        });
+            data_dir: None,
+            packages_dir: None,
+            downloads_dir: None,
+            bin_dir: None,
+            pools_path: default_pools_path(),
+            catalog_url: default_catalog_url(),
+            github_owner: default_github_owner(),
+            github_repo: default_github_repo(),
+            docker_host: None,
+        }
+    }
+}
+
+impl AppConfig {
+    /// Load configuration from environment variables
+    pub fn load() -> anyhow::Result<Self> {
+        // Load .env file if present
+        dotenvy::dotenv().ok();
+
+        let config = config::Config::builder()
+            .add_source(config::Environment::with_prefix("PINAS"))
+            .build()?;
+
+        let mut app_config: AppConfig = config.try_deserialize().unwrap_or_default();
+
+        // Resolve data_dir once so every consumer sees the same absolute answer
+        if app_config.data_dir.is_none() {
+            app_config.data_dir = Some(Self::get_data_dir(&app_config));
+        }
 
         // Auto-generate JWT secret if using default marker
         if app_config.jwt_secret == DEFAULT_JWT_SECRET_MARKER {
@@ -148,10 +223,8 @@ impl AppConfig {
             )?;
         }
 
-        // TLS: only enabled if explicitly set via PINAS_TLS_ENABLED=true
-        app_config.tls_enabled = std::env::var("PINAS_TLS_ENABLED")
-            .map(|v| v == "true" || v == "1")
-            .unwrap_or(false);
+        // TLS: only enabled if explicitly set via PINAS_TLS_ENABLED=true (already
+        // deserialized into `tls_enabled`; forced off in dev mode)
         if app_config.dev_mode && app_config.tls_enabled {
             app_config.tls_enabled = false;
             tracing::info!("TLS disabled (dev_mode)");
@@ -159,7 +232,7 @@ impl AppConfig {
 
         // Setup TLS cert/key paths and generate if needed
         if app_config.tls_enabled {
-            let data_dir = Self::get_data_dir(&app_config);
+            let data_dir = app_config.data_dir();
             let tls_dir = Path::new(&data_dir).join(".tls");
             app_config.tls_cert_path = tls_dir.join("cert.pem");
             app_config.tls_key_path = tls_dir.join("key.pem");
@@ -170,22 +243,56 @@ impl AppConfig {
         Ok(app_config)
     }
 
+    /// Install this configuration as the process-wide instance. Must be called once,
+    /// before any service is constructed.
+    pub fn init_global(config: AppConfig) {
+        if GLOBAL_CONFIG.set(config).is_err() {
+            tracing::warn!("AppConfig::init_global called twice; keeping the first value");
+        }
+    }
+
+    /// Process-wide configuration. Falls back to loading from the environment
+    /// (tests, tools) when `init_global` has not been called.
+    pub fn global() -> &'static AppConfig {
+        GLOBAL_CONFIG.get_or_init(|| {
+            AppConfig::load().unwrap_or_else(|e| {
+                tracing::warn!("AppConfig::global: load failed ({}), using defaults", e);
+                let mut cfg = AppConfig::default();
+                cfg.data_dir = Some(Self::get_data_dir(&cfg));
+                cfg
+            })
+        })
+    }
+
+    /// Data directory (secrets, TLS, packages, update staging)
+    pub fn data_dir(&self) -> String {
+        self.data_dir.clone().unwrap_or_else(|| Self::get_data_dir(self))
+    }
+
+    /// Where installed packages live
+    pub fn packages_dir(&self) -> String {
+        self.packages_dir.clone().unwrap_or_else(|| format!("{}/apps", self.data_dir()))
+    }
+
+    /// Package download cache
+    pub fn downloads_dir(&self) -> String {
+        self.downloads_dir.clone().unwrap_or_else(|| format!("{}/downloads", self.data_dir()))
+    }
+
+    /// Symlinked binaries of installed packages
+    pub fn bin_dir(&self) -> String {
+        self.bin_dir.clone().unwrap_or_else(|| format!("{}/bin", self.data_dir()))
+    }
+
+    /// Docker daemon endpoint
+    pub fn docker_host(&self) -> String {
+        self.docker_host.clone().unwrap_or_else(|| "unix:///var/run/docker.sock".to_string())
+    }
+
     /// Load JWT secret from persistent file, or generate and save a new one.
     /// This ensures a unique secret per installation that survives restarts.
     fn load_or_generate_jwt_secret(config: &AppConfig) -> anyhow::Result<String> {
-        // Determine data directory from database URL or env
-        let data_dir = std::env::var("PINAS_DATA_DIR").unwrap_or_else(|_| {
-            // Extract directory from database_url (sqlite:./data/pinas.db -> ./data)
-            if let Some(path) = config.database_url.strip_prefix("sqlite:") {
-                let path = path.split('?').next().unwrap_or(path);
-                Path::new(path)
-                    .parent()
-                    .map(|p| p.to_string_lossy().to_string())
-                    .unwrap_or_else(|| ".".to_string())
-            } else {
-                ".".to_string()
-            }
-        });
+        let data_dir = config.data_dir();
 
         let secret_path = Path::new(&data_dir).join(".jwt_secret");
 
@@ -227,17 +334,7 @@ impl AppConfig {
 
     /// Generic helper: load a secret from a file, or generate and persist a new one.
     fn load_or_generate_secret(config: &AppConfig, filename: &str, label: &str) -> anyhow::Result<String> {
-        let data_dir = std::env::var("PINAS_DATA_DIR").unwrap_or_else(|_| {
-            if let Some(path) = config.database_url.strip_prefix("sqlite:") {
-                let path = path.split('?').next().unwrap_or(path);
-                Path::new(path)
-                    .parent()
-                    .map(|p| p.to_string_lossy().to_string())
-                    .unwrap_or_else(|| ".".to_string())
-            } else {
-                ".".to_string()
-            }
-        });
+        let data_dir = config.data_dir();
 
         let secret_path = Path::new(&data_dir).join(filename);
 
@@ -274,19 +371,21 @@ impl AppConfig {
         Ok(secret)
     }
 
-    /// Get the data directory path from env or database URL
+    /// Derive the data directory from the database URL
+    /// (`sqlite:./data/pinas.db` -> `./data`) when `PINAS_DATA_DIR` is not set.
     fn get_data_dir(config: &AppConfig) -> String {
-        std::env::var("PINAS_DATA_DIR").unwrap_or_else(|_| {
-            if let Some(path) = config.database_url.strip_prefix("sqlite:") {
-                let path = path.split('?').next().unwrap_or(path);
-                Path::new(path)
-                    .parent()
-                    .map(|p| p.to_string_lossy().to_string())
-                    .unwrap_or_else(|| ".".to_string())
-            } else {
-                ".".to_string()
-            }
-        })
+        if let Some(dir) = &config.data_dir {
+            return dir.clone();
+        }
+        if let Some(path) = config.database_url.strip_prefix("sqlite:") {
+            let path = path.split('?').next().unwrap_or(path);
+            Path::new(path)
+                .parent()
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_else(|| ".".to_string())
+        } else {
+            ".".to_string()
+        }
     }
 
     /// Load existing TLS certificate or generate a self-signed one

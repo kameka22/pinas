@@ -19,9 +19,9 @@ pub fn router() -> Router<AppState> {
         .route("/", post(create_permission))
         .route("/folders", get(list_folders))
         .route("/folder", get(get_folder_permissions))
-        .route("/user/:user_id", get(get_user_permissions))
-        .route("/:id", put(update_permission))
-        .route("/:id", delete(delete_permission))
+        .route("/user/{user_id}", get(get_user_permissions))
+        .route("/{id}", put(update_permission))
+        .route("/{id}", delete(delete_permission))
 }
 
 /// Error response

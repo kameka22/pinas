@@ -41,9 +41,7 @@ pub struct ShareService {
 
 impl ShareService {
     pub fn new(db: SqlitePool) -> Self {
-        let dev_mode = std::env::var("PINAS_DEV_MODE")
-            .map(|v| v.to_lowercase() == "true" || v == "1")
-            .unwrap_or(false);
+        let dev_mode = crate::config::AppConfig::global().dev_mode;
 
         Self { db, dev_mode }
     }

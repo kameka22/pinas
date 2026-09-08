@@ -126,8 +126,7 @@ pub struct ProcessListResponse {
 
 /// Get system information
 async fn get_info(State(state): State<AppState>) -> impl IntoResponse {
-    let mut sys = System::new_all();
-    sys.refresh_all();
+    let sys = state.system.read().await;
 
     let cpu_usage = sys.global_cpu_usage();
     let total_memory = sys.total_memory();
@@ -250,13 +249,9 @@ async fn shutdown(
 }
 
 /// Get list of running processes
-async fn get_processes(State(_state): State<AppState>, _admin: AdminUser) -> impl IntoResponse {
-    let mut sys = System::new_all();
-    sys.refresh_all();
-
-    // Wait a bit for CPU measurements to be accurate
-    std::thread::sleep(std::time::Duration::from_millis(200));
-    sys.refresh_all();
+async fn get_processes(State(state): State<AppState>, _admin: AdminUser) -> impl IntoResponse {
+    // The shared snapshot is refreshed every 2s, so CPU deltas are already meaningful
+    let sys = state.system.read().await;
 
     let total_memory = sys.total_memory();
     let used_memory = sys.used_memory();
@@ -321,14 +316,14 @@ async fn get_processes(State(_state): State<AppState>, _admin: AdminUser) -> imp
 
 /// Kill a process by PID
 async fn kill_process(
-    State(_state): State<AppState>,
+    State(state): State<AppState>,
     _admin: AdminUser,
     Path(pid): Path<u32>,
 ) -> impl IntoResponse {
-    let mut sys = System::new_all();
-    sys.refresh_all();
-
     let pid = Pid::from_u32(pid);
+    let mut sys = state.system.write().await;
+    // Make sure we act on the current process table, not a 2s-old snapshot
+    sys.refresh_processes(sysinfo::ProcessesToUpdate::Some(&[pid]), true);
 
     if let Some(process) = sys.process(pid) {
         // Default to SIGTERM for graceful termination

@@ -103,18 +103,11 @@ pub struct UpdateService {
 
 impl UpdateService {
     pub fn new(db: SqlitePool, task_tx: broadcast::Sender<TaskProgressEvent>) -> Self {
-        let dev_mode = std::env::var("PINAS_DEV_MODE")
-            .map(|v| v.to_lowercase() == "true" || v == "1")
-            .unwrap_or(false);
-
-        let data_dir = std::env::var("PINAS_DATA_DIR")
-            .unwrap_or_else(|_| "/storage/.pinas".to_string());
-
-        let github_owner = std::env::var("PINAS_GITHUB_OWNER")
-            .unwrap_or_else(|_| "kameka22".to_string());
-
-        let github_repo = std::env::var("PINAS_GITHUB_REPO")
-            .unwrap_or_else(|_| "pinas".to_string());
+        let cfg = crate::config::AppConfig::global();
+        let dev_mode = cfg.dev_mode;
+        let data_dir = cfg.data_dir();
+        let github_owner = cfg.github_owner.clone();
+        let github_repo = cfg.github_repo.clone();
 
         if dev_mode {
             tracing::info!("UpdateService running in dev mode - simulated updates");

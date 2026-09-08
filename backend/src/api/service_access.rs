@@ -15,8 +15,8 @@ use crate::AppState;
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/", get(list_service_access))
-        .route("/:user_id", get(get_user_service_access))
-        .route("/:user_id", put(update_user_service_access))
+        .route("/{user_id}", get(get_user_service_access))
+        .route("/{user_id}", put(update_user_service_access))
 }
 
 #[derive(Debug, Serialize)]

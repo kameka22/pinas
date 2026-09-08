@@ -68,7 +68,7 @@ PiNAS est un système d'exploitation NAS moderne, inspiré de Synology DSM, con�
 
 ## Variables d'environnement
 
-Le backend lit ses variables via `config::Environment::with_prefix("PINAS")` (`backend/src/config/mod.rs`) : chaque champ `snake_case` de `AppConfig` correspond à `PINAS_<CHAMP>`. Les valeurs ci-dessous sont celles de `libreelec/packages/pinas/system.d/pinas.service` (production) ; `backend/.env.dev` fournit l'équivalent dev (port 3388, `PINAS_DEV_MODE=true`).
+Le backend lit **toute** sa configuration via `config::Environment::with_prefix("PINAS")` dans `AppConfig` (`backend/src/config/mod.rs`) : chaque champ `snake_case` correspond à `PINAS_<CHAMP>`. `main` installe l'instance avec `AppConfig::init_global()` ; les services y accèdent par `AppConfig::global()` — **ne jamais lire `std::env::var` ailleurs**. Les valeurs ci-dessous sont celles de `libreelec/packages/pinas/system.d/pinas.service` (production) ; `backend/.env.dev` fournit l'équivalent dev (port 3388, `PINAS_DEV_MODE=true`).
 
 ```bash
 # --- AppConfig (production sur LibreELEC) ---
@@ -85,16 +85,16 @@ PINAS_KODI_USERNAME=kodi
 PINAS_KODI_PASSWORD=<auto-généré dans ${PINAS_DATA_DIR}/.kodi_password>
 PINAS_TLS_ENABLED=false                # true = HTTPS auto-signé (rcgen) dans ${PINAS_DATA_DIR}/.tls/
 
-# --- Lus directement via std::env::var (services) ---
-PINAS_DATA_DIR=/storage/.pinas/data    # secrets, TLS, samba/, etc.
-PINAS_PACKAGES_DIR=/storage/.pinas/packages
-PINAS_DOWNLOADS_DIR=/storage/.pinas/downloads
-PINAS_BIN_DIR=/storage/.pinas/bin
-PINAS_POOLS_PATH=<override du chemin de montage des pools>
+# --- Chemins & sources (défauts dérivés de data_dir = dossier de la base SQLite) ---
+PINAS_DATA_DIR=/storage/.pinas/data    # secrets, TLS, samba/, staging des mises à jour
+PINAS_PACKAGES_DIR=/storage/.pinas/packages   # défaut : ${PINAS_DATA_DIR}/apps
+PINAS_DOWNLOADS_DIR=/storage/.pinas/downloads # défaut : ${PINAS_DATA_DIR}/downloads
+PINAS_BIN_DIR=/storage/.pinas/bin             # défaut : ${PINAS_DATA_DIR}/bin
+PINAS_POOLS_PATH=/storage/pools        # racine de montage des pools
 PINAS_CATALOG_URL=https://raw.githubusercontent.com/kameka22/pinas-app-catalog/master/catalog.json
 PINAS_GITHUB_OWNER=kameka22            # source des releases pour l'auto-update
 PINAS_GITHUB_REPO=pinas
-DOCKER_HOST=<socket Docker, optionnel>
+PINAS_DOCKER_HOST=unix:///var/run/docker.sock # (remplace l'ancien DOCKER_HOST)
 
 # --- Logs : tracing EnvFilter (défaut si absent : pinas=debug,tower_http=debug) ---
 RUST_LOG=pinas=info,tower_http=info

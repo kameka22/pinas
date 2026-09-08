@@ -24,12 +24,9 @@ pub struct StorageService {
 
 impl StorageService {
     pub fn new(db: SqlitePool) -> Self {
-        let pools_base_path = std::env::var("PINAS_POOLS_PATH")
-            .unwrap_or_else(|_| "/storage/pools".to_string());
+        let pools_base_path = crate::config::AppConfig::global().pools_path.clone();
 
-        let dev_mode = std::env::var("PINAS_DEV_MODE")
-            .map(|v| v.to_lowercase() == "true" || v == "1")
-            .unwrap_or(false);
+        let dev_mode = crate::config::AppConfig::global().dev_mode;
 
         if dev_mode {
             tracing::info!("StorageService running in dev mode - using fake disk data");

@@ -234,8 +234,7 @@ async fn dismiss_update(State(state): State<AppState>) -> impl IntoResponse {
     }
 
     // Remove the flag file
-    let data_dir = std::env::var("PINAS_DATA_DIR")
-        .unwrap_or_else(|_| "/storage/.pinas".to_string());
+    let data_dir = state.config.data_dir();
 
     match UpdateService::dismiss_update_applied(&data_dir).await {
         Ok(_) => StatusCode::NO_CONTENT.into_response(),

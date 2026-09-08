@@ -109,8 +109,7 @@ impl DockerService {
     /// Try to connect to Docker daemon
     async fn connect() -> Result<Docker> {
         // Try socket path first (common on Linux)
-        let socket_path = std::env::var("DOCKER_HOST")
-            .unwrap_or_else(|_| "unix:///var/run/docker.sock".to_string());
+        let socket_path = crate::config::AppConfig::global().docker_host();
 
         // Also check LibreELEC's typical paths
         let paths = vec![
@@ -422,15 +421,36 @@ impl DockerService {
 
         let networks = client.list_networks(None::<ListNetworksOptions>).await?;
 
+        // Engine API >= 1.53 no longer lists attached containers in /networks:
+        // rebuild the mapping from the containers' own endpoint settings.
+        let mut attached: HashMap<String, Vec<String>> = HashMap::new();
+        let containers = client
+            .list_containers(Some(ListContainersOptionsBuilder::new().all(true).build()))
+            .await?;
+        for c in containers {
+            let name = c
+                .names
+                .unwrap_or_default()
+                .first()
+                .map(|n| n.trim_start_matches('/').to_string())
+                .unwrap_or_else(|| c.id.clone().unwrap_or_default());
+            if let Some(nets) = c.network_settings.and_then(|s| s.networks) {
+                for net_name in nets.keys() {
+                    attached.entry(net_name.clone()).or_default().push(name.clone());
+                }
+            }
+        }
+
         Ok(networks
             .into_iter()
             .map(|n| {
-                // Engine API >= 1.53 no longer lists attached containers in /networks
-                let containers: Vec<String> = Vec::new();
+                let name = n.name.unwrap_or_default();
+                let mut containers = attached.remove(&name).unwrap_or_default();
+                containers.sort();
 
                 NetworkInfo {
                     id: n.id.unwrap_or_default(),
-                    name: n.name.unwrap_or_default(),
+                    name,
                     driver: n.driver.unwrap_or_default(),
                     scope: n.scope.unwrap_or_default(),
                     containers,
