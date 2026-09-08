@@ -40,6 +40,11 @@ pub struct ShareService {
 }
 
 impl ShareService {
+    #[cfg(test)]
+    pub fn for_tests(db: SqlitePool) -> Self {
+        Self { db, dev_mode: true }
+    }
+
     pub fn new(db: SqlitePool) -> Self {
         let dev_mode = crate::config::AppConfig::global().dev_mode;
 
@@ -1046,5 +1051,74 @@ impl ShareService {
             }
             _ => 0,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::permission::PermissionLevel;
+    use crate::test_util::{insert_user, migrated_pool};
+
+    async fn insert_share(pool: &SqlitePool, name: &str, path: &str, guest_ok: bool) {
+        let now = chrono::Utc::now().to_rfc3339();
+        let cfg = serde_json::json!({ "guest_ok": guest_ok }).to_string();
+        sqlx::query("INSERT INTO shares (id, name, path, share_type, enabled, description, config, created_at, updated_at) VALUES (?, ?, ?, 'smb', TRUE, NULL, ?, ?, ?)")
+            .bind(uuid::Uuid::new_v4().to_string()).bind(name).bind(path).bind(cfg).bind(&now).bind(&now)
+            .execute(pool).await.unwrap();
+    }
+
+    async fn allow_smb(pool: &SqlitePool, user_id: &str) {
+        let now = chrono::Utc::now().to_rfc3339();
+        sqlx::query("INSERT INTO service_access (id, user_id, group_id, service, enabled, created_at, updated_at) VALUES (?, ?, NULL, 'smb', TRUE, ?, ?)")
+            .bind(uuid::Uuid::new_v4().to_string()).bind(user_id).bind(&now).bind(&now)
+            .execute(pool).await.unwrap();
+    }
+
+    fn section<'a>(conf: &'a str, name: &str) -> &'a str {
+        let start = conf.find(&format!("[{}]", name)).expect("section present");
+        let rest = &conf[start..];
+        let end = rest[1..].find("\n[").map(|i| i + 1).unwrap_or(rest.len());
+        &rest[..end]
+    }
+
+    #[tokio::test]
+    async fn share_with_permissions_is_never_guest_accessible() {
+        let pool = migrated_pool().await;
+        let alice = insert_user(&pool, "alice", false).await;
+        allow_smb(&pool, &alice).await;
+        insert_share(&pool, "media", "/storage/shares/media", true).await;
+        PermissionService::new(pool.clone())
+            .create("/storage/shares/media", Some(&alice), None, PermissionLevel::Read)
+            .await
+            .unwrap();
+
+        let conf = ShareService::for_tests(pool).generate_smb_conf().await.unwrap();
+        let media = section(&conf, "media");
+        assert!(media.contains("guest ok = no"), "{media}");
+        assert!(media.contains("valid users = alice"), "{media}");
+        assert!(media.contains("read list = alice"), "{media}");
+        assert!(!media.contains("write list"), "{media}");
+        assert!(media.contains("force user = root"));
+    }
+
+    #[tokio::test]
+    async fn open_share_honours_guest_setting_and_smb_access_gate() {
+        let pool = migrated_pool().await;
+        // bob has a write permission but SMB access is NOT enabled for him
+        let bob = insert_user(&pool, "bob", false).await;
+        insert_share(&pool, "public", "/storage/shares/public", true).await;
+        insert_share(&pool, "private", "/storage/shares/private", false).await;
+        PermissionService::new(pool.clone())
+            .create("/storage/shares/private", Some(&bob), None, PermissionLevel::Write)
+            .await
+            .unwrap();
+
+        let conf = ShareService::for_tests(pool).generate_smb_conf().await.unwrap();
+        assert!(section(&conf, "public").contains("guest ok = yes"));
+        let private = section(&conf, "private");
+        assert!(private.contains("guest ok = no"));
+        // not SMB-authorized: must not appear in any list
+        assert!(!private.contains("bob"), "{private}");
     }
 }

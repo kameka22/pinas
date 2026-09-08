@@ -106,6 +106,15 @@ fn validate_path(base: &Path, requested: &str) -> Result<PathBuf, String> {
     // Normalize the requested path - remove leading slashes
     let requested = requested.trim_start_matches('/');
 
+    // Never accept `..`: for paths whose parent does not exist yet we cannot
+    // canonicalize, and a lexical `base/../..` would pass the prefix check below.
+    if Path::new(requested)
+        .components()
+        .any(|c| matches!(c, std::path::Component::ParentDir))
+    {
+        return Err("Access denied: '..' is not allowed in paths".to_string());
+    }
+
     // Build the full path
     let full_path = base.join(requested);
 
@@ -1164,4 +1173,41 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validate_path_stays_inside_base() {
+        let base = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(base.path().join("docs/sub")).unwrap();
+
+        let ok = validate_path(base.path(), "docs/sub").unwrap();
+        assert!(ok.ends_with("docs/sub"));
+        // leading slashes are relative to the base, not the filesystem root
+        let ok = validate_path(base.path(), "/docs").unwrap();
+        assert!(ok.starts_with(base.path()));
+        // new file in an existing directory is fine
+        assert!(validate_path(base.path(), "docs/new.txt").is_ok());
+    }
+
+    #[test]
+    fn validate_path_rejects_traversal() {
+        let base = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(base.path().join("docs")).unwrap();
+
+        assert!(validate_path(base.path(), "../etc/passwd").is_err());
+        assert!(validate_path(base.path(), "docs/../../etc").is_err());
+        // parent does not exist: must still be refused
+        assert!(validate_path(base.path(), "nope/../../tmp/x").is_err());
+    }
+
+    #[test]
+    fn mime_types_by_extension() {
+        assert_eq!(get_mime_type(Path::new("a.txt")).as_deref(), Some("text/plain"));
+        assert_eq!(get_mime_type(Path::new("a.HTML")).as_deref(), Some("text/html"));
+        assert!(get_mime_type(Path::new("noext")).is_none());
+    }
 }

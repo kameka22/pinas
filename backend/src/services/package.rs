@@ -1238,3 +1238,36 @@ fn base64_decode(input: &str) -> Result<Vec<u8>> {
     use base64::{engine::general_purpose::STANDARD, Engine};
     STANDARD.decode(input).map_err(|e| anyhow!("Base64 decode error: {}", e))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::manifest::InstallStep;
+
+    #[test]
+    fn download_urls_must_be_https_except_localhost() {
+        assert!(PackageService::validate_download_url("https://download.docker.com/x.tgz").is_ok());
+        assert!(PackageService::validate_download_url("http://localhost:8080/x.tgz").is_ok());
+        assert!(PackageService::validate_download_url("http://127.0.0.1/x.tgz").is_ok());
+        assert!(PackageService::validate_download_url("http://example.com/x.tgz").is_err());
+        assert!(PackageService::validate_download_url("ftp://example.com/x.tgz").is_err());
+        assert!(PackageService::validate_download_url("not a url").is_err());
+    }
+
+    #[test]
+    fn manifest_steps_are_typed_and_exec_is_not_a_thing() {
+        let step: InstallStep = serde_json::from_str(
+            r#"{"action":"systemctl","operation":"enable","service":"docker.service"}"#,
+        ).unwrap();
+        assert!(matches!(step, InstallStep::Systemctl { .. }));
+
+        let step: InstallStep = serde_json::from_str(
+            r#"{"action":"download","url":"https://x/y.tgz","dest":"${DOWNLOADS_DIR}/y.tgz","sha256":"abc"}"#,
+        ).unwrap();
+        assert!(matches!(step, InstallStep::Download { .. }));
+
+        // arbitrary command execution was removed from the manifest format on purpose
+        assert!(serde_json::from_str::<InstallStep>(r#"{"action":"exec","command":"rm -rf /"}"#).is_err());
+        assert!(serde_json::from_str::<InstallStep>(r#"{"action":"shell","cmd":"id"}"#).is_err());
+    }
+}

@@ -232,3 +232,35 @@ pub async fn count_group_members(db: &SqlitePool, group_id: &str) -> Result<i64,
 
     Ok(count.0)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_util::{insert_user, migrated_pool};
+
+    #[tokio::test]
+    async fn system_groups_exist_and_names_are_unique() {
+        let pool = migrated_pool().await;
+        let names: Vec<String> = list_groups(&pool).await.unwrap().into_iter().map(|g| g.name).collect();
+        assert!(names.contains(&"administrators".to_string()));
+        assert!(names.contains(&"users".to_string()));
+
+        create_group(&pool, "family", Some("Home users".to_string())).await.unwrap();
+        assert!(matches!(create_group(&pool, "family", None).await, Err(GroupError::DuplicateName)));
+    }
+
+    #[tokio::test]
+    async fn membership_is_idempotent_and_checked() {
+        let pool = migrated_pool().await;
+        let group = create_group(&pool, "media", None).await.unwrap();
+        let carol = insert_user(&pool, "carol", false).await;
+
+        add_member(&pool, &group.id, &carol).await.unwrap();
+        assert!(matches!(add_member(&pool, &group.id, &carol).await, Err(GroupError::AlreadyMember)));
+        assert!(matches!(add_member(&pool, "no-such-group", &carol).await, Err(GroupError::NotFound)));
+
+        let members = get_group_members(&pool, &group.id).await.unwrap();
+        assert_eq!(members.len(), 1);
+        assert_eq!(members[0].username, "carol");
+    }
+}

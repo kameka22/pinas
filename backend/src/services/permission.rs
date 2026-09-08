@@ -375,3 +375,50 @@ impl PermissionService {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::permission::PermissionLevel;
+    use crate::test_util::{insert_user, migrated_pool};
+
+    #[tokio::test]
+    async fn most_specific_path_wins_and_groups_apply() {
+        let pool = migrated_pool().await;
+        let alice = insert_user(&pool, "alice", false).await;
+        let group = crate::services::group::create_group(&pool, "family", None).await.unwrap();
+        crate::services::group::add_member(&pool, &group.id, &alice).await.unwrap();
+
+        let svc = PermissionService::new(pool.clone());
+        svc.create("/srv/data", None, Some(&group.id), PermissionLevel::Write).await.unwrap();
+        svc.create("/srv/data/private", Some(&alice), None, PermissionLevel::Read).await.unwrap();
+
+        // inherited from the group on the parent folder
+        assert_eq!(svc.get_effective_permission(&alice, "/srv/data/photos").await.unwrap(), PermissionLevel::Write);
+        // the more specific user rule downgrades to read-only
+        assert_eq!(svc.get_effective_permission(&alice, "/srv/data/private/x").await.unwrap(), PermissionLevel::Read);
+        assert!(svc.can_read(&alice, "/srv/data/private").await.unwrap());
+        // unrelated path: nothing
+        assert_eq!(svc.get_effective_permission(&alice, "/srv/other").await.unwrap(), PermissionLevel::None);
+        // a folder that merely shares a prefix is not a child
+        assert_eq!(svc.get_effective_permission(&alice, "/srv/data2").await.unwrap(), PermissionLevel::None);
+    }
+
+    #[tokio::test]
+    async fn duplicate_and_invalid_entries_are_rejected() {
+        let pool = migrated_pool().await;
+        let bob = insert_user(&pool, "bob", false).await;
+        let svc = PermissionService::new(pool.clone());
+
+        svc.create("/srv/a", Some(&bob), None, PermissionLevel::Read).await.unwrap();
+        assert!(matches!(
+            svc.create("/srv/a", Some(&bob), None, PermissionLevel::Write).await,
+            Err(PermissionError::AlreadyExists)
+        ));
+        assert!(svc.create("/srv/a", None, None, PermissionLevel::Read).await.is_err());
+
+        let entries = svc.list_by_folder("/srv/a").await.unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].username.as_deref(), Some("bob"));
+    }
+}

@@ -461,3 +461,43 @@ impl AppConfig {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn data_dir_is_derived_from_database_url() {
+        let cfg = AppConfig {
+            database_url: "sqlite:/var/lib/pinas/pinas.db?mode=rwc".to_string(),
+            ..AppConfig::default()
+        };
+        assert_eq!(cfg.data_dir(), "/var/lib/pinas");
+        assert_eq!(cfg.packages_dir(), "/var/lib/pinas/apps");
+        assert_eq!(cfg.downloads_dir(), "/var/lib/pinas/downloads");
+        assert_eq!(cfg.bin_dir(), "/var/lib/pinas/bin");
+    }
+
+    #[test]
+    fn explicit_paths_win_over_derived_ones() {
+        let cfg = AppConfig {
+            data_dir: Some("/storage/.pinas/data".to_string()),
+            packages_dir: Some("/storage/.pinas/packages".to_string()),
+            ..AppConfig::default()
+        };
+        assert_eq!(cfg.data_dir(), "/storage/.pinas/data");
+        assert_eq!(cfg.packages_dir(), "/storage/.pinas/packages");
+        assert_eq!(cfg.bin_dir(), "/storage/.pinas/data/bin");
+        assert_eq!(cfg.docker_host(), "unix:///var/run/docker.sock");
+    }
+
+    #[test]
+    fn defaults_are_production_sensible() {
+        let cfg = AppConfig::default();
+        assert!(!cfg.dev_mode);
+        assert!(!cfg.tls_enabled);
+        assert_eq!(cfg.pools_path, "/storage/pools");
+        assert_eq!(cfg.github_owner, "kameka22");
+        assert!(cfg.catalog_url.starts_with("https://"));
+    }
+}

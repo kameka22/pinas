@@ -101,3 +101,25 @@ pub struct PermissionEntry {
     pub group_name: Option<String>,
     pub permission: String,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn level_roundtrip_and_ordering() {
+        for s in ["none", "read", "write"] {
+            assert_eq!(PermissionLevel::from_str(s).unwrap().as_str(), s);
+        }
+        assert!(PermissionLevel::from_str("admin").is_none());
+        assert!((PermissionLevel::Write as u8) > (PermissionLevel::Read as u8));
+        assert!((PermissionLevel::Read as u8) > (PermissionLevel::None as u8));
+    }
+
+    #[test]
+    fn read_write_matrix() {
+        assert!(!PermissionLevel::None.can_read() && !PermissionLevel::None.can_write());
+        assert!(PermissionLevel::Read.can_read() && !PermissionLevel::Read.can_write());
+        assert!(PermissionLevel::Write.can_read() && PermissionLevel::Write.can_write());
+    }
+}

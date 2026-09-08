@@ -22,6 +22,8 @@ mod config;
 mod db;
 mod models;
 mod services;
+#[cfg(test)]
+mod test_util;
 
 use crate::api::ws::{FileTaskEvent, TaskProgressEvent};
 use crate::config::AppConfig;

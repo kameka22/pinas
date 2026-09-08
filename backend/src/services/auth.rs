@@ -176,3 +176,35 @@ mod tests {
         assert_eq!(extract_bearer_token("abc123"), None);
     }
 }
+
+#[cfg(test)]
+mod more_tests {
+    use super::*;
+
+    #[test]
+    fn password_hashes_are_salted_and_verified() {
+        let h1 = hash_password("Corr3ct-Horse!").unwrap();
+        let h2 = hash_password("Corr3ct-Horse!").unwrap();
+        assert_ne!(h1, h2, "salt must differ between hashes");
+        assert!(h1.starts_with("$argon2id$"));
+        assert!(verify_password("Corr3ct-Horse!", &h1).unwrap());
+        assert!(!verify_password("wrong", &h1).unwrap());
+        assert!(verify_password("x", "not-a-phc-string").is_err());
+    }
+
+    #[test]
+    fn tampered_or_foreign_tokens_are_rejected() {
+        let config = AppConfig { jwt_secret: "secret-one".to_string(), ..AppConfig::default() };
+        let user = User::new("eve".to_string(), "hash".to_string(), None, false);
+        let token = generate_jwt(&user, &config).unwrap();
+
+        let mut tampered = token.clone();
+        tampered.replace_range(token.len() - 2.., "xx");
+        assert!(matches!(validate_jwt(&tampered, &config), Err(AuthError::InvalidToken)));
+
+        let other = AppConfig { jwt_secret: "secret-two".to_string(), ..AppConfig::default() };
+        assert!(validate_jwt(&token, &other).is_err());
+        assert_eq!(extract_bearer_token("Bearer abc"), Some("abc"));
+        assert_eq!(extract_bearer_token("Basic abc"), None);
+    }
+}

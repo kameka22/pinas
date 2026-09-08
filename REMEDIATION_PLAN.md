@@ -36,7 +36,7 @@ Taille totale : **M–L (≈ 3 j)**. Aucune dépendance.
 
 ---
 
-## Phase 1 — Fondations backend
+## Phase 1 — Fondations backend ✅ (terminée le 2026-09-08)
 
 Taille : **L (≈ 5 j)**. Dépend de P0. Le bump de dépendances (axum 0.8, sqlx 0.9, bollard 0.21, édition 2024) est déjà sur `master` ; à valider sur le Pi avec le reste.
 
@@ -47,7 +47,7 @@ Taille : **L (≈ 5 j)**. Dépend de P0. Le bump de dépendances (axum 0.8, sqlx
 | 1.3 ✅ | **`sysinfo::System` partagé** | S | Un `Arc<RwLock<System>>` dans `AppState`, rafraîchi par la tâche WS toutes les 2 s ; `get_info`, `get_processes`, `kill_process` lisent cette instance au lieu de `System::new_all()` par requête. |
 | 1.4 ✅ | **Nettoyage schéma** | S | Migration `012_cleanup.sql` : `DROP TABLE permissions` (remplacée par `folder_permissions` en 006). **Garder** `notifications` (utilisée en P3). Supprimer `services/system.rs` (fichier d'une ligne). Critère : chaque table de `migrations/` est référencée au moins une fois dans `src/`. |
 | 1.5 ✅ | **Hygiène compilation** | S | Éliminer les 61 warnings (imports inutilisés, variables mortes) ; `#![deny(warnings)]` en CI via `RUSTFLAGS=-D warnings`. Passer les 58 `unwrap()/expect()` de code de prod en revue : garder ceux sur des invariants (`parse` de constantes), remplacer les autres par `?`/`AppError`. |
-| 1.6 | **Tests backend** | M | Cible : un module de test par service critique — `auth`, `permission`, `share` (génération `smb.conf`), `package` (parsing manifest + validation des steps), `update` (`is_newer_version`, vérification sha256), `files` (`validate_path`). Base SQLite en mémoire via `sqlx::SqlitePool::connect(":memory:")` + migrations. Critère : ≥ 40 tests, `cargo test` en CI. |
+| 1.6 ✅ | **Tests backend** | M | Cible : un module de test par service critique — `auth`, `permission`, `share` (génération `smb.conf`), `package` (parsing manifest + validation des steps), `update` (`is_newer_version`, vérification sha256), `files` (`validate_path`). Base SQLite en mémoire via `sqlx::SqlitePool::connect(":memory:")` + migrations. Critère : ≥ 40 tests, `cargo test` en CI. |
 | 1.7 ✅ | **Variables d'environnement** | S | Un seul chemin de lecture : tout dans `AppConfig` (les 11 `std::env::var` disséminés — `PINAS_DATA_DIR`, `PINAS_CATALOG_URL`, `PINAS_GITHUB_*`, `PINAS_POOLS_PATH`, `DOCKER_HOST`… — deviennent des champs). `CLAUDE.md` mis à jour en conséquence. |
 | 1.8 ✅ | **Docker : compteur de conteneurs par réseau** | S | `list_networks` appelle `inspect_network` (ou `list_containers` filtré par `network`) pour recalculer `containers` (perdu avec l'API Engine 1.53). |
 
@@ -146,7 +146,7 @@ Taille : **M (≈ 3 j)**. Dépend de P2, P3.
 
 | # | Item | Taille | Détail / critère de fin |
 |---|---|---|---|
-| 8.1 | **CI complète** | S | Workflow `ci.yml` séparé de `build-libreelec.yml`, sur PR et push : `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test`, `npm ci && npm run check && npm run build`, test de génération `smb.conf`. Le build d'image reste manuel/tag. |
+| 8.1 ◐ | **CI complète** | S | Workflow `ci.yml` séparé de `build-libreelec.yml`, sur PR et push : `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test`, `npm ci && npm run check && npm run build`, test de génération `smb.conf`. Le build d'image reste manuel/tag. |
 | 8.2 | **Release** | S | `build-release.sh` : génère `.sha256` (P0.4), tag `vX.Y.Z` depuis `VERSION`, notes de release depuis les commits conventionnels. Une seule source de version : `VERSION` → injecté dans `Cargo.toml`/`package.json`/`package.mk` par le script (plus de dérive). |
 | 8.3 | **Validation Pi** | M | Check-list exécutée à chaque release : boot + `journalctl -u pinas`, onboarding, login/logout (révocation), SMB depuis un client, Storage (pool RAID1 sur 2 clés USB), App Center (installer Jellyfin), Docker, Terminal, Process Manager, mise à jour depuis la version N-1, cohabitation Kodi (bascule `display`). Résultats consignés dans `docs/RELEASE_CHECKLIST.md`. |
 | 8.4 | **App-catalog** | S | Tester l'upgrade Paperless 2 → 3 et Nextcloud 32 → 33 sur une instance existante avant push ; migrer `photoprism` de `mariadb:10.5.12` (EOL) vers `mariadb:11` avec procédure dump/restore documentée ; automatiser le script de vérification des tags (déjà écrit) en action GitHub hebdomadaire ouvrant une PR. |

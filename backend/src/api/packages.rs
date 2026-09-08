@@ -546,3 +546,24 @@ async fn fetch_manifest(url: &str) -> anyhow::Result<PackageManifest> {
     let manifest = response.json::<PackageManifest>().await?;
     Ok(manifest)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn catalog_fetch_urls_block_plain_http_and_private_networks() {
+        assert!(validate_fetch_url("https://raw.githubusercontent.com/x/catalog.json").is_ok());
+        assert!(validate_fetch_url("http://localhost:3000/catalog.json").is_ok());
+        assert!(validate_fetch_url("http://example.com/catalog.json").is_err());
+        for private in [
+            "https://10.0.0.5/c.json",
+            "https://192.168.1.10/c.json",
+            "https://172.16.0.1/c.json",
+            "https://169.254.169.254/latest/meta-data",
+            "https://metadata.google.internal/x",
+        ] {
+            assert!(validate_fetch_url(private).is_err(), "{private} should be rejected");
+        }
+    }
+}

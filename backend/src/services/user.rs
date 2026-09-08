@@ -364,3 +364,34 @@ mod tests {
         assert_eq!(users.len(), 2);
     }
 }
+
+#[cfg(test)]
+mod more_tests {
+    use super::*;
+    use crate::test_util::migrated_pool;
+
+    #[tokio::test]
+    async fn duplicate_username_and_admin_protections() {
+        let pool = migrated_pool().await;
+        let admin = create_user(&pool, "admin", "Adm1n-Passw0rd!!", None, true).await.unwrap();
+        assert!(matches!(
+            create_user(&pool, "admin", "Other-Passw0rd!!", None, false).await,
+            Err(UserError::DuplicateUsername)
+        ));
+        // the only admin cannot be removed, and nobody can delete themselves
+        assert!(matches!(delete_user(&pool, &admin.id, &admin.id).await, Err(UserError::CannotDeleteSelf)));
+        let other = create_user(&pool, "other", "Other-Passw0rd!!", None, true).await.unwrap();
+        delete_user(&pool, &other.id, &admin.id).await.unwrap();
+        assert!(matches!(delete_user(&pool, &admin.id, &other.id).await, Err(UserError::CannotDeleteLastAdmin)));
+    }
+
+    #[tokio::test]
+    async fn password_change_invalidates_old_password() {
+        let pool = migrated_pool().await;
+        let u = create_user(&pool, "dave", "First-Passw0rd!!", None, false).await.unwrap();
+        change_password(&pool, &u.id, "Second-Passw0rd!!").await.unwrap();
+        let stored = get_user_by_id(&pool, &u.id).await.unwrap().unwrap();
+        assert!(crate::services::auth::verify_password("Second-Passw0rd!!", &stored.password_hash).unwrap());
+        assert!(!crate::services::auth::verify_password("First-Passw0rd!!", &stored.password_hash).unwrap());
+    }
+}
