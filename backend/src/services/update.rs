@@ -123,9 +123,9 @@ impl UpdateService {
         }
     }
 
-    /// Get current version from VERSION file
+    /// Current version: Cargo.toml, kept in sync with the root VERSION file by scripts/sync-version.sh
     fn current_version() -> String {
-        include_str!("../../../VERSION").trim().to_string()
+        env!("CARGO_PKG_VERSION").to_string()
     }
 
     /// Check GitHub Releases for a newer version

@@ -146,7 +146,7 @@ async fn get_info(State(state): State<AppState>) -> impl IntoResponse {
     };
 
     let info = SystemInfo {
-        version: include_str!("../../../VERSION").trim().to_string(),
+        version: env!("CARGO_PKG_VERSION").to_string(),
         hostname: System::host_name().unwrap_or_else(|| "unknown".to_string()),
         model,
         serial,
