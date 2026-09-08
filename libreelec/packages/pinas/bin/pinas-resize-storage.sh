@@ -34,7 +34,7 @@ log "Storage partition: $STORAGE_PART"
 
 # Derive disk device and partition number
 case "$STORAGE_PART" in
-    /dev/sd[a-z][0-9]*)
+    /dev/sd[a-z][0-9]*|/dev/vd[a-z][0-9]*|/dev/xvd[a-z][0-9]*)   # SATA/USB, virtio (Proxmox/KVM), Xen
         DISK=$(echo "$STORAGE_PART" | sed 's/[0-9]*$//')
         PARTNUM=$(echo "$STORAGE_PART" | grep -o '[0-9]*$')
         ;;

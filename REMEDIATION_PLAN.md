@@ -144,6 +144,8 @@ Taille : **M (≈ 3 j)**. Dépend de P2, P3.
 
 ## Phase 8 — Ops, CI, documentation (continu)
 
+> **Édition VM / x86_64 (2026-09-08)** : LibreELEC `mkimage` produit déjà un `.ova` pour `PROJECT=Generic` ; `build-x86.sh` et le workflow CI (matrice `RPi5/aarch64` + `Generic/x86_64`, une draft release `vVERSION` regroupant image Pi, image x86 et `pinas-x86_64-<version>.ova`) le publient. `build-release.sh --arch x86_64|all` produit des archives de mise à jour par architecture (`update.rs` choisit par nom). Backend : S.M.A.R.T. indisponible → 501 `SMART_UNSUPPORTED` (UI explicite), modèle via DMI, Kodi qui ne démarre pas → retour au splash (503 `KODI_UNAVAILABLE`), `pinas-resize-storage.sh` gère `vd*`/`xvd*`. La voie ARM64-VM (`projects/Virtual`) reste expérimentale : config kernel sans virtio, pas de bootloader.
+
 | # | Item | Taille | Détail / critère de fin |
 |---|---|---|---|
 | 8.1 ✅ | **CI complète** | S | Workflow `ci.yml` séparé de `build-libreelec.yml`, sur PR et push : `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test`, `npm ci && npm run check && npm run build`, test de génération `smb.conf`. Le build d'image reste manuel/tag. |

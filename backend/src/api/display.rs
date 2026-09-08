@@ -108,7 +108,12 @@ async fn switch_service(
                 return ApiError::internal(format!("Failed to enable kodi: {}", e)).into_response();
             }
             if let Err(e) = svc.start("kodi").await {
-                return ApiError::internal(format!("Failed to start kodi: {}", e)).into_response();
+                // Typical on a VM / headless PC without a usable GPU: leave the console usable
+                let _ = svc.disable("kodi").await;
+                let _ = svc.enable("pinas-splash").await;
+                let _ = svc.start("pinas-splash").await;
+                return ApiError::new(StatusCode::SERVICE_UNAVAILABLE, "KODI_UNAVAILABLE",
+                    format!("Kodi could not start on this hardware (no supported GPU?): {}", e)).into_response();
             }
 
             (StatusCode::OK, Json(serde_json::json!({

@@ -401,6 +401,7 @@ export default {
 		governor: 'Gouverneur de fréquence',
 		governorHint: 'ondemand/schedutil équilibrent consommation et vitesse ; performance garde le CPU à pleine vitesse ; powersave minimise la chauffe.',
 		governorApplied: 'Gouverneur CPU appliqué',
+		governorUnavailable: 'Pas de gouverneur de fréquence CPU sur ce matériel (cas typique d\'une machine virtuelle) : l\'hyperviseur gère le CPU.',
 		schedules: 'Redémarrage / arrêt planifiés',
 		schedulesHint: "S'exécute à l'heure locale indiquée, les jours sélectionnés.",
 		noSchedules: 'Aucune tâche planifiée',
@@ -506,7 +507,7 @@ export default {
 		},
 		welcomeScreen: {
 			title: 'Bienvenue sur PiNAS !',
-			thankYou: 'Merci d\'avoir installé PiNAS sur votre Raspberry Pi.',
+			thankYou: "Merci d'avoir installé PiNAS.",
 			description: 'En quelques étapes, nous allons configurer votre NAS personnel et vous serez prêt à stocker, partager et gérer vos fichiers.',
 			letsGo: 'C\'est parti !'
 		},
@@ -931,7 +932,8 @@ export default {
 				serial: 'N° de série',
 				attributes: 'Attributs',
 				loadingData: 'Chargement des données S.M.A.R.T....',
-				loadFailed: 'Échec du chargement des informations S.M.A.R.T.'
+				loadFailed: 'Échec du chargement des informations S.M.A.R.T.',
+				unsupported: "S.M.A.R.T. n'est pas disponible pour ce disque (disque virtuel ou pont USB sans passthrough SMART)."
 			},
 			editPool: {
 				title: 'Modifier le pool',

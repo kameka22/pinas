@@ -1,7 +1,7 @@
 #!/bin/bash
 # Build LibreELEC image with PiNAS pre-integrated
 # For x86_64 systems (VM, Synology NAS, Generic PC)
-# Target: Generic x86_64
+# Target: Generic x86_64 — outputs the raw .img.gz and the .ova virtual appliance
 
 set -e
 
@@ -22,7 +22,6 @@ BUILD_BACKEND=true
 BUILD_FRONTEND=true
 BUILD_LIBREELEC=true
 CLEAN_BUILD=false
-CONVERT_VMDK=false
 
 # Color output
 RED='\033[0;31m'
@@ -41,20 +40,16 @@ usage() {
     echo "  --frontend-only    Only build the SvelteKit frontend"
     echo "  --skip-libreelec   Skip LibreELEC image build"
     echo "  --clean            Clean build directories before building"
-    echo "  --vmdk             Convert final image to VMDK format (for VMware/Synology)"
     echo "  -h, --help         Show this help message"
     echo ""
     echo "Examples:"
     echo "  $0                      # Full build (raw image)"
-    echo "  $0 --vmdk               # Full build + VMDK conversion"
     echo "  $0 --frontend-only      # Only rebuild frontend"
     echo "  $0 --skip-libreelec     # Build PiNAS but skip LibreELEC image"
     echo ""
     echo "Output formats for VMs (manual conversion):"
-    echo "  gunzip LibreELEC-Generic.x86_64-*.img.gz"
-    echo "  qemu-img convert -f raw -O vmdk *.img libreelec.vmdk  # VMware/Synology"
-    echo "  qemu-img convert -f raw -O vdi *.img libreelec.vdi    # VirtualBox"
-    echo "  qemu-img convert -f raw -O qcow2 *.img libreelec.qcow2 # Proxmox/KVM"
+    echo "  Import target/pinas-x86_64-<version>.ova in VMware / VirtualBox / Proxmox / Synology VMM,"
+    echo "  or convert the raw image: qemu-img convert -f raw -O qcow2 *.img pinas.qcow2"
     exit 0
 }
 
@@ -79,7 +74,7 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         --vmdk)
-            CONVERT_VMDK=true
+            echo "Note: --vmdk is obsolete, the build now produces an .ova (VMDK + OVF) automatically"
             shift
             ;;
         -h|--help)
@@ -99,7 +94,6 @@ echo "Rust target: $RUST_TARGET"
 echo "Build backend: $BUILD_BACKEND"
 echo "Build frontend: $BUILD_FRONTEND"
 echo "Build LibreELEC: $BUILD_LIBREELEC"
-echo "Convert to VMDK: $CONVERT_VMDK"
 echo ""
 
 # Function to extract version from Cargo.toml
@@ -430,67 +424,31 @@ PROJECT=$PROJECT DEVICE=$DEVICE ARCH=$ARCH make image 2>&1 | tee "${PROJECT_ROOT
 echo ""
 echo "=== Build Complete ==="
 IMAGE_FILE=$(ls "${LIBREELEC_DIR}/target/LibreELEC-Generic.x86_64-"*.img.gz 2>/dev/null | head -1)
+# LibreELEC's mkimage also emits an OVA for PROJECT=Generic (same image, boot default "run",
+# streamOptimized VMDK + OVF: VMware, VirtualBox, Proxmox `qm importovf`, Synology VMM)
+OVA_FILE=$(ls "${LIBREELEC_DIR}/target/LibreELEC-Generic.x86_64-"*.ova 2>/dev/null | head -1)
 
 if [ -n "$IMAGE_FILE" ] && [ -f "$IMAGE_FILE" ]; then
     IMAGE_SIZE=$(ls -lh "$IMAGE_FILE" | awk '{print $5}')
     echo -e "${GREEN}Image created:${NC}"
-    echo "  $IMAGE_FILE ($IMAGE_SIZE)"
+    echo "  $IMAGE_FILE ($IMAGE_SIZE)   # raw disk: dd on a PC / USB key, or qemu-img convert"
+    if [ -n "$OVA_FILE" ] && [ -f "$OVA_FILE" ]; then
+        PINAS_OVA="${LIBREELEC_DIR}/target/pinas-x86_64-${VERSION}.ova"
+        cp -f "$OVA_FILE" "$PINAS_OVA"
+        (cd "$(dirname "$PINAS_OVA")" && sha256sum "$(basename "$PINAS_OVA")" > "$(basename "$PINAS_OVA").sha256")
+        OVA_SIZE=$(ls -lh "$PINAS_OVA" | awk '{print $5}')
+        echo -e "${GREEN}Virtual appliance:${NC}"
+        echo "  $PINAS_OVA ($OVA_SIZE)   # import in VMware / VirtualBox / Proxmox / Synology VMM"
+    else
+        echo -e "${YELLOW}No .ova produced (check build-x86.log: mkimage 'open virtual appliance' step)${NC}"
+    fi
     echo ""
     echo "PiNAS version: $VERSION"
-
-    # VMDK conversion (optional)
-    if [ "$CONVERT_VMDK" = true ]; then
-        echo ""
-        echo "=== Converting to VMDK ==="
-        echo ""
-
-        # Check if qemu-img is installed
-        if ! command -v qemu-img >/dev/null 2>&1; then
-            echo -e "${YELLOW}>>> qemu-img not found, installing qemu-utils...${NC}"
-            sudo apt-get update
-            sudo apt-get install -y qemu-utils
-        fi
-
-        # Extract image
-        RAW_IMAGE="${IMAGE_FILE%.gz}"
-        VMDK_FILE="${LIBREELEC_DIR}/target/pinas-x86-${VERSION}.vmdk"
-
-        echo ">>> Extracting image..."
-        gunzip -kf "$IMAGE_FILE"
-
-        if [ -f "$RAW_IMAGE" ]; then
-            echo ">>> Converting to VMDK..."
-            qemu-img convert -f raw -O vmdk "$RAW_IMAGE" "$VMDK_FILE"
-
-            if [ -f "$VMDK_FILE" ]; then
-                VMDK_SIZE=$(ls -lh "$VMDK_FILE" | awk '{print $5}')
-                echo -e "${GREEN}VMDK created:${NC}"
-                echo "  $VMDK_FILE ($VMDK_SIZE)"
-
-                # Clean up raw image
-                rm -f "$RAW_IMAGE"
-            else
-                echo -e "${RED}Error: VMDK conversion failed${NC}"
-            fi
-        else
-            echo -e "${RED}Error: Failed to extract image${NC}"
-        fi
-    else
-        echo ""
-        echo "=== Conversion for VMs ==="
-        echo ""
-        echo "# Extract image:"
-        echo "  gunzip -k $IMAGE_FILE"
-        echo ""
-        echo "# Convert to VMDK (VMware, Synology VMM):"
-        echo "  qemu-img convert -f raw -O vmdk ${IMAGE_FILE%.gz} pinas-x86.vmdk"
-        echo ""
-        echo "# Convert to VDI (VirtualBox):"
-        echo "  qemu-img convert -f raw -O vdi ${IMAGE_FILE%.gz} pinas-x86.vdi"
-        echo ""
-        echo "# Convert to QCOW2 (Proxmox, KVM):"
-        echo "  qemu-img convert -f raw -O qcow2 ${IMAGE_FILE%.gz} pinas-x86.qcow2"
-    fi
+    echo ""
+    echo "Other hypervisors (from the raw image):"
+    echo "  gunzip -k $IMAGE_FILE"
+    echo "  qemu-img convert -f raw -O qcow2 ${IMAGE_FILE%.gz} pinas-x86_64.qcow2   # Proxmox/KVM"
+    echo "  qemu-img convert -f raw -O vdi   ${IMAGE_FILE%.gz} pinas-x86_64.vdi     # VirtualBox"
 else
     echo -e "${RED}Error: No image file found. Check build-x86.log for errors.${NC}"
     exit 1

@@ -8,23 +8,27 @@ on:
       - 'backend/**'
       - 'frontend/**'
       - 'libreelec/**'
+      - 'scripts/lib/**'
       - '.github/workflows/build-libreelec.yml'
-
-env:
-  PROJECT: RPi
-  DEVICE: RPi5
-  ARCH: aarch64
 
 jobs:
   build-backend:
+    # Static musl binaries for both supported targets (Raspberry Pi 5 and x86_64 PC/VM)
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - arch: aarch64
+            target: aarch64-unknown-linux-musl
+          - arch: x86_64
+            target: x86_64-unknown-linux-musl
     steps:
       - uses: actions/checkout@v4
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-unknown-linux-musl
+          targets: ${{ matrix.target }}
 
       - name: Install cross
         run: cargo install cross --git https://github.com/cross-rs/cross
@@ -32,18 +36,18 @@ jobs:
       - name: Build backend
         run: |
           cd backend
-          cross build --release --target aarch64-unknown-linux-musl
+          cross build --release --target ${{ matrix.target }}
 
       - name: Verify binary
         run: |
-          file backend/target/aarch64-unknown-linux-musl/release/pinas
-          ls -lh backend/target/aarch64-unknown-linux-musl/release/pinas
+          file backend/target/${{ matrix.target }}/release/pinas
+          ls -lh backend/target/${{ matrix.target }}/release/pinas
 
       - name: Upload backend artifact
         uses: actions/upload-artifact@v4
         with:
-          name: pinas-binary
-          path: backend/target/aarch64-unknown-linux-musl/release/pinas
+          name: pinas-binary-${{ matrix.arch }}
+          path: backend/target/${{ matrix.target }}/release/pinas
           retention-days: 1
 
   build-frontend:
@@ -75,6 +79,26 @@ jobs:
     needs: [build-backend, build-frontend]
     runs-on: ubuntu-latest
     timeout-minutes: 360  # 6 hours max
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Raspberry Pi 5: SD-card image
+          - name: rpi5
+            project: RPi
+            device: RPi5
+            arch: aarch64
+            kernel_conf: projects/RPi/devices/RPi5/linux/linux.aarch64.conf
+            image_glob: LibreELEC.tv/target/*.img.gz
+          # Generic x86_64 PC / virtual machine: raw image + .ova appliance (mkimage builds both)
+          - name: x86_64
+            project: Generic
+            device: Generic
+            arch: x86_64
+            kernel_conf: projects/Generic/linux/linux.x86_64.conf
+            image_glob: |
+              LibreELEC.tv/target/*.img.gz
+              LibreELEC.tv/target/*.ova
 
     steps:
       - uses: actions/checkout@v4
@@ -90,7 +114,7 @@ jobs:
       - name: Download backend artifact
         uses: actions/download-artifact@v4
         with:
-          name: pinas-binary
+          name: pinas-binary-${{ matrix.arch }}
           path: libreelec/packages/pinas/bin/
 
       - name: Download frontend artifact
@@ -119,7 +143,10 @@ jobs:
             g++-multilib \
             libc6-dev-i386 \
             lib32gcc-s1 \
-            lib32stdc++6
+            lib32stdc++6 \
+            qemu-utils \
+            mtools \
+            dosfstools
 
       - name: Clone LibreELEC
         run: |
@@ -132,7 +159,7 @@ jobs:
           cp -r libreelec/packages/cups LibreELEC.tv/packages/
           rm -rf LibreELEC.tv/packages/addons/addon-depends/chrome-depends/cups
           cp -r libreelec/packages/pinas-nfs-server LibreELEC.tv/packages/
-          scripts/lib/apply-kernel-config.sh LibreELEC.tv/projects/RPi/devices/RPi5/linux/linux.aarch64.conf
+          scripts/lib/apply-kernel-config.sh LibreELEC.tv/${{ matrix.kernel_conf }}
           echo 'PKG_DEPENDS_TARGET="$PKG_DEPENDS_TARGET pinas"' >> \
             LibreELEC.tv/packages/virtual/mediacenter/package.mk
 
@@ -148,27 +175,66 @@ jobs:
       - name: Build LibreELEC image
         run: |
           cd LibreELEC.tv
-          PROJECT=${{ env.PROJECT }} \
-          DEVICE=${{ env.DEVICE }} \
-          ARCH=${{ env.ARCH }} \
+          PROJECT=${{ matrix.project }} \
+          DEVICE=${{ matrix.device }} \
+          ARCH=${{ matrix.arch }} \
           make image
 
-      - name: Upload LibreELEC image
+      - name: Name the virtual appliance after PiNAS
+        if: matrix.arch == 'x86_64'
+        run: |
+          cd LibreELEC.tv/target
+          ova=$(ls LibreELEC-Generic.x86_64-*.ova | head -1)
+          mv "$ova" "pinas-x86_64-${PINAS_VERSION}.ova"
+          rm -f LibreELEC-Generic.x86_64-*.ova.sha256
+          sha256sum "pinas-x86_64-${PINAS_VERSION}.ova" > "pinas-x86_64-${PINAS_VERSION}.ova.sha256"
+          ls -lh
+
+      - name: Upload image
         uses: actions/upload-artifact@v4
         with:
-          name: libreelec-pinas-image
-          path: LibreELEC.tv/target/*.img.gz
+          name: libreelec-pinas-image-${{ matrix.name }}
+          path: |
+            ${{ matrix.image_glob }}
+            LibreELEC.tv/target/*.sha256
           retention-days: 7
 
-      - name: Create Release
-        if: github.ref == 'refs/heads/master'
+  release:
+    # One draft release per VERSION, gathering the Pi image and the x86_64 image + OVA
+    needs: build-libreelec
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read PiNAS version
+        run: echo "PINAS_VERSION=$(tr -d '[:space:]' < VERSION)" >> "$GITHUB_ENV"
+
+      - name: Download images
+        uses: actions/download-artifact@v4
+        with:
+          pattern: libreelec-pinas-image-*
+          path: images
+          merge-multiple: true
+
+      - name: Create draft release
         uses: softprops/action-gh-release@v2
         with:
-          # Draft named after VERSION: the tag is only created when the draft is published.
+          # The tag is only created when the draft is published.
           tag_name: v${{ env.PINAS_VERSION }}
           name: PiNAS v${{ env.PINAS_VERSION }}
-          body: Build ${{ github.run_number }} from ${{ github.sha }}. Update archive and checksum come from scripts/build-release.sh.
-          files: LibreELEC.tv/target/*.img.gz
+          body: |
+            Build ${{ github.run_number }} from ${{ github.sha }}.
+
+            - `LibreELEC-RPi5.aarch64-*.img.gz` — Raspberry Pi 5 (flash to SD/NVMe)
+            - `LibreELEC-Generic.x86_64-*.img.gz` — x86_64 PC (dd / qemu-img convert)
+            - `pinas-x86_64-*.ova` — virtual appliance (VMware, VirtualBox, Proxmox, Synology VMM)
+
+            Update archives and checksums come from `scripts/build-release.sh`.
+          files: |
+            images/*.img.gz
+            images/*.ova
+            images/*.sha256
           draft: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

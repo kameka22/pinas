@@ -65,6 +65,7 @@
 	// SMART info state
 	let smartInfo: SmartInfo | null = null;
 	let smartLoading = false;
+	let smartError: string | null = null;
 	let selectedDiskForSmart: Disk | null = null;
 
 	// Delete confirmation state
@@ -110,6 +111,13 @@
 
 	// SMART test state
 	let smartTab: 'info' | 'tests' | 'schedules' = 'info';
+
+	/** 501 SMART_UNSUPPORTED (virtual disk, USB bridge) is expected, anything else is a failure */
+	function smartErrorMessage(e: unknown): string {
+		const code = (e as { code?: string } | null)?.code;
+		if (code === 'SMART_UNSUPPORTED') return $t.storageManager.modals.smartInfo.unsupported;
+		return $t.storageManager.modals.smartInfo.loadFailed;
+	}
 	let smartTestHistory: SmartTestHistoryEntry[] = [];
 	let smartSchedules: SmartTestScheduleInfo[] = [];
 	let runningSmartTest = false;
@@ -467,12 +475,13 @@
 		smartLoading = true;
 		smartInfo = null;
 		showSmartModal = true;
+		smartError = null;
 		try {
 			smartInfo = await api.getDiskSmartInfo(disk.device_name);
 			await loadSmartHistory(disk.device_name);
 			await loadSmartSchedules();
 		} catch (e) {
-			// Error is shown in modal, not in main error state
+			smartError = smartErrorMessage(e);
 		} finally {
 			smartLoading = false;
 		}
@@ -683,12 +692,13 @@
 		smartLoading = true;
 		smartInfo = null;
 		showSmartModal = true;
+		smartError = null;
 		try {
 			smartInfo = await api.getDiskSmartInfo(disk.device_name);
 			if (tab === 'tests') await loadSmartHistory(disk.device_name);
 			if (tab === 'schedules') await loadSmartSchedules();
 		} catch (e) {
-			// Shown in modal
+			smartError = smartErrorMessage(e);
 		} finally {
 			smartLoading = false;
 		}
@@ -1703,7 +1713,7 @@
 					{:else}
 						<div class="error-state">
 							<Icon icon="mdi:alert-circle" class="w-8 h-8 text-red-500" />
-							<p>{$t.storageManager.modals.smartInfo.loadFailed}</p>
+							<p>{smartError ?? $t.storageManager.modals.smartInfo.loadFailed}</p>
 						</div>
 					{/if}
 				{:else if smartTab === 'tests'}

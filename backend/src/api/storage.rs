@@ -81,6 +81,9 @@ async fn get_disk_smart(
 
     match service.get_smart_info(&name).await {
         Ok(info) => Json(info).into_response(),
+        Err(e) if e.downcast_ref::<crate::services::storage::SmartUnsupported>().is_some() => {
+            ApiError::new(StatusCode::NOT_IMPLEMENTED, "SMART_UNSUPPORTED", e.to_string()).into_response()
+        }
         Err(e) => {
             tracing::error!("Failed to get S.M.A.R.T. info for {}: {}", name, e);
             ApiError::internal(e.to_string()).into_response()

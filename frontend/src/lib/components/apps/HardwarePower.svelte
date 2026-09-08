@@ -100,7 +100,7 @@
 					{/each}
 				</select>
 			</div>
-			<p class="hw-hint">{$t.hardwarePower.governorHint}</p>
+			<p class="hw-hint">{status.available_governors.length === 0 ? $t.hardwarePower.governorUnavailable : $t.hardwarePower.governorHint}</p>
 			{#if status.dev_mode}<p class="hw-hint">{$t.timeLanguage.time.devMode}</p>{/if}
 		{/if}
 	</section>

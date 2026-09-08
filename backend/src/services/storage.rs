@@ -9,6 +9,18 @@ use uuid::Uuid;
 
 use crate::models::storage::*;
 
+/// smartctl could not talk to the device (virtual disk, USB bridge without SAT, ...).
+/// Surfaced to the API as "not supported" rather than a server error.
+#[derive(Debug)]
+pub struct SmartUnsupported(pub String);
+
+impl std::fmt::Display for SmartUnsupported {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "S.M.A.R.T. is not available for {}", self.0)
+    }
+}
+impl std::error::Error for SmartUnsupported {}
+
 /// Protected mount points that cannot be modified
 const PROTECTED_MOUNTS: [&str; 2] = ["/flash", "/storage"];
 
@@ -442,11 +454,13 @@ impl StorageService {
             .await
             .context("Failed to execute smartctl")?;
 
-        // smartctl can return non-zero even with valid data
+        // smartctl can return non-zero even with valid data; bits 0-1 of the exit status
+        // however mean "device open failed" / "device did not respond": no SMART at all
+        // (virtio/IDE disks in a VM, some USB bridges).
         let json_str = String::from_utf8_lossy(&output.stdout);
-
-        if json_str.trim().is_empty() {
-            return Err(anyhow!("No S.M.A.R.T. data available for {}", device_path));
+        let exit = output.status.code().unwrap_or(0);
+        if exit & 0b11 != 0 || json_str.trim().is_empty() {
+            return Err(SmartUnsupported(device_path.clone()).into());
         }
 
         let smart: SmartctlOutput = serde_json::from_str(&json_str)

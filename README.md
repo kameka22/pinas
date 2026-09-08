@@ -39,11 +39,12 @@ PiNAS transforms your Raspberry Pi into a full-featured NAS with a modern web in
 | Database | SQLite |
 | Style | TailwindCSS 3.4 |
 | Icons | Iconify (MDI) |
-| Target | Raspberry Pi 5 (ARM64), ARM64 VM, x86_64 VM |
+| Target | Raspberry Pi 5 (ARM64) · x86_64 PC / virtual machine (`.ova`) — ARM64 VM: experimental, not bootable yet |
 
 ## Requirements
 
 - Raspberry Pi 5 (4GB+ RAM recommended)
+- or any x86_64 PC / hypervisor (VMware, VirtualBox, Proxmox, Synology VMM, QEMU/KVM): import the `.ova`, add virtual disks for the storage pools — S.M.A.R.T., disk power management and the CPU governor are not available on virtual disks/CPUs
 - microSD card (16GB+ for system)
 - USB/NVMe storage for data
 
@@ -91,20 +92,15 @@ All build scripts run on a Linux VM (native ARM64 or x86_64). They share common 
 | Script | Target | Output |
 |--------|--------|--------|
 | `build-arm64.sh` | Raspberry Pi 5 | `.img.gz` (flash to SD) |
-| `build-arm64-vm.sh` | ARM64 VM (QEMU, UTM, Proxmox) | `.qcow2` + `KERNEL` |
-| `build-x86.sh` | x86_64 VM/PC | `.img.gz` (+ `--vmdk` option) |
+| `build-x86.sh` | x86_64 PC / VM | `.img.gz` (raw disk) + `pinas-x86_64-<version>.ova` (VMware, VirtualBox, Proxmox, Synology VMM) |
+| `build-arm64-vm.sh` | ARM64 VM (QEMU/UTM) — **experimental**: the `Virtual` project has no virtio kernel config nor bootloader yet, it does not boot | `.qcow2` + `KERNEL` |
 
 ```bash
 # ARM64 RPi5
 ./scripts/build-arm64.sh
 
-# ARM64 VM (QCOW2 for QEMU/UTM)
-./scripts/build-arm64-vm.sh
-./scripts/build-arm64-vm.sh --raw    # Raw .img instead of QCOW2
-
-# x86_64
+# x86_64 PC / VM: raw image + OVA appliance
 ./scripts/build-x86.sh
-./scripts/build-x86.sh --vmdk       # With VMDK conversion
 ```
 
 ### Remote Build (recommended)
@@ -113,9 +109,7 @@ Build on a remote Linux VM via SSH — the script handles sync, build, and copie
 
 ```bash
 ./scripts/remote-build.sh                       # ARM64 RPi5 (default)
-./scripts/remote-build.sh --arch arm64-vm       # ARM64 VM (QCOW2)
-./scripts/remote-build.sh --arch x86            # x86_64
-./scripts/remote-build.sh --arch x86 --vmdk     # x86_64 + VMDK
+./scripts/remote-build.sh --arch x86            # x86_64: .img.gz + .ova
 ./scripts/remote-build.sh --new                 # Reconfigure VM connection
 ```
 

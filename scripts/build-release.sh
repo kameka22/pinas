@@ -13,6 +13,7 @@
 #   ./scripts/build-release.sh --changelog "Fixed bugs"
 #   ./scripts/build-release.sh --new            # reconfigure VM
 #   ./scripts/build-release.sh --tag            # also create the annotated git tag v<VERSION> locally
+#   ./scripts/build-release.sh --arch x86_64    # target architecture: aarch64 (default, Pi 5), x86_64 (PC/VM), all
 #
 # Version: read from VERSION (single source, propagated by scripts/sync-version.sh).
 # Changelog: --changelog text, or generated from conventional commits since the last v* tag.
@@ -41,6 +42,7 @@ CHANGELOG_EN=""
 CHANGELOG_FR=""
 MIN_VERSION=""
 CREATE_TAG=false
+ARCHES="aarch64"
 RESET_CONFIG=false
 
 usage() {
@@ -54,6 +56,7 @@ usage() {
     echo "  --min-version \"0.01\" Minimum version required"
     echo "  --new                Reset VM configuration"
     echo "  --tag                Create annotated git tag v<VERSION> after a successful build (not pushed)"
+    echo "  --arch <a>           aarch64 (default), x86_64, or all — one archive per architecture"
     echo "  -h, --help           Show this help"
     echo ""
     echo "By default, includes: backend + frontend + migrations + scripts + services"
@@ -91,6 +94,14 @@ while [[ $# -gt 0 ]]; do
         --tag)
             CREATE_TAG=true
             shift
+            ;;
+        --arch)
+            case "$2" in
+                aarch64|x86_64) ARCHES="$2" ;;
+                all) ARCHES="aarch64 x86_64" ;;
+                *) echo "Unknown --arch $2 (aarch64 | x86_64 | all)"; exit 1 ;;
+            esac
+            shift 2
             ;;
         --new)
             RESET_CONFIG=true
@@ -305,8 +316,15 @@ case $MODE in
         ;;
 esac
 
-# Build the release on the VM
-REMOTE_BUILD_DIR="$REMOTE_PROJECT/build/release"
+# Build the release on the VM — once per target architecture
+build_release_for_arch() {
+local ARCH="$1"
+local RUST_TARGET="${ARCH}-unknown-linux-musl"
+local HOST_ARCH
+HOST_ARCH=$(run_remote "uname -m")
+REMOTE_BUILD_DIR="$REMOTE_PROJECT/build/release-${ARCH}"
+echo ""
+echo -e "${CYAN}=== Architecture: ${ARCH} (target ${RUST_TARGET}) ===${NC}"
 
 # Clean remote build dir
 run_remote "rm -rf $REMOTE_BUILD_DIR && mkdir -p $REMOTE_BUILD_DIR"
@@ -314,29 +332,41 @@ run_remote "rm -rf $REMOTE_BUILD_DIR && mkdir -p $REMOTE_BUILD_DIR"
 # Build backend
 if [ "$INCLUDE_BACKEND" = true ]; then
     echo ""
-    echo -e "    ${CYAN}--- Building backend (aarch64-musl) ---${NC}"
-    run_remote_tty "source \$HOME/.cargo/env 2>/dev/null || true && \
-        cd $REMOTE_PROJECT/backend && \
-        if ! rustup target list --installed | grep -q aarch64-unknown-linux-musl; then \
-            rustup target add aarch64-unknown-linux-musl; \
-        fi && \
-        cargo build --release --target aarch64-unknown-linux-musl"
+    echo -e "    ${CYAN}--- Building backend (${RUST_TARGET}) ---${NC}"
+    if [ "$HOST_ARCH" = "$ARCH" ]; then
+        # Native: plain cargo with the musl target
+        run_remote_tty "source \$HOME/.cargo/env 2>/dev/null || true && \
+            cd $REMOTE_PROJECT/backend && \
+            if ! rustup target list --installed | grep -q $RUST_TARGET; then \
+                rustup target add $RUST_TARGET; \
+            fi && \
+            cargo build --release --target $RUST_TARGET"
+    else
+        # Foreign architecture: cross (Docker-based toolchain, same as CI)
+        run_remote_tty "source \$HOME/.cargo/env 2>/dev/null || true && \
+            cd $REMOTE_PROJECT/backend && \
+            (command -v cross >/dev/null || cargo install cross --git https://github.com/cross-rs/cross) && \
+            cross build --release --target $RUST_TARGET"
+    fi
 
-    run_remote "cp $REMOTE_PROJECT/backend/target/aarch64-unknown-linux-musl/release/pinas $REMOTE_BUILD_DIR/pinas && \
+    run_remote "cp $REMOTE_PROJECT/backend/target/$RUST_TARGET/release/pinas $REMOTE_BUILD_DIR/pinas && \
         chmod 755 $REMOTE_BUILD_DIR/pinas"
 
     BINARY_SIZE=$(run_remote "ls -lh $REMOTE_BUILD_DIR/pinas | awk '{print \$5}'")
     echo -e "    ${GREEN}Backend binary: $BINARY_SIZE${NC}"
 fi
 
-# Build frontend
+# Build frontend (architecture-independent: built once, copied into every archive)
 if [ "$INCLUDE_FRONTEND" = true ]; then
-    echo ""
-    echo -e "    ${CYAN}--- Building frontend (SSG) ---${NC}"
-    run_remote_tty "cd $REMOTE_PROJECT/frontend && \
-        rm -rf node_modules package-lock.json && \
-        npm install --silent && \
-        npm run build"
+    if [ -z "$FRONTEND_BUILT" ]; then
+        FRONTEND_BUILT=1
+        echo ""
+        echo -e "    ${CYAN}--- Building frontend (SSG) ---${NC}"
+        run_remote_tty "cd $REMOTE_PROJECT/frontend && \
+            rm -rf node_modules package-lock.json && \
+            npm install --silent && \
+            npm run build"
+    fi
 
     run_remote "mkdir -p $REMOTE_BUILD_DIR/www && \
         cp -r $REMOTE_PROJECT/frontend/build/. $REMOTE_BUILD_DIR/www/"
@@ -380,10 +410,15 @@ fi
 if [ "$INCLUDE_SYSTEM" = true ]; then
     echo ""
     echo -e "    ${CYAN}--- Copying system files ---${NC}"
-    run_remote "mkdir -p $REMOTE_BUILD_DIR/system && \
-        LIBREELEC_BUILD=$REMOTE_PROJECT/extra/LibreELEC.tv/target && \
-        if [ -f \$LIBREELEC_BUILD/SYSTEM ]; then cp \$LIBREELEC_BUILD/SYSTEM $REMOTE_BUILD_DIR/system/; fi && \
-        if [ -f \$LIBREELEC_BUILD/KERNEL ]; then cp \$LIBREELEC_BUILD/KERNEL $REMOTE_BUILD_DIR/system/; fi"
+    # target/SYSTEM+KERNEL belong to the last LibreELEC build: only ship them if that build is for this arch
+    if run_remote "ls $REMOTE_PROJECT/extra/LibreELEC.tv/target/*.${ARCH}-*.img.gz >/dev/null 2>&1"; then
+        run_remote "mkdir -p $REMOTE_BUILD_DIR/system && \
+            LIBREELEC_BUILD=$REMOTE_PROJECT/extra/LibreELEC.tv/target && \
+            if [ -f \$LIBREELEC_BUILD/SYSTEM ]; then cp \$LIBREELEC_BUILD/SYSTEM $REMOTE_BUILD_DIR/system/; fi && \
+            if [ -f \$LIBREELEC_BUILD/KERNEL ]; then cp \$LIBREELEC_BUILD/KERNEL $REMOTE_BUILD_DIR/system/; fi"
+    else
+        echo -e "    ${YELLOW}No LibreELEC ${ARCH} image in extra/LibreELEC.tv/target: SYSTEM/KERNEL not included${NC}"
+    fi
 fi
 
 # ──────────────────────────────────────────────────────────────
@@ -446,17 +481,26 @@ run_remote "cat > $REMOTE_BUILD_DIR/update.json << 'ENDJSON'
 ENDJSON"
 
 # Create archive on remote
-ARCHIVE_NAME="pinas-update-v${VERSION}.tar.gz"
+ARCHIVE_NAME="pinas-update-v${VERSION}-${ARCH}.tar.gz"   # the updater picks the asset whose name contains its architecture
 run_remote "cd $REMOTE_BUILD_DIR && tar -czf $REMOTE_PROJECT/build/$ARCHIVE_NAME ."
 
 ARCHIVE_SIZE=$(run_remote "ls -lh $REMOTE_PROJECT/build/$ARCHIVE_NAME | awk '{print \$5}'")
 ARCHIVE_SHA=$(run_remote "sha256sum $REMOTE_PROJECT/build/$ARCHIVE_NAME | awk '{print \$1}'")
 # Checksum file published next to the archive: the updater refuses to install without it
 CHECKSUM_NAME="${ARCHIVE_NAME}.sha256"
+ARCHIVES="$ARCHIVES $ARCHIVE_NAME"
 run_remote "cd $REMOTE_PROJECT/build && sha256sum $ARCHIVE_NAME > $CHECKSUM_NAME"
 
 echo -e "    ${GREEN}Archive: $ARCHIVE_NAME ($ARCHIVE_SIZE)${NC}"
 echo -e "    SHA256: $ARCHIVE_SHA"
+
+}
+
+FRONTEND_BUILT=""
+ARCHIVES=""
+for A in $ARCHES; do
+    build_release_for_arch "$A"
+done
 
 # ──────────────────────────────────────────────────────────────
 # Step 4: Copy archive back to local machine
@@ -465,18 +509,18 @@ echo ""
 echo -e "${CYAN}>>> [4/4] Copying archive to local machine...${NC}"
 
 mkdir -p "$PROJECT_ROOT/build"
-copy_from_remote "$REMOTE_PROJECT/build/$ARCHIVE_NAME" "$PROJECT_ROOT/build/$ARCHIVE_NAME"
-copy_from_remote "$REMOTE_PROJECT/build/$CHECKSUM_NAME" "$PROJECT_ROOT/build/$CHECKSUM_NAME"
-
-if [ ! -f "$PROJECT_ROOT/build/$ARCHIVE_NAME" ]; then
-    echo -e "${RED}Error: Failed to copy archive${NC}"
-    exit 1
-fi
-
-# Clean up remote build
-run_remote "rm -rf $REMOTE_BUILD_DIR $REMOTE_PROJECT/build/$ARCHIVE_NAME $REMOTE_PROJECT/build/$CHECKSUM_NAME"
-
-LOCAL_SIZE=$(ls -lh "$PROJECT_ROOT/build/$ARCHIVE_NAME" | awk '{print $5}')
+LOCAL_FILES=""
+for ARCHIVE_NAME in $ARCHIVES; do
+    CHECKSUM_NAME="${ARCHIVE_NAME}.sha256"
+    copy_from_remote "$REMOTE_PROJECT/build/$ARCHIVE_NAME" "$PROJECT_ROOT/build/$ARCHIVE_NAME"
+    copy_from_remote "$REMOTE_PROJECT/build/$CHECKSUM_NAME" "$PROJECT_ROOT/build/$CHECKSUM_NAME"
+    if [ ! -f "$PROJECT_ROOT/build/$ARCHIVE_NAME" ]; then
+        echo -e "${RED}Error: Failed to copy $ARCHIVE_NAME${NC}"
+        exit 1
+    fi
+    run_remote "rm -rf $REMOTE_PROJECT/build/release-* $REMOTE_PROJECT/build/$ARCHIVE_NAME $REMOTE_PROJECT/build/$CHECKSUM_NAME"
+    LOCAL_FILES="$LOCAL_FILES build/$ARCHIVE_NAME build/$CHECKSUM_NAME"
+done
 
 echo ""
 echo -e "${GREEN}╔═══════════════════════════════════════════════════════════╗${NC}"
@@ -485,13 +529,12 @@ echo -e "${GREEN}╚════════════════════
 echo ""
 echo -e "  Version:  ${CYAN}$VERSION${NC}"
 echo -e "  Mode:     ${CYAN}$MODE${NC}"
-echo -e "  Archive:  ${CYAN}build/$ARCHIVE_NAME${NC}"
-echo -e "  Checksum: ${CYAN}build/$CHECKSUM_NAME${NC}"
-echo -e "  Size:     ${CYAN}$LOCAL_SIZE${NC}"
-echo -e "  SHA256:   ${CYAN}$ARCHIVE_SHA${NC}"
+for ARCHIVE_NAME in $ARCHIVES; do
+    echo -e "  Archive:  ${CYAN}build/$ARCHIVE_NAME${NC} ($(ls -lh "$PROJECT_ROOT/build/$ARCHIVE_NAME" | awk '{print $5}'))  sha256: $(cut -d' ' -f1 "$PROJECT_ROOT/build/$ARCHIVE_NAME.sha256")"
+done
 echo ""
 echo "To create a GitHub release:"
-echo -e "  ${YELLOW}gh release create v$VERSION build/$ARCHIVE_NAME build/$CHECKSUM_NAME --title \"PiNAS v$VERSION\" --notes \"$CHANGELOG_EN\"${NC}"
+echo -e "  ${YELLOW}gh release create v$VERSION$LOCAL_FILES --title \"PiNAS v$VERSION\" --notes \"$CHANGELOG_EN\"${NC}"
 
 if [ "$CREATE_TAG" = true ]; then
     if git -C "$PROJECT_ROOT" rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null; then

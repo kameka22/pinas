@@ -53,10 +53,17 @@ pub struct CpuInfo {
 }
 
 fn read_device_model() -> Option<String> {
-    std::fs::read_to_string("/proc/device-tree/model")
-        .ok()
-        .map(|s| s.trim_end_matches('\0').trim().to_string())
-        .filter(|s| !s.is_empty())
+    // ARM boards expose the model through the device tree; x86 PCs and VMs through DMI
+    // (e.g. "QEMU Standard PC", "VMware Virtual Platform", "VirtualBox").
+    let clean = |s: String| Some(s.trim_end_matches('\0').trim().to_string()).filter(|s| !s.is_empty());
+    std::fs::read_to_string("/proc/device-tree/model").ok().and_then(clean).or_else(|| {
+        let vendor = std::fs::read_to_string("/sys/class/dmi/id/sys_vendor").ok().and_then(clean);
+        let product = std::fs::read_to_string("/sys/class/dmi/id/product_name").ok().and_then(clean)?;
+        Some(match vendor {
+            Some(v) if !product.starts_with(&v) => format!("{} {}", v, product),
+            _ => product,
+        })
+    })
 }
 
 fn read_cpu_serial() -> Option<String> {

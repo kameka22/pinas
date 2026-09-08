@@ -40,7 +40,6 @@ usage() {
     echo "  --frontend-only      Only build the SvelteKit frontend"
     echo "  --skip-libreelec     Skip LibreELEC image build"
     echo "  --clean              Clean build directories before building"
-    echo "  --vmdk               Convert to VMDK format (x86 only, for VMware/Synology)"
     echo "  -h, --help           Show this help message"
     echo ""
     echo "Architectures:"
@@ -51,8 +50,7 @@ usage() {
     echo "Examples:"
     echo "  $0                           # Full ARM64 build (default)"
     echo "  $0 --arch arm64-vm         # Full ARM64 VM build (QCOW2)"
-    echo "  $0 --arch x86              # Full x86_64 build"
-    echo "  $0 --arch x86 --vmdk       # x86 build with VMDK conversion"
+    echo "  $0 --arch x86              # x86_64 build: .img.gz + .ova virtual appliance"
     echo "  $0 --arch x86 --new        # x86 build with VM reconfiguration"
     echo "  $0 --skip-libreelec        # Build PiNAS only (no LibreELEC image)"
     exit 0
@@ -86,7 +84,7 @@ while [[ $# -gt 0 ]]; do
             RESET_CONFIG=true
             shift
             ;;
-        --backend-only|--frontend-only|--skip-libreelec|--clean|--vmdk)
+        --backend-only|--frontend-only|--skip-libreelec|--clean|--vmdk)  # --vmdk kept as a no-op
             BUILD_ARGS="$BUILD_ARGS $1"
             shift
             ;;
@@ -343,10 +341,13 @@ if [ "$BUILD_ARCH" = "arm64-vm" ]; then
     KERNEL_NAME=$(run_remote "ls -1 $REMOTE_TARGET_DIR/*-KERNEL 2>/dev/null | head -1 | xargs -r basename" 2>/dev/null || echo "")
 fi
 
-# Also check for VMDK file if --vmdk was used
-VMDK_NAME=$(run_remote "ls -1 $REMOTE_TARGET_DIR/*.vmdk 2>/dev/null | head -1 | xargs -r basename" 2>/dev/null || echo "")
+# x86: LibreELEC also produced an OVA (renamed pinas-x86_64-<version>.ova by build-x86.sh)
+OVA_NAME=""
+if [ "$BUILD_ARCH" = "x86" ]; then
+    OVA_NAME=$(run_remote "ls -1 $REMOTE_TARGET_DIR/pinas-x86_64-*.ova 2>/dev/null | head -1 | xargs -r basename" 2>/dev/null || echo "")
+fi
 
-if [ -z "$IMAGE_NAME" ] && [ -z "$VMDK_NAME" ]; then
+if [ -z "$IMAGE_NAME" ] && [ -z "$OVA_NAME" ]; then
     echo -e "${YELLOW}No image file found in target directory.${NC}"
     echo "This is normal if you used --skip-libreelec"
     exit 0
@@ -355,21 +356,14 @@ fi
 # Create local target directory
 mkdir -p "$TARGET_DIR"
 
-# Copy VMDK if exists (preferred for x86)
-if [ -n "$VMDK_NAME" ]; then
-    echo -e "${GREEN}Found VMDK: $VMDK_NAME${NC}"
-    echo ""
-    echo -e "${CYAN}>>> Copying VMDK to local machine...${NC}"
-    echo "    Source: $VM_USER@$VM_IP:$REMOTE_TARGET_DIR/$VMDK_NAME"
-    echo "    Destination: $TARGET_DIR/$VMDK_NAME"
-    echo ""
-
-    copy_from_remote "$REMOTE_TARGET_DIR/$VMDK_NAME" "$TARGET_DIR/$VMDK_NAME"
-
-    if [ -f "$TARGET_DIR/$VMDK_NAME" ]; then
-        VMDK_SIZE=$(ls -lh "$TARGET_DIR/$VMDK_NAME" | awk '{print $5}')
-        echo -n "    Cleaning up remote VMDK... "
-        run_remote "rm -f $REMOTE_TARGET_DIR/$VMDK_NAME"
+# Copy the OVA (+ checksum) for x86
+if [ -n "$OVA_NAME" ]; then
+    echo -e "${GREEN}Found virtual appliance: $OVA_NAME${NC}"
+    copy_from_remote "$REMOTE_TARGET_DIR/$OVA_NAME" "$TARGET_DIR/$OVA_NAME"
+    copy_from_remote "$REMOTE_TARGET_DIR/$OVA_NAME.sha256" "$TARGET_DIR/$OVA_NAME.sha256" 2>/dev/null || true
+    if [ -f "$TARGET_DIR/$OVA_NAME" ]; then
+        echo -n "    Cleaning up remote OVA... "
+        run_remote "rm -f $REMOTE_TARGET_DIR/$OVA_NAME $REMOTE_TARGET_DIR/$OVA_NAME.sha256 $REMOTE_TARGET_DIR/LibreELEC-Generic.x86_64-*.ova*"
         echo -e "${GREEN}done${NC}"
     fi
 fi
