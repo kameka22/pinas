@@ -47,19 +47,6 @@ impl SettingsService {
         .await?;
         Ok(())
     }
-
-    /// All settings under a `prefix.` namespace, keys returned without the prefix
-    pub async fn get_prefix(&self, prefix: &str) -> Result<Vec<(String, String)>, sqlx::Error> {
-        let like = format!("{}.%", prefix);
-        let rows: Vec<(String, String)> = sqlx::query_as("SELECT key, value FROM settings WHERE key LIKE ? ORDER BY key")
-            .bind(like)
-            .fetch_all(&self.db)
-            .await?;
-        Ok(rows
-            .into_iter()
-            .map(|(k, v)| (k[prefix.len() + 1..].to_string(), v))
-            .collect())
-    }
 }
 
 #[cfg(test)]
@@ -78,6 +65,5 @@ mod tests {
         assert!(!svc.get_bool("x.flag", true).await.unwrap());
         assert_eq!(svc.get_u64("x.n", 0).await.unwrap(), 43);
         assert_eq!(svc.get_u64("x.missing", 7).await.unwrap(), 7);
-        assert_eq!(svc.get_prefix("x").await.unwrap(), vec![("flag".to_string(), "false".to_string()), ("n".to_string(), "43".to_string())]);
     }
 }

@@ -14,6 +14,7 @@ pub mod notifications;
 pub mod middleware;
 pub mod packages;
 pub mod permissions;
+pub mod power;
 pub mod preferences;
 pub mod service_access;
 pub mod services;

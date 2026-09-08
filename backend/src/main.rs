@@ -68,6 +68,20 @@ async fn main() -> anyhow::Result<()> {
     // Run migrations
     sqlx::migrate!("./migrations").run(&db).await?;
 
+    // Security settings edited from the UI override the environment (TLS needs a restart to apply)
+    let mut config = config;
+    if let Some(tls_wanted) = services::security::SecurityService::tls_setting(&db).await {
+        if tls_wanted && config.dev_mode {
+            tracing::info!("TLS requested in settings but disabled in dev_mode");
+        } else if tls_wanted != config.tls_enabled {
+            config.tls_enabled = tls_wanted;
+            if tls_wanted {
+                config.ensure_tls_material()?;
+            }
+            tracing::info!("TLS {} by security settings", if tls_wanted { "enabled" } else { "disabled" });
+        }
+    }
+
     // Create broadcast channel for task progress events
     let (task_tx, _) = broadcast::channel::<TaskProgressEvent>(100);
 
@@ -179,6 +193,10 @@ async fn main() -> anyhow::Result<()> {
         });
     }
 
+    // Hardware & power: re-apply the chosen CPU governor, start the reboot/shutdown scheduler
+    services::power::PowerService::new(state.db.clone()).apply_saved_governor().await;
+    services::power::PowerService::start_scheduler(state.db.clone());
+
     // Purge expired sessions every hour (sessions are checked on every request)
     let db_for_sessions = state.db.clone();
     tokio::spawn(async move {
@@ -280,6 +298,7 @@ fn create_router(state: AppState) -> Router {
         .nest("/api/notifications", admin_only(api::notifications::router()))
         .nest("/api/system/time", api::time::router())
         .nest("/api/security", admin_only(api::security::router()))
+        .nest("/api/system/power", admin_only(api::power::router()))
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             api::middleware::require_auth,

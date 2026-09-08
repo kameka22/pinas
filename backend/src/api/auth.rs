@@ -14,7 +14,7 @@ use std::time::Instant;
 
 use crate::api::cookies;
 use crate::api::middleware::AuthUser;
-use crate::services::auth::{extract_bearer_token, generate_jwt, verify_password, AuthError};
+use crate::services::auth::{extract_bearer_token, generate_jwt_with_lifetime, verify_password, AuthError};
 use crate::services::session::{create_session, delete_session};
 use crate::services::share::ShareService;
 use crate::services::user::{change_password as change_user_password, get_user_by_id, get_user_by_username};
@@ -126,6 +126,7 @@ async fn login(
     let user = match get_user_by_username(&state.db, &payload.username).await {
         Ok(Some(user)) => user,
         Ok(None) => {
+            let _ = crate::services::security::SecurityService::new(state.db.clone()).record_login(&payload.username, &addr.ip().to_string(), false).await;
             return ApiError::from(AuthError::InvalidCredentials).into_response();
         }
         Err(e) => {
@@ -138,6 +139,7 @@ async fn login(
     match verify_password(&payload.password, &user.password_hash) {
         Ok(true) => {}
         Ok(false) => {
+            let _ = crate::services::security::SecurityService::new(state.db.clone()).record_login(&payload.username, &addr.ip().to_string(), false).await;
             return ApiError::from(AuthError::InvalidCredentials).into_response();
         }
         Err(e) => {
@@ -147,7 +149,9 @@ async fn login(
     }
 
     // Generate JWT token
-    let token = match generate_jwt(&user, &state.config) {
+    let session_hours = crate::services::security::SecurityService::session_hours(&state.db).await;
+    let _ = crate::services::security::SecurityService::new(state.db.clone()).record_login(&user.username, &addr.ip().to_string(), true).await;
+    let token = match generate_jwt_with_lifetime(&user, &state.config, session_hours) {
         Ok(token) => token,
         Err(e) => {
             tracing::error!("Token generation error: {}", e);
@@ -156,7 +160,7 @@ async fn login(
     };
 
     // Store session in database
-    let expires_at = Utc::now() + Duration::hours(state.config.jwt_expiration_hours as i64);
+    let expires_at = Utc::now() + Duration::hours(session_hours as i64);
     if let Err(e) = create_session(&state.db, &user.id, &token, expires_at).await {
         tracing::error!("Session creation error: {}", e);
         // Continue anyway - JWT is still valid
@@ -174,7 +178,7 @@ async fn login(
 
     let cookie = cookies::build_auth_cookie(
         &token,
-        state.config.jwt_expiration_hours,
+        session_hours,
         state.tls_enabled,
     );
     let mut resp = (StatusCode::OK, Json(response)).into_response();

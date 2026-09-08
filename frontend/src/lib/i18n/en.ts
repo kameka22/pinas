@@ -389,6 +389,68 @@ export default {
 		}
 	},
 
+	hardwarePower: {
+		cpu: 'Processor',
+		frequency: 'Current frequency',
+		temperature: 'Temperature',
+		load: 'Load',
+		governor: 'Frequency governor',
+		governorHint: 'ondemand/schedutil balance power and speed; performance keeps the CPU at full speed; powersave minimizes heat.',
+		governorApplied: 'CPU governor applied',
+		schedules: 'Scheduled reboot / shutdown',
+		schedulesHint: 'Runs at the given local time on the selected days.',
+		noSchedules: 'No scheduled task',
+		scheduleAdded: 'Schedule added',
+		reboot: 'Reboot',
+		shutdown: 'Shutdown',
+		actions: 'Power actions',
+		rebootNow: 'Reboot now',
+		shutdownNow: 'Shut down now',
+		diskPowerHint: 'Disk spin-down settings live in Storage Manager, per disk.',
+		days: { mon: 'Mon', tue: 'Tue', wed: 'Wed', thu: 'Thu', fri: 'Fri', sat: 'Sat', sun: 'Sun' }
+	},
+
+	security: {
+		sessions: 'Sessions',
+		sessionHours: 'Session lifetime (hours)',
+		sessionHint: 'Applies to new logins. Logging out always revokes the session immediately.',
+		https: 'HTTPS',
+		httpsEnable: 'Serve the interface over HTTPS',
+		tlsActive: 'active',
+		tlsInactive: 'inactive',
+		restartRequired: 'The HTTPS setting changes at the next service restart.',
+		restartNow: 'Restart PiNAS now',
+		restarting: 'Restarting PiNAS… the page reconnects in a few seconds.',
+		selfSigned: 'Self-signed certificate generated on this device; your browser will ask you to trust it once.',
+		certGenerated: 'generated',
+		regenerateCert: 'Regenerate certificate at next start',
+		certReset: 'Certificate removed; a new one is generated at the next start.',
+		devModeTls: 'HTTPS is disabled in dev mode.',
+		loginAudit: 'Login attempts',
+		failed24h: '{n} failed attempts in the last 24 hours',
+		autoBlockHint: 'Accounts are throttled after 5 failures per minute, IPs after 20.',
+		noAttempts: 'No login recorded yet',
+		when: 'When',
+		username: 'Username',
+		success: 'success',
+		failure: 'failed',
+		saved: 'Security settings saved'
+	},
+
+	deviceConnection: {
+		identity: 'Device identity',
+		hostname: 'Hostname',
+		hostnameSaved: 'Hostname updated',
+		mdns: 'Announce on the local network (mDNS / Bonjour)',
+		mdnsOff: 'off',
+		mdnsUnavailable: 'mDNS service not available on this system',
+		addresses: 'Access addresses',
+		smbHint: 'File sharing:',
+		ports: 'Exposed ports',
+		port: 'Port',
+		service: 'Service'
+	},
+
 	dashboard: {
 		title: 'Dashboard',
 		cpu: 'CPU usage',

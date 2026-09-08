@@ -13,6 +13,8 @@ pub mod service_access;
 pub mod session;
 pub mod settings;
 pub mod password_policy;
+pub mod power;
+pub mod security;
 pub mod timedate;
 pub mod share;
 pub mod ssh;

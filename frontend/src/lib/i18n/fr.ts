@@ -373,6 +373,68 @@ export default {
 	},
 
 	// Notifications
+	hardwarePower: {
+		cpu: 'Processeur',
+		frequency: 'Fréquence actuelle',
+		temperature: 'Température',
+		load: 'Charge',
+		governor: 'Gouverneur de fréquence',
+		governorHint: 'ondemand/schedutil équilibrent consommation et vitesse ; performance garde le CPU à pleine vitesse ; powersave minimise la chauffe.',
+		governorApplied: 'Gouverneur CPU appliqué',
+		schedules: 'Redémarrage / arrêt planifiés',
+		schedulesHint: "S'exécute à l'heure locale indiquée, les jours sélectionnés.",
+		noSchedules: 'Aucune tâche planifiée',
+		scheduleAdded: 'Planification ajoutée',
+		reboot: 'Redémarrage',
+		shutdown: 'Arrêt',
+		actions: "Actions d'alimentation",
+		rebootNow: 'Redémarrer maintenant',
+		shutdownNow: 'Arrêter maintenant',
+		diskPowerHint: "La mise en veille des disques se règle dans le Gestionnaire de stockage, disque par disque.",
+		days: { mon: 'Lun', tue: 'Mar', wed: 'Mer', thu: 'Jeu', fri: 'Ven', sat: 'Sam', sun: 'Dim' }
+	},
+
+	security: {
+		sessions: 'Sessions',
+		sessionHours: 'Durée de session (heures)',
+		sessionHint: "S'applique aux nouvelles connexions. Se déconnecter révoque toujours la session immédiatement.",
+		https: 'HTTPS',
+		httpsEnable: "Servir l'interface en HTTPS",
+		tlsActive: 'actif',
+		tlsInactive: 'inactif',
+		restartRequired: 'Le réglage HTTPS prend effet au prochain redémarrage du service.',
+		restartNow: 'Redémarrer PiNAS maintenant',
+		restarting: 'Redémarrage de PiNAS… la page se reconnecte dans quelques secondes.',
+		selfSigned: "Certificat auto-signé généré sur cet appareil ; votre navigateur demandera de l'approuver une fois.",
+		certGenerated: 'généré le',
+		regenerateCert: 'Régénérer le certificat au prochain démarrage',
+		certReset: 'Certificat supprimé ; un nouveau sera généré au prochain démarrage.',
+		devModeTls: 'HTTPS est désactivé en mode dev.',
+		loginAudit: 'Tentatives de connexion',
+		failed24h: '{n} tentatives échouées sur les dernières 24 heures',
+		autoBlockHint: 'Les comptes sont bridés après 5 échecs par minute, les IP après 20.',
+		noAttempts: 'Aucune connexion enregistrée pour le moment',
+		when: 'Quand',
+		username: "Nom d'utilisateur",
+		success: 'réussie',
+		failure: 'échouée',
+		saved: 'Paramètres de sécurité enregistrés'
+	},
+
+	deviceConnection: {
+		identity: "Identité de l'appareil",
+		hostname: "Nom d'hôte",
+		hostnameSaved: "Nom d'hôte mis à jour",
+		mdns: 'Annoncer sur le réseau local (mDNS / Bonjour)',
+		mdnsOff: 'désactivé',
+		mdnsUnavailable: 'Service mDNS indisponible sur ce système',
+		addresses: "Adresses d'accès",
+		smbHint: 'Partage de fichiers :',
+		ports: 'Ports exposés',
+		port: 'Port',
+		service: 'Service'
+	},
+
 	dashboard: {
 		title: 'Tableau de bord',
 		cpu: 'Utilisation CPU',

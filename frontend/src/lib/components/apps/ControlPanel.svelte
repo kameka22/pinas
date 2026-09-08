@@ -7,6 +7,9 @@
 	import PrinterSettings from './PrinterSettings.svelte';
 	import NetworkSettings from './NetworkSettings.svelte';
 	import UpdateSettings from './UpdateSettings.svelte';
+	import HardwarePower from './HardwarePower.svelte';
+	import SecuritySettings from './SecuritySettings.svelte';
+	import DeviceConnection from './DeviceConnection.svelte';
 	import { onMount } from 'svelte';
 	import { t } from '$lib/i18n';
 	import { systemInfo as systemInfoStore, formatBytes, formatUptime } from '$stores/system';
@@ -55,7 +58,7 @@
 			items: [
 				{ id: 'users', icon: 'mdi:account-multiple', labelKey: 'controlPanel.items.userManagement', iconColor: 'text-blue-500', component: 'UserManager' },
 				{ id: 'files', icon: 'mdi:folder', labelKey: 'controlPanel.items.fileService', iconColor: 'text-orange-500', component: 'FileService' },
-				{ id: 'device', icon: 'mdi:monitor-screenshot', labelKey: 'controlPanel.items.deviceConnection', iconColor: 'text-slate-500' },
+				{ id: 'device', icon: 'mdi:monitor-screenshot', labelKey: 'controlPanel.items.deviceConnection', iconColor: 'text-slate-500', component: 'DeviceConnection' },
 				{ id: 'terminal', icon: 'mdi:console-line', labelKey: 'controlPanel.items.terminal', iconColor: 'text-purple-500', component: 'TerminalSettings' },
 				{ id: 'printer', icon: 'mdi:printer', labelKey: 'controlPanel.items.printer', iconColor: 'text-indigo-500', component: 'PrinterSettings' }
 			]
@@ -63,10 +66,10 @@
 		{
 			titleKey: 'controlPanel.categories.general',
 			items: [
-				{ id: 'hardware', icon: 'mdi:chip', labelKey: 'controlPanel.items.hardwarePower', iconColor: 'text-emerald-500' },
+				{ id: 'hardware', icon: 'mdi:chip', labelKey: 'controlPanel.items.hardwarePower', iconColor: 'text-emerald-500', component: 'HardwarePower' },
 				{ id: 'time', icon: 'mdi:earth', labelKey: 'controlPanel.items.timeLanguage', iconColor: 'text-cyan-500', component: 'TimeLanguage' },
 				{ id: 'network', icon: 'mdi:wifi', labelKey: 'controlPanel.items.network', iconColor: 'text-blue-500', component: 'NetworkSettings' },
-				{ id: 'security', icon: 'mdi:shield-check', labelKey: 'controlPanel.items.security', iconColor: 'text-green-500' }
+				{ id: 'security', icon: 'mdi:shield-check', labelKey: 'controlPanel.items.security', iconColor: 'text-green-500', component: 'SecuritySettings' }
 			]
 		},
 		{
@@ -271,6 +274,12 @@
 			{:else if selectedItem === 'update'}
 				<!-- System Update -->
 				<UpdateSettings />
+			{:else if selectedItem === 'hardware'}
+				<HardwarePower />
+			{:else if selectedItem === 'security'}
+				<SecuritySettings />
+			{:else if selectedItem === 'device'}
+				<DeviceConnection />
 			{:else if selectedItem === 'time'}
 				<!-- Time & Language -->
 				<TimeLanguage />
@@ -459,19 +468,6 @@
 						</div>
 					</div>
 				{/if}
-			{:else}
-				<!-- Placeholder for other sections -->
-				<div class="placeholder-content">
-					<Icon icon="mdi:cog" class="w-16 h-16 text-slate-200" />
-					<h3>
-						{sidebarCategories
-							.flatMap((c) => c.items)
-							.find((i) => i.id === selectedItem)?.labelKey
-							? getTranslation($t, sidebarCategories.flatMap((c) => c.items).find((i) => i.id === selectedItem)?.labelKey || '')
-							: ''}
-					</h3>
-					<p>{$t.controlPanel.underDevelopment}</p>
-				</div>
 			{/if}
 		</main>
 	{:else}

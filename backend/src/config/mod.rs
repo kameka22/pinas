@@ -388,6 +388,14 @@ impl AppConfig {
         }
     }
 
+    /// Make sure cert/key paths are set and the files exist (used when TLS is enabled from the UI)
+    pub fn ensure_tls_material(&mut self) -> anyhow::Result<()> {
+        let tls_dir = Path::new(&self.data_dir()).join(".tls");
+        self.tls_cert_path = tls_dir.join("cert.pem");
+        self.tls_key_path = tls_dir.join("key.pem");
+        Self::load_or_generate_tls_cert(self)
+    }
+
     /// Load existing TLS certificate or generate a self-signed one
     fn load_or_generate_tls_cert(config: &AppConfig) -> anyhow::Result<()> {
         let cert_path = &config.tls_cert_path;

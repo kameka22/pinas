@@ -70,8 +70,13 @@ pub fn verify_password(password: &str, hash: &str) -> Result<bool, AuthError> {
 
 /// Generate a JWT token for a user
 pub fn generate_jwt(user: &User, config: &AppConfig) -> Result<String, AuthError> {
+    generate_jwt_with_lifetime(user, config, config.jwt_expiration_hours)
+}
+
+/// Generate a JWT valid for `hours` (security settings may override the configured default)
+pub fn generate_jwt_with_lifetime(user: &User, config: &AppConfig, hours: u64) -> Result<String, AuthError> {
     let now = Utc::now();
-    let expiration = now + Duration::hours(config.jwt_expiration_hours as i64);
+    let expiration = now + Duration::hours(hours as i64);
 
     let claims = Claims {
         sub: user.id.clone(),

@@ -818,6 +818,19 @@ class ApiClient {
 	getTimezones() { return this.get<string[]>('/system/time/zones'); }
 	updateTime(update: TimeUpdate) { return this.put<TimeStatus>('/system/time', update); }
 	syncTime() { return this.post<TimeStatus>('/system/time/sync'); }
+	// Hardware & power (admin)
+	getPowerStatus() { return this.get<PowerStatus>('/system/power'); }
+	setCpuGovernor(governor: string) { return this.post<PowerStatus>('/system/power/governor', { governor }); }
+	getPowerSchedules() { return this.get<ScheduledTask[]>('/system/power/schedules'); }
+	createPowerSchedule(input: ScheduledTaskInput) { return this.post<ScheduledTask>('/system/power/schedules', input); }
+	togglePowerSchedule(id: string, enabled: boolean) { return this.post<void>(`/system/power/schedules/${encodeURIComponent(id)}/toggle`, { enabled }); }
+	deletePowerSchedule(id: string) { return this.delete<void>(`/system/power/schedules/${encodeURIComponent(id)}`); }
+	// Security (admin)
+	getSecurityStatus() { return this.get<SecurityStatus>('/security'); }
+	updateSecuritySettings(settings: SecuritySettings) { return this.put<SecurityStatus>('/security', settings); }
+	getLoginAttempts(limit = 100) { return this.get<LoginAttempt[]>(`/security/login-attempts?limit=${limit}`); }
+	resetTlsCertificate() { return this.post<void>('/security/tls/reset'); }
+	restartPinasService() { return this.post<void>('/security/restart-service'); }
 	// Password policy (admin)
 	getPasswordPolicy() { return this.get<PasswordPolicy>('/security/password-policy'); }
 	updatePasswordPolicy(policy: PasswordPolicy) { return this.put<PasswordPolicy>('/security/password-policy', policy); }
@@ -1420,6 +1433,16 @@ export interface TimeUpdate { timezone?: string; ntp_enabled?: boolean; ntp_serv
 
 // ─── Password policy ───────────────────────────────────────────────
 export interface PasswordPolicy { min_length: number; require_upper_lower: boolean; require_number: boolean; require_special: boolean; forbid_username: boolean; expiry_days: number }
+
+// ─── Hardware & power ──────────────────────────────────────────────
+export interface PowerStatus { governor: string | null; available_governors: string[]; cpu_min_mhz: number | null; cpu_max_mhz: number | null; cpu_cur_mhz: number | null; dev_mode: boolean }
+export interface ScheduledTask { id: string; kind: 'reboot' | 'shutdown' | string; time: string; days: string; enabled: boolean; last_run_at: string | null; created_at: string }
+export interface ScheduledTaskInput { kind: 'reboot' | 'shutdown'; time: string; days: string[]; enabled?: boolean }
+
+// ─── Security ──────────────────────────────────────────────────────
+export interface SecuritySettings { session_hours: number; tls_enabled: boolean }
+export interface SecurityStatus { settings: SecuritySettings; tls_active: boolean; restart_required: boolean; tls_cert_present: boolean; tls_cert_generated_at: string | null; failed_logins_24h: number; dev_mode: boolean }
+export interface LoginAttempt { id: string; username: string; ip: string; success: boolean; created_at: string }
 
 // ─── System services summary (/system/services) ────────────────────
 export interface SystemServiceSummary { name: string; status: string; enabled: boolean }
