@@ -82,6 +82,11 @@ jobs:
       - name: Read LibreELEC branch (libreelec/BRANCH)
         run: echo "LIBREELEC_BRANCH=$(tr -d '[:space:]' < libreelec/BRANCH)" >> "$GITHUB_ENV"
 
+      - name: Read PiNAS version (VERSION) and check it is propagated
+        run: |
+          scripts/sync-version.sh --check
+          echo "PINAS_VERSION=$(tr -d '[:space:]' < VERSION)" >> "$GITHUB_ENV"
+
       - name: Download backend artifact
         uses: actions/download-artifact@v4
         with:
@@ -157,10 +162,12 @@ jobs:
 
       - name: Create Release
         if: github.ref == 'refs/heads/master'
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ github.run_number }}
-          name: PiNAS LibreELEC Build ${{ github.run_number }}
+          # Draft named after VERSION: the tag is only created when the draft is published.
+          tag_name: v${{ env.PINAS_VERSION }}
+          name: PiNAS v${{ env.PINAS_VERSION }}
+          body: Build ${{ github.run_number }} from ${{ github.sha }}. Update archive and checksum come from scripts/build-release.sh.
           files: LibreELEC.tv/target/*.img.gz
           draft: true
         env:

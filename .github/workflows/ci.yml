@@ -6,6 +6,13 @@ on:
   pull_request:
 
 jobs:
+  version:
+    name: Version consistency (VERSION file)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: scripts/sync-version.sh --check
+
   backend:
     name: Backend (cargo test)
     runs-on: ubuntu-latest

@@ -30,6 +30,9 @@ PiNAS est un système d'exploitation NAS moderne, inspiré de Synology DSM, con�
 ```
 /
 ├── CLAUDE.md                 # Ce fichier (instructions globales)
+├── VERSION                   # Version unique (propagée par scripts/sync-version.sh)
+├── REMEDIATION_PLAN.md       # Plan de reprise phase par phase (statut ✅/✗)
+├── docs/RELEASE_CHECKLIST.md # Validation matérielle sur Pi 5 à chaque release
 ├── TODO.md / BUILD.md / STORAGE_MANAGER.md / SECURITY_AUDIT.md
 ├── backend/                  # API Rust (voir backend/CLAUDE.md)
 │   ├── src/
@@ -114,10 +117,11 @@ RUST_LOG=pinas=info,tower_http=info
 
 ### Rust
 - **Authentification** : `main.rs` sépare un routeur public (`/api/health`, `/api/auth`, `/api/setup`, `/api/ws`) d'un routeur protégé par `require_auth` (JWT + session en base). Les routeurs purement administratifs (`storage`, `docker`, `packages`, `system/update`, `cups`, `terminal`, `display`) sont enveloppés par `require_admin`. Un nouveau routeur va dans le bloc protégé ; un handler destructif prend `AdminUser` en paramètre. Ne jamais ajouter de route hors du bloc protégé sans raison documentée.
+- **Erreurs API** : un handler renvoie `Result<_, ApiError>` (`api/error.rs`, JSON `{error, code}`) ; les erreurs de service (`thiserror`) se convertissent avec `?` via un `impl From<XError> for ApiError` qui fixe status + code. Pas de `StatusCode` construit à la main dans les handlers.
 - `thiserror` pour les erreurs custom
 - Async/await partout (Tokio runtime)
 - Structs avec `#[derive(Debug, Serialize, Deserialize)]`
-- Tests dans le même fichier avec `#[cfg(test)]`
+- Tests dans le même fichier avec `#[cfg(test)]` ; les tests qui touchent la base utilisent `test_util::migrated_pool()` (SQLite mémoire + vraies migrations). CI : `cargo test --locked` et `cargo check` avec `-D warnings`.
 - Frontend servi depuis `/storage/.pinas/www/` via tower-http
 
 ### Svelte
@@ -135,6 +139,7 @@ RUST_LOG=pinas=info,tower_http=info
 ### Git
 - Commits conventionnels : `feat:`, `fix:`, `docs:`, `refactor:`
 - Branches : `feature/`, `fix/`, `release/`
+- **Version** : une seule source, le fichier `VERSION`. `scripts/sync-version.sh` la propage (Cargo.toml/lock, package.json/lock, package.mk) ; `--check` en CI refuse toute dérive ; `--set X.Y.Z` pour bumper. Release : `scripts/build-release.sh [--tag]` (notes générées depuis les commits conventionnels), validation Pi : `docs/RELEASE_CHECKLIST.md`.
 
 ### Dev local
 - Pas de cargo installé localement, builds via Docker

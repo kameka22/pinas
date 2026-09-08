@@ -10,8 +10,8 @@ PiNAS transforms your Raspberry Pi into a full-featured NAS with a modern web in
 
 ## Features
 
-- **Desktop-like web interface** — Windows, dock, topbar, and widgets
-- **File management** — Browse, upload, download, rename, create folders across locations
+- **Desktop-like web interface** — Windows, dock, topbar, widgets panel, global search (`Ctrl+K`), notification center, wallpapers
+- **File management** — Browse, upload, download (files or zipped folders), preview, rename, drag & drop, search across locations
 - **Storage management** — Pools (RAID 0/1/5/10, JBOD, Btrfs), volumes, S.M.A.R.T. monitoring
 - **Share management** — SMB/Samba shares and NFS exports (per-client access, ro/rw, root squash)
 - **User & group management** — Multi-user with RBAC permissions per folder
@@ -24,6 +24,8 @@ PiNAS transforms your Raspberry Pi into a full-featured NAS with a modern web in
 - **Terminal** — Web terminal with command history
 - **Process Manager** — System process monitoring and management
 - **Onboarding wizard** — 7-step setup (language, device name, user, password, SSH, features)
+- **Control Panel** — Users, file services (SMB/NFS), device connection, terminal, printers, hardware & power (CPU governor, scheduled reboot/shutdown), time & language, network, security (login audit, session lifetime, HTTPS), personalization, updates
+- **Security** — Every API route authenticated, sessions revocable, login rate limiting, password policy, signed update archives (SHA-256)
 - **i18n** — English and French
 - **Lightweight** — ~50MB RAM, ~100MB disk footprint
 
@@ -236,11 +238,18 @@ See [app-catalog/README.md](app-catalog/README.md) for details.
 - [x] Display/Kodi configuration app
 - [x] Security audit (all critical/high issues fixed)
 
+- [x] File Manager: upload, download, preview, drag & drop, search
+- [x] Notification center, dashboard and widgets fed by real data
+- [x] Control Panel: Time & Language, Hardware & Power, Security, Device Connection, Personalization
+- [x] Global search (`Ctrl+K`)
+- [x] CI (GitHub Actions: tests, type-check, build) and single-source versioning (`VERSION`)
+
 ### In Progress
 
 - [ ] Real-time Storage Manager updates via WebSocket
-- [ ] Upload files in File Manager
-- [ ] Drag & drop in File Manager
+- [ ] Hardware validation of each release on a Pi 5 — see [docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md)
+
+The detailed engineering roadmap (what was audited, fixed, and what remains) is [REMEDIATION_PLAN.md](REMEDIATION_PLAN.md).
 
 ### Planned
 
@@ -251,8 +260,8 @@ See [app-catalog/README.md](app-catalog/README.md) for details.
 **System Management:**
 - [ ] Email notifications (SMTP relay, S.M.A.R.T. alerts, disk space alerts)
 - [ ] Scheduled tasks / cron jobs (reboot, shutdown, scripts)
-- [ ] Power management (CPU frequency scaling, Wake-on-LAN, scheduled shutdown)
-- [ ] SSL/TLS certificates (Let's Encrypt, CSR generation)
+- [x] Power management (CPU frequency scaling, scheduled reboot/shutdown) — Wake-on-LAN pending
+- [x] HTTPS with self-signed certificate (toggle in Security) — Let's Encrypt / CSR pending
 - [ ] Firewall (iptables/nftables, IPv4/IPv6, port forwarding)
 - [ ] Disk quotas (per user/group, soft/hard limits)
 
@@ -275,7 +284,7 @@ See [app-catalog/README.md](app-catalog/README.md) for details.
 
 **UI & Infra:**
 - [ ] Dark theme
-- [ ] CI/CD (GitHub Actions)
+- [ ] Metrics history (1h/1d/1w graphs in widgets)
 
 ## License
 

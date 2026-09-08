@@ -83,9 +83,9 @@ echo "Build frontend: $BUILD_FRONTEND"
 echo "Build LibreELEC: $BUILD_LIBREELEC"
 echo ""
 
-# Function to extract version from Cargo.toml
+# Version: single source of truth is the VERSION file (see scripts/sync-version.sh)
 get_version() {
-    grep '^version' "${PROJECT_ROOT}/backend/Cargo.toml" | head -1 | sed 's/.*"\(.*\)".*/\1/'
+    tr -d '[:space:]' < "${PROJECT_ROOT}/VERSION"
 }
 
 # Function to verify required package files exist
@@ -116,15 +116,10 @@ verify_package_files() {
     echo "    All package files present"
 }
 
-# Function to sync version in package.mk
+# Propagate VERSION to Cargo.toml / package.json / package.mk before building
 sync_version() {
-    local version=$(get_version)
-    echo ">>> Synchronizing version: $version"
-
-    if [ -f "${PACKAGE_DIR}/package.mk" ]; then
-        sed -i "s/^PKG_VERSION=.*/PKG_VERSION=\"${version}\"/" "${PACKAGE_DIR}/package.mk"
-        echo "    Updated package.mk version to $version"
-    fi
+    echo ">>> Synchronizing version: $(get_version)"
+    "${SCRIPT_DIR}/sync-version.sh"
 }
 
 # Function to clean build directories

@@ -12,6 +12,10 @@
 #   ./scripts/build-release.sh --frontend-only  # patch (frontend only)
 #   ./scripts/build-release.sh --changelog "Fixed bugs"
 #   ./scripts/build-release.sh --new            # reconfigure VM
+#   ./scripts/build-release.sh --tag            # also create the annotated git tag v<VERSION> locally
+#
+# Version: read from VERSION (single source, propagated by scripts/sync-version.sh).
+# Changelog: --changelog text, or generated from conventional commits since the last v* tag.
 
 set -e
 
@@ -36,6 +40,7 @@ MODE="minor"
 CHANGELOG_EN=""
 CHANGELOG_FR=""
 MIN_VERSION=""
+CREATE_TAG=false
 RESET_CONFIG=false
 
 usage() {
@@ -48,6 +53,7 @@ usage() {
     echo "  --changelog-fr \"text\" Changelog in French"
     echo "  --min-version \"0.01\" Minimum version required"
     echo "  --new                Reset VM configuration"
+    echo "  --tag                Create annotated git tag v<VERSION> after a successful build (not pushed)"
     echo "  -h, --help           Show this help"
     echo ""
     echo "By default, includes: backend + frontend + migrations + scripts + services"
@@ -81,6 +87,10 @@ while [[ $# -gt 0 ]]; do
         --min-version)
             MIN_VERSION="$2"
             shift 2
+            ;;
+        --tag)
+            CREATE_TAG=true
+            shift
             ;;
         --new)
             RESET_CONFIG=true
@@ -245,6 +255,9 @@ echo -e "${GREEN}done${NC}"
 echo "    Pulling latest changes..."
 run_remote "cd $REMOTE_PROJECT && git pull"
 
+echo "    Propagating VERSION to Cargo.toml / package.json / package.mk..."
+run_remote "cd $REMOTE_PROJECT && scripts/sync-version.sh"
+
 echo -e "${GREEN}    Remote environment ready${NC}"
 
 # Read VERSION from remote
@@ -381,8 +394,24 @@ echo -e "${CYAN}>>> [3/4] Generating update archive on remote...${NC}"
 
 DATE=$(date +%Y-%m-%d)
 
+# Release notes from conventional commits since the last v* tag (local clone)
+generate_changelog() {
+    local last_tag range feats fixes others
+    last_tag=$(git -C "$PROJECT_ROOT" describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true)
+    range=${last_tag:+$last_tag..HEAD}
+    feats=$(git -C "$PROJECT_ROOT" log $range --no-merges --pretty=format:'%s' | grep -E '^feat(\(|:)' | sed -E 's/^feat(\([^)]*\))?: */- /' || true)
+    fixes=$(git -C "$PROJECT_ROOT" log $range --no-merges --pretty=format:'%s' | grep -E '^fix(\(|:)' | sed -E 's/^fix(\([^)]*\))?: */- /' || true)
+    others=$(git -C "$PROJECT_ROOT" log $range --no-merges --pretty=format:'%s' | grep -vE '^(feat|fix|chore|docs|test|refactor|ci|style)(\(|:)' | sed 's/^/- /' || true)
+    {
+        [ -n "$feats" ] && printf 'Features\n%s\n\n' "$feats"
+        [ -n "$fixes" ] && printf 'Fixes\n%s\n\n' "$fixes"
+        [ -n "$others" ] && printf 'Other\n%s\n' "$others"
+    } | sed -e :a -e '/^\n*$/{$d;N;ba' -e '}'
+}
+
 if [ -z "$CHANGELOG_EN" ]; then
-    CHANGELOG_EN="PiNAS update to version $VERSION"
+    CHANGELOG_EN=$(generate_changelog)
+    [ -n "$CHANGELOG_EN" ] || CHANGELOG_EN="PiNAS update to version $VERSION"
 fi
 if [ -z "$CHANGELOG_FR" ]; then
     CHANGELOG_FR="Mise à jour de PiNAS vers la version $VERSION"
@@ -463,4 +492,15 @@ echo -e "  SHA256:   ${CYAN}$ARCHIVE_SHA${NC}"
 echo ""
 echo "To create a GitHub release:"
 echo -e "  ${YELLOW}gh release create v$VERSION build/$ARCHIVE_NAME build/$CHECKSUM_NAME --title \"PiNAS v$VERSION\" --notes \"$CHANGELOG_EN\"${NC}"
+
+if [ "$CREATE_TAG" = true ]; then
+    if git -C "$PROJECT_ROOT" rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null; then
+        echo -e "  ${YELLOW}Tag v$VERSION already exists, not recreated${NC}"
+    else
+        git -C "$PROJECT_ROOT" tag -a "v$VERSION" -m "PiNAS v$VERSION
+
+$CHANGELOG_EN"
+        echo -e "  ${GREEN}Tagged v$VERSION${NC} (push with: git push origin v$VERSION)"
+    fi
+fi
 echo ""

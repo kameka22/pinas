@@ -272,14 +272,14 @@ Validation du path puis opération async dans un `tokio::spawn`. Symlinks modifi
 
 | # | Issue | Fichier |
 |---|-------|---------|
-| 26 | Pas de `cargo audit` ni pinning exact des versions | `Cargo.toml` |
+| 26 | Pas de `cargo audit` ; Dependabot hebdomadaire (cargo, npm, actions) en place depuis P8 | `Cargo.toml` |
 | 27 | Pas de table d'audit pour les opérations critiques | migrations |
 | 28 | `dev_mode` exposé dans les réponses API | `terminal.rs:46` |
 | 29 | Console.log du WebSocket en production | `websocket.ts:130` |
 | 30 | Pas de timeout sur les downloads frontend | `api.ts:464` |
-| 31 | Images externes (Unsplash) sans SRI | `+layout.svelte` |
+| ~~31~~ | ~~Images externes (Unsplash) sans SRI~~ — CORRIGE (P7 : fonds d'écran en dégradés CSS locaux) | `+layout.svelte` |
 | 32 | Logout toujours 200 OK même sans token | `auth.rs` |
-| 33 | Changement de mdp n'invalide pas les autres sessions | `auth.rs` |
+| 33 | Changement de mdp par l'utilisateur n'invalide pas ses autres sessions (le reset par un admin les révoque depuis P0) | `auth.rs` |
 
 ---
 
@@ -313,7 +313,7 @@ Validation du path puis opération async dans un `tokio::spawn`. Symlinks modifi
 
 ---
 
-## Passe de septembre 2026 (branche `fix/p0-security`)
+## Passe de septembre 2026 (REMEDIATION_PLAN.md, phase P0 — sur `master`)
 
 ### ~~26. 82 handlers API sans authentification~~ — CORRIGE
 
@@ -357,4 +357,6 @@ Validation du path puis opération async dans un `tokio::spawn`. Symlinks modifi
 
 - `pinas.service` : `ProtectSystem=strict` + `ReadWritePaths=/etc /var` sur le squashfs LibreELEC → l'unité démarre-t-elle ? (`journalctl -u pinas`)
 - `smbpasswd -a` exige un utilisateur Unix : création d'un utilisateur PiNAS → accès SMB effectif ?
-- `GET /api/services` renvoie 500 hors LibreELEC (`systemctl` absent) : le mode dev n'est pas honoré dans `ServiceManager::list_services` (→ Phase 1).
+- ~~`GET /api/services` renvoie 500 hors LibreELEC~~ — CORRIGE en P1 (`ServiceManager` honore `dev_mode`).
+
+Procédure complète : `docs/RELEASE_CHECKLIST.md` (sections 1 à 3), à exécuter à chaque release.
