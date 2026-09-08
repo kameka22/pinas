@@ -108,6 +108,17 @@ async fn login(
 ) -> impl IntoResponse {
     // Rate limit check (per source IP, then per username)
     if !check_login_ip_rate_limit(&addr.ip()) || !check_login_rate_limit(&payload.username) {
+        {
+            use crate::services::notification::{Level, NotificationService};
+            let key = format!("auth:ratelimit:{}", payload.username.to_lowercase());
+            let message = format!("Too many failed login attempts for '{}' from {}", payload.username, addr.ip());
+            if let Err(e) = NotificationService::new(state.db.clone())
+                .notify(Level::Warning, "auth", "Login attempts blocked", &message, Some(&key))
+                .await
+            {
+                tracing::warn!("Failed to persist auth notification: {}", e);
+            }
+        }
         return ApiError::too_many_requests("Too many login attempts. Please try again later.".to_string()).with_code("RATE_LIMITED".to_string()).into_response();
     }
 

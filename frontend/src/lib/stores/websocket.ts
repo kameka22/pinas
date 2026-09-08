@@ -4,6 +4,7 @@ import { fileTasks } from './taskManager';
 import type { FileTaskType, FileTaskStatus } from './taskManager';
 import { updateScreen } from './update';
 import { getWsToken } from './api';
+import { pushNotification } from './notifications';
 
 export interface TaskProgress {
 	task_id: string;
@@ -187,7 +188,7 @@ export function connectWebSocket(): () => void {
 				}
 				break;
 			case 'notification':
-				console.log('[WS] Notification:', data.message || data.data?.message);
+				if (data.data) pushNotification(data.data);
 				break;
 			default:
 				// Silently ignore unknown message types

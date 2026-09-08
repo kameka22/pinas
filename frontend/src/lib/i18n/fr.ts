@@ -320,7 +320,8 @@ export default {
 		users: 'Utilisateurs',
 		processManager: 'Gestionnaire de processus',
 		kodi: 'Kodi',
-		display: 'Affichage Externe'
+		display: 'Affichage Externe',
+		dashboard: 'Tableau de bord'
 	},
 
 	// Top Bar
@@ -368,11 +369,40 @@ export default {
 	},
 
 	// Notifications
+	dashboard: {
+		title: 'Tableau de bord',
+		cpu: 'Utilisation CPU',
+		memory: 'Mémoire',
+		storage: 'Stockage',
+		storageOverview: 'Vue du stockage',
+		used: 'Utilisé',
+		free: 'Libre',
+		disks: 'Disques',
+		pools: 'Pools',
+		shares: 'Partages',
+		volumes: 'Volumes',
+		services: 'Services',
+		running: 'actif',
+		stopped: 'arrêté',
+		recentActivity: 'Activité récente',
+		noActivity: "Rien de récent",
+		noPools: 'Aucun pool de stockage configuré'
+	},
+
 	notifications: {
 		title: 'Notifications',
 		markAsRead: 'Marquer comme lu',
 		clearAll: 'Tout effacer',
-		empty: 'Aucune notification'
+		empty: 'Aucune notification',
+		markAllRead: 'Tout marquer comme lu',
+		adminOnly: 'Les notifications système sont visibles par les administrateurs',
+		sources: {
+			storage: 'Stockage',
+			'app-center': 'App Center',
+			update: 'Mise à jour système',
+			auth: 'Sécurité',
+			system: 'Système'
+		}
 	},
 
 	// Onboarding

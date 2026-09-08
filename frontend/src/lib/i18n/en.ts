@@ -320,7 +320,8 @@ export default {
 		users: 'Users',
 		processManager: 'Process Manager',
 		kodi: 'Kodi',
-		display: 'External Display'
+		display: 'External Display',
+		dashboard: 'Dashboard'
 	},
 
 	// Top Bar
@@ -371,8 +372,37 @@ export default {
 	notifications: {
 		title: 'Notifications',
 		markAsRead: 'Mark as read',
+		markAllRead: 'Mark all as read',
 		clearAll: 'Clear all',
-		empty: 'No notifications'
+		empty: 'No notifications',
+		adminOnly: 'System notifications are visible to administrators',
+		sources: {
+			storage: 'Storage',
+			'app-center': 'App Center',
+			update: 'System update',
+			auth: 'Security',
+			system: 'System'
+		}
+	},
+
+	dashboard: {
+		title: 'Dashboard',
+		cpu: 'CPU usage',
+		memory: 'Memory',
+		storage: 'Storage',
+		storageOverview: 'Storage overview',
+		used: 'Used',
+		free: 'Free',
+		disks: 'Disks',
+		pools: 'Pools',
+		shares: 'Shares',
+		volumes: 'Volumes',
+		services: 'Services',
+		running: 'running',
+		stopped: 'stopped',
+		recentActivity: 'Recent activity',
+		noActivity: 'Nothing happened recently',
+		noPools: 'No storage pool configured'
 	},
 
 	// Onboarding

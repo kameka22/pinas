@@ -38,6 +38,15 @@ export interface AppRegistryEntry {
 // labelKey corresponds to keys in $t.apps (e.g., 'controlPanel' -> $t.apps.controlPanel)
 export const builtInApps: DesktopApp[] = [
 	{
+		id: 'dashboard',
+		label: 'Dashboard',
+		labelKey: 'dashboard',
+		icon: 'mdi:view-dashboard',
+		component: 'Dashboard',
+		gradient: 'from-sky-500 to-blue-600',
+		adminOnly: true
+	},
+	{
 		id: 'control-panel',
 		label: 'Control Panel',
 		labelKey: 'controlPanel',

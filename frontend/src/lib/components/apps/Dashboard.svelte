@@ -1,44 +1,67 @@
 <script lang="ts">
 	import Icon from '@iconify/svelte';
-	import { systemStats } from '$stores/system';
+	import { onMount } from 'svelte';
+	import { t, locale } from '$lib/i18n';
+	import { systemStats, formatBytes } from '$stores/system';
+	import { api } from '$stores/api';
+	import type { StoragePool, SystemServiceSummary } from '$stores/api';
+	import { notifications, loadNotifications, timeAgo, notificationVisual } from '$stores/notifications';
 
-	const storageOverview = {
-		total: '4 TB',
-		used: '2.1 TB',
-		free: '1.9 TB',
-		percent: 52.5
+	let pools: StoragePool[] = [];
+	let diskCount = 0;
+	let volumeCount = 0;
+	let shareCount = 0;
+	let services: SystemServiceSummary[] = [];
+	let loading = true;
+
+	$: storageTotal = pools.reduce((acc, p) => acc + (p.total_size || 0), 0);
+	$: storageUsed = pools.reduce((acc, p) => acc + (p.used_size || 0), 0);
+	$: storagePercent = storageTotal > 0 ? Math.round((storageUsed / storageTotal) * 1000) / 10 : 0;
+	$: recent = $notifications.slice(0, 8);
+
+	const serviceIcons: Record<string, string> = {
+		samba: 'mdi:microsoft-windows',
+		nfs: 'mdi:folder-network',
+		ssh: 'mdi:console',
+		docker: 'mdi:docker'
 	};
 
-	const recentActivity = [
-		{ icon: 'mdi:folder-plus', text: 'Share "Media" created', time: '2 min ago' },
-		{ icon: 'mdi:account-plus', text: 'User "john" added', time: '15 min ago' },
-		{ icon: 'mdi:harddisk', text: 'Disk /dev/sdb mounted', time: '1 hour ago' },
-		{ icon: 'mdi:update', text: 'System updated', time: '3 hours ago' }
-	];
+	async function refresh() {
+		const [p, d, v, s, svc] = await Promise.allSettled([
+			api.getPools(),
+			api.getDisks(),
+			api.getVolumes(),
+			api.getShares(),
+			api.getSystemServices()
+		]);
+		if (p.status === 'fulfilled') pools = p.value;
+		if (d.status === 'fulfilled') diskCount = d.value.length;
+		if (v.status === 'fulfilled') volumeCount = v.value.length;
+		if (s.status === 'fulfilled') shareCount = (s.value as unknown[]).length;
+		if (svc.status === 'fulfilled') services = svc.value;
+		await loadNotifications();
+		loading = false;
+	}
 
-	const services = [
-		{ name: 'SMB/CIFS', status: 'running', icon: 'mdi:microsoft-windows' },
-		{ name: 'NFS', status: 'running', icon: 'mdi:folder-network' },
-		{ name: 'SSH', status: 'running', icon: 'mdi:console' },
-		{ name: 'FTP', status: 'stopped', icon: 'mdi:folder-upload' }
-	];
+	onMount(refresh);
 </script>
 
 <div class="dashboard">
-	<!-- Header -->
 	<header class="dashboard-header">
-		<h1>Dashboard</h1>
+		<h1>{$t.dashboard.title}</h1>
+		<button class="btn-refresh" on:click={refresh} disabled={loading}>
+			<Icon icon="mdi:refresh" class="w-4 h-4 {loading ? 'animate-spin' : ''}" />
+			{$t.common.refresh}
+		</button>
 	</header>
 
-	<!-- Stats Grid -->
 	<div class="stats-grid">
-		<!-- CPU -->
 		<div class="stat-card">
 			<div class="stat-icon bg-blue-100">
 				<Icon icon="mdi:cpu-64-bit" class="w-6 h-6 text-blue-500" />
 			</div>
 			<div class="stat-info">
-				<span class="stat-label">CPU Usage</span>
+				<span class="stat-label">{$t.dashboard.cpu}</span>
 				<span class="stat-value">{$systemStats.cpuUsage.toFixed(1)}%</span>
 			</div>
 			<div class="stat-bar">
@@ -46,13 +69,12 @@
 			</div>
 		</div>
 
-		<!-- Memory -->
 		<div class="stat-card">
 			<div class="stat-icon bg-purple-100">
 				<Icon icon="mdi:memory" class="w-6 h-6 text-purple-500" />
 			</div>
 			<div class="stat-info">
-				<span class="stat-label">Memory</span>
+				<span class="stat-label">{$t.dashboard.memory}</span>
 				<span class="stat-value">{$systemStats.memoryUsage.toFixed(1)}%</span>
 			</div>
 			<div class="stat-bar">
@@ -60,79 +82,78 @@
 			</div>
 		</div>
 
-		<!-- Storage -->
 		<div class="stat-card">
 			<div class="stat-icon bg-amber-100">
 				<Icon icon="mdi:harddisk" class="w-6 h-6 text-amber-500" />
 			</div>
 			<div class="stat-info">
-				<span class="stat-label">Storage</span>
-				<span class="stat-value">{storageOverview.percent}%</span>
+				<span class="stat-label">{$t.dashboard.storage}</span>
+				<span class="stat-value">{storageTotal > 0 ? `${storagePercent}%` : '—'}</span>
 			</div>
 			<div class="stat-bar">
-				<div class="stat-bar-fill bg-amber-500" style="width: {storageOverview.percent}%"></div>
+				<div class="stat-bar-fill bg-amber-500" style="width: {storagePercent}%"></div>
 			</div>
 		</div>
 
-		<!-- Network -->
 		<div class="stat-card">
 			<div class="stat-icon bg-green-100">
-				<Icon icon="mdi:lan" class="w-6 h-6 text-green-500" />
+				<Icon icon="mdi:apps" class="w-6 h-6 text-green-500" />
 			</div>
 			<div class="stat-info">
-				<span class="stat-label">Network</span>
-				<span class="stat-value text-green-600">Online</span>
-			</div>
-			<div class="stat-network">
-				<span><Icon icon="mdi:arrow-down" class="w-3 h-3 text-green-500 inline" /> 1.2 MB/s</span>
-				<span><Icon icon="mdi:arrow-up" class="w-3 h-3 text-blue-500 inline" /> 450 KB/s</span>
+				<span class="stat-label">{$t.dashboard.services}</span>
+				<span class="stat-value">{services.filter((s) => s.status === 'running').length}/{services.length}</span>
 			</div>
 		</div>
 	</div>
 
-	<!-- Main Content -->
 	<div class="content-grid">
-		<!-- Storage Overview -->
 		<div class="card col-span-2">
-			<h3 class="card-title">Storage Overview</h3>
-			<div class="storage-stats">
-				<div class="storage-bar">
-					<div class="storage-bar-fill" style="width: {storageOverview.percent}%"></div>
+			<h3 class="card-title">{$t.dashboard.storageOverview}</h3>
+			{#if storageTotal > 0}
+				<div class="storage-stats">
+					<div class="storage-bar">
+						<div class="storage-bar-fill" style="width: {storagePercent}%"></div>
+					</div>
+					<div class="storage-labels">
+						<span>{$t.dashboard.used}: {formatBytes(storageUsed)}</span>
+						<span>{$t.dashboard.free}: {formatBytes(Math.max(storageTotal - storageUsed, 0))}</span>
+					</div>
 				</div>
-				<div class="storage-labels">
-					<span>Used: {storageOverview.used}</span>
-					<span>Free: {storageOverview.free}</span>
-				</div>
-			</div>
+			{:else}
+				<p class="empty-hint">{$t.dashboard.noPools}</p>
+			{/if}
 
 			<div class="storage-counts">
 				<div class="count-item">
-					<span class="count-value">3</span>
-					<span class="count-label">Disks</span>
+					<span class="count-value">{diskCount}</span>
+					<span class="count-label">{$t.dashboard.disks}</span>
 				</div>
 				<div class="count-item">
-					<span class="count-value">1</span>
-					<span class="count-label">Pools</span>
+					<span class="count-value">{pools.length}</span>
+					<span class="count-label">{$t.dashboard.pools}</span>
 				</div>
 				<div class="count-item">
-					<span class="count-value">5</span>
-					<span class="count-label">Shares</span>
+					<span class="count-value">{volumeCount}</span>
+					<span class="count-label">{$t.dashboard.volumes}</span>
+				</div>
+				<div class="count-item">
+					<span class="count-value">{shareCount}</span>
+					<span class="count-label">{$t.dashboard.shares}</span>
 				</div>
 			</div>
 		</div>
 
-		<!-- Services Status -->
 		<div class="card">
-			<h3 class="card-title">Services</h3>
+			<h3 class="card-title">{$t.dashboard.services}</h3>
 			<div class="services-list">
-				{#each services as service}
+				{#each services as service (service.name)}
 					<div class="service-item">
 						<div class="service-info">
-							<Icon icon={service.icon} class="w-4 h-4 text-slate-400" />
-							<span>{service.name}</span>
+							<Icon icon={serviceIcons[service.name] || 'mdi:cog'} class="w-4 h-4 text-slate-400" />
+							<span>{service.name.toUpperCase()}</span>
 						</div>
 						<span class="service-status" class:running={service.status === 'running'}>
-							{service.status}
+							{service.status === 'running' ? $t.dashboard.running : $t.dashboard.stopped}
 						</span>
 					</div>
 				{/each}
@@ -140,17 +161,19 @@
 		</div>
 	</div>
 
-	<!-- Recent Activity -->
 	<div class="card">
-		<h3 class="card-title">Recent Activity</h3>
+		<h3 class="card-title">{$t.dashboard.recentActivity}</h3>
 		<div class="activity-list">
-			{#each recentActivity as activity}
+			{#if recent.length === 0}
+				<p class="empty-hint">{$t.dashboard.noActivity}</p>
+			{/if}
+			{#each recent as n (n.id)}
 				<div class="activity-item">
 					<div class="activity-icon">
-						<Icon icon={activity.icon} class="w-4 h-4 text-slate-500" />
+						<Icon icon={notificationVisual(n).icon} class="w-4 h-4 text-slate-500" />
 					</div>
-					<span class="activity-text">{activity.text}</span>
-					<span class="activity-time">{activity.time}</span>
+					<span class="activity-text"><strong>{n.title}</strong> — {n.message}</span>
+					<span class="activity-time">{timeAgo(n.created_at, $locale)}</span>
 				</div>
 			{/each}
 		</div>
@@ -403,4 +426,11 @@
 		font-size: 12px;
 		color: #94a3b8;
 	}
+
+	.empty-hint {
+		font-size: 0.8125rem;
+		color: #94a3b8;
+		padding: 0.5rem 0 1rem;
+	}
+	.btn-refresh:disabled { opacity: 0.6; }
 </style>

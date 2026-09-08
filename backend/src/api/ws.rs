@@ -30,8 +30,7 @@ pub enum WsEvent {
     #[serde(rename = "system.stats")]
     SystemStats(SystemStats),
     #[serde(rename = "notification")]
-    #[allow(dead_code)] // emitted by the notification service (REMEDIATION_PLAN P3)
-    Notification(Notification),
+    Notification(crate::models::notification::Notification),
     #[serde(rename = "task.progress")]
     TaskProgress(TaskProgressEvent),
     #[serde(rename = "file.task")]
@@ -46,13 +45,6 @@ pub struct SystemStats {
     pub memory_usage: f32,
     pub memory_used: u64,
     pub memory_total: u64,
-}
-
-#[derive(Debug, Serialize)]
-pub struct Notification {
-    pub id: String,
-    pub level: String,
-    pub message: String,
 }
 
 /// Task progress event sent via WebSocket broadcast
@@ -107,7 +99,8 @@ pub async fn ws_handler(
     let file_task_rx = state.file_task_tx.subscribe();
     let storage_rx = state.storage_tx.subscribe();
     let system = state.system.clone();
-    ws.on_upgrade(move |socket| handle_socket(socket, system, task_rx, file_task_rx, storage_rx))
+    let notif_rx = crate::services::notification::NotificationService::subscribe();
+    ws.on_upgrade(move |socket| handle_socket(socket, system, task_rx, file_task_rx, storage_rx, notif_rx))
         .into_response()
 }
 
@@ -118,7 +111,10 @@ async fn handle_socket(
     mut task_rx: broadcast::Receiver<TaskProgressEvent>,
     mut file_task_rx: broadcast::Receiver<FileTaskEvent>,
     mut storage_rx: broadcast::Receiver<StorageAlertEvent>,
+    notif_rx: Option<broadcast::Receiver<crate::models::notification::Notification>>,
 ) {
+    // Without an installed broadcast (tests), fall back to a channel that never fires
+    let mut notif_rx = notif_rx.unwrap_or_else(|| broadcast::channel(1).1);
     let (mut sender, mut receiver) = socket.split();
 
     // Spawn task to send periodic system stats, task progress, and file task events
@@ -174,6 +170,23 @@ async fn handle_socket(
                         }
                         Err(broadcast::error::RecvError::Lagged(n)) => {
                             tracing::warn!("WebSocket file task receiver lagged by {} messages", n);
+                        }
+                        Err(broadcast::error::RecvError::Closed) => {
+                            break;
+                        }
+                    }
+                }
+                result = notif_rx.recv() => {
+                    match result {
+                        Ok(notification) => {
+                            let event = WsEvent::Notification(notification);
+                            let msg = serde_json::to_string(&event).unwrap();
+                            if sender.send(Message::Text(msg.into())).await.is_err() {
+                                break;
+                            }
+                        }
+                        Err(broadcast::error::RecvError::Lagged(n)) => {
+                            tracing::warn!("WebSocket notification receiver lagged by {} messages", n);
                         }
                         Err(broadcast::error::RecvError::Closed) => {
                             break;

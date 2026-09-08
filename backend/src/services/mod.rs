@@ -5,6 +5,7 @@ pub mod group;
 pub mod home;
 pub mod kodi;
 pub mod network;
+pub mod notification;
 pub mod package;
 pub mod permission;
 pub mod service;

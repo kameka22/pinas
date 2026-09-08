@@ -59,6 +59,7 @@ async fn main() -> anyhow::Result<()> {
     // Load configuration
     let config = AppConfig::load()?;
     AppConfig::init_global(config.clone());
+    services::notification::NotificationService::init_broadcast(64);
     let bind_addr = config.bind_address.clone();
 
     // Initialize database
@@ -136,6 +137,47 @@ async fn main() -> anyhow::Result<()> {
 
     // Apply saved disk power settings on boot
     services::storage::StorageService::apply_power_settings_on_boot(&db_for_power, dev_mode).await;
+
+    // Persist storage alerts and package task outcomes as notifications
+    {
+        use services::notification::{Level, NotificationService};
+        let db = state.db.clone();
+        let mut storage_rx = state.storage_tx.subscribe();
+        let mut task_rx = state.task_tx.subscribe();
+        tokio::spawn(async move {
+            let svc = NotificationService::new(db);
+            loop {
+                tokio::select! {
+                    Ok(alert) = storage_rx.recv() => {
+                        let level = match alert.alert_type.as_str() {
+                            "rebuilt" => Level::Success,
+                            "degraded" | "scrub_error" => Level::Warning,
+                            _ => Level::Error,
+                        };
+                        let key = format!("storage:{}:{}", alert.pool_id, alert.alert_type);
+                        let title = format!("Pool {}", alert.pool_name);
+                        if let Err(e) = svc.notify(level, "storage", &title, &alert.message, Some(&key)).await {
+                            tracing::warn!("Failed to persist storage notification: {}", e);
+                        }
+                    }
+                    Ok(task) = task_rx.recv() => {
+                        let (level, title, message) = match task.status.as_str() {
+                            "completed" if task.package_id == "system-update" => (Level::Success, "System update".to_string(), "Update installed successfully".to_string()),
+                            "completed" => (Level::Success, "App Center".to_string(), format!("{} installed", task.package_id)),
+                            "failed" if task.package_id == "system-update" => (Level::Error, "System update".to_string(), task.error_message.clone().unwrap_or_else(|| "Update failed".to_string())),
+                            "failed" => (Level::Error, "App Center".to_string(), format!("{}: {}", task.package_id, task.error_message.clone().unwrap_or_else(|| "installation failed".to_string()))),
+                            _ => continue,
+                        };
+                        let source = if task.package_id == "system-update" { "update" } else { "app-center" };
+                        if let Err(e) = svc.notify(level, source, &title, &message, None).await {
+                            tracing::warn!("Failed to persist task notification: {}", e);
+                        }
+                    }
+                    else => break,
+                }
+            }
+        });
+    }
 
     // Purge expired sessions every hour (sessions are checked on every request)
     let db_for_sessions = state.db.clone();
@@ -235,6 +277,7 @@ fn create_router(state: AppState) -> Router {
         .nest("/api/service-access", api::service_access::router())
         .nest("/api/ssh", api::ssh::router())
         .nest("/api/cups", admin_only(api::cups::router()))
+        .nest("/api/notifications", admin_only(api::notifications::router()))
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             api::middleware::require_auth,

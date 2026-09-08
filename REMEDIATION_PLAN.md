@@ -70,16 +70,16 @@ Taille : **M–L (≈ 4 j)**. Dépend de P1 (format d'erreur JSON unifié).
 
 ---
 
-## Phase 3 — Notifications réelles et Dashboard
+## Phase 3 — Notifications réelles et Dashboard ✅ (terminée le 2026-09-08)
 
 Taille : **M (≈ 2 j)**. Dépend de P1, P2. Indépendante de P4–P7.
 
 | # | Item | Taille | Détail / critère de fin |
 |---|---|---|---|
-| 3.1 | **`NotificationService`** | S | CRUD sur la table `notifications` existante (id, type, title, message, read, source, created_at — ajouter `title`/`source` par migration). Endpoints `GET /api/notifications`, `POST /:id/read`, `POST /read-all`, `DELETE /:id`, `DELETE /`. |
-| 3.2 | **Émission** | S | Brancher les producteurs existants : `StorageAlertEvent` (santé pool, SMART), `TaskProgressEvent` (fin/échec installation), `update.rs` (mise à jour disponible/appliquée), login échoué répété (P0.7), disque branché/débranché (udev via `locations`). Diffusion WS `notification` (le client la gère déjà). |
-| 3.3 | **NotificationCenter live** | S | Remplacer les 4 notifications statiques par le store alimenté par API + WS ; *Dismiss*, *Clear all*, *Mark read* fonctionnels ; badge non-lus dans la TopBar ; bouton *Settings* → préférences (P4.5). |
-| 3.4 | **Dashboard réel** | S | *Recent activity* = 10 dernières notifications ; *Services* = `GET /api/services` (smbd, sshd, docker, cupsd, kodi) avec état réel ; bouton *Refresh* fonctionnel ; widgets CPU/RAM déjà branchés sur le WS. Supprimer les tableaux codés en dur. |
+| 3.1 ✅ | **`NotificationService`** | S | CRUD sur la table `notifications` existante (id, type, title, message, read, source, created_at — ajouter `title`/`source` par migration). Endpoints `GET /api/notifications`, `POST /:id/read`, `POST /read-all`, `DELETE /:id`, `DELETE /`. |
+| 3.2 ✅ | **Émission** | S | Brancher les producteurs existants : `StorageAlertEvent` (santé pool, SMART), `TaskProgressEvent` (fin/échec installation), `update.rs` (mise à jour disponible/appliquée), login échoué répété (P0.7), disque branché/débranché (udev via `locations`). Diffusion WS `notification` (le client la gère déjà). |
+| 3.3 ✅ | **NotificationCenter live** | S | Remplacer les 4 notifications statiques par le store alimenté par API + WS ; *Dismiss*, *Clear all*, *Mark read* fonctionnels ; badge non-lus dans la TopBar ; bouton *Settings* → préférences (P4.5). |
+| 3.4 ✅ | **Dashboard réel** | S | *Recent activity* = 10 dernières notifications ; *Services* = `GET /api/services` (smbd, sshd, docker, cupsd, kodi) avec état réel ; bouton *Refresh* fonctionnel ; widgets CPU/RAM déjà branchés sur le WS. Supprimer les tableaux codés en dur. |
 
 ---
 

@@ -813,6 +813,15 @@ class ApiClient {
 	getServiceStatus(name: string) { return this.get<ServiceStatus>(`/services/${encodeURIComponent(name)}/status`); }
 	getServiceLogs(name: string, lines = 100) { return this.get<ServiceLogEntry[]>(`/services/${encodeURIComponent(name)}/logs?lines=${lines}`); }
 	serviceAction(name: string, action: 'start' | 'stop' | 'restart' | 'enable' | 'disable') { return this.post<void>(`/services/${encodeURIComponent(name)}/${action}`); }
+	// Notifications (admin)
+	getNotifications(limit = 50, unread = false) { return this.get<Notification[]>(`/notifications?limit=${limit}&unread=${unread}`); }
+	getUnreadNotificationCount() { return this.get<{ unread: number }>('/notifications/count'); }
+	markNotificationRead(id: string) { return this.post<void>(`/notifications/${encodeURIComponent(id)}/read`); }
+	markAllNotificationsRead() { return this.post<{ updated: number }>('/notifications/read-all'); }
+	deleteNotification(id: string) { return this.delete<void>(`/notifications/${encodeURIComponent(id)}`); }
+	clearNotifications() { return this.delete<{ deleted: number }>('/notifications'); }
+	// System services summary (samba/nfs/ssh) for dashboards
+	getSystemServices() { return this.get<SystemServiceSummary[]>('/system/services'); }
 	// Terminal (errors carry a body the UI wants to show, so no throw)
 	terminalExec(command: string, cwd: string) { return this.requestRaw<TerminalExecResponse>('POST', '/terminal/exec', { command, cwd }); }
 	terminalComplete(partial: string, cwd: string) { return this.requestRaw<TerminalCompleteResponse>('POST', '/terminal/complete', { partial, cwd }); }
@@ -1392,6 +1401,20 @@ export interface UserServiceAccess {
 	ftp: boolean;
 }
 
+
+// ─── Notifications ─────────────────────────────────────────────────
+export interface Notification {
+	id: string;
+	level: 'info' | 'success' | 'warning' | 'error' | string;
+	title: string;
+	message: string;
+	source: string;
+	read: boolean;
+	created_at: string;
+}
+
+// ─── System services summary (/system/services) ────────────────────
+export interface SystemServiceSummary { name: string; status: string; enabled: boolean }
 
 // ─── Docker ────────────────────────────────────────────────────────
 export interface DockerContainer { id: string; name: string; image: string; status: string; state: string; created: number; ports: { host: number | null; container: number; protocol: string }[] }

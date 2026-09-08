@@ -190,6 +190,18 @@ impl UpdateService {
             (None, Some(determine_update_type(&current, &latest)))
         };
 
+        // Surface it in the notification center (once per version)
+        {
+            use crate::services::notification::{Level, NotificationService};
+            let key = format!("update:{}", latest);
+            if let Err(e) = NotificationService::new(self.db.clone())
+                .notify(Level::Info, "update", "Update available", &format!("PiNAS {} is available (current: {})", latest, current), Some(&key))
+                .await
+            {
+                tracing::warn!("Failed to persist update notification: {}", e);
+            }
+        }
+
         let changelog = release.body.map(|body| {
             HashMap::from([("en".to_string(), body)])
         });

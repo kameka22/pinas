@@ -1,6 +1,7 @@
 <script lang="ts">
 	import Icon from '@iconify/svelte';
 	import { systemStats, systemInfo } from '$stores/system';
+	import { unreadCount, loadNotifications } from '$stores/notifications';
 	import { hasActiveTask, activeTaskCount } from '$stores/taskManager';
 	import { auth, api } from '$stores/api';
 	import { openWindow } from '$stores/windows';
@@ -141,6 +142,7 @@
 		}
 		// Check for updates silently
 		checkForUpdates();
+		loadNotifications();
 	});
 
 	onDestroy(() => {
@@ -236,7 +238,9 @@
 
 		<button class="topbar-btn relative" title={$t.topBar.notifications} on:click={() => showNotifications = !showNotifications}>
 			<Icon icon="mdi:bell-outline" class="w-5 h-5" />
-			<span class="notification-badge">3</span>
+			{#if $unreadCount > 0}
+				<span class="notification-badge">{$unreadCount > 99 ? '99+' : $unreadCount}</span>
+			{/if}
 		</button>
 
 		<div class="divider"></div>

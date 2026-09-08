@@ -1,5 +1,6 @@
 pub mod group;
 pub mod manifest;
+pub mod notification;
 pub mod package;
 pub mod permission;
 pub mod service_access;

@@ -1,66 +1,28 @@
 <script lang="ts">
 	import Icon from '@iconify/svelte';
-	import { t } from '$lib/i18n';
+	import { t, locale } from '$lib/i18n';
+	import { auth } from '$stores/api';
 	import { gradientStyle } from '$lib/utils/gradient';
+	import {
+		notifications,
+		unreadCount,
+		loadNotifications,
+		markNotificationRead,
+		markAllNotificationsRead,
+		dismissNotification,
+		clearNotifications,
+		timeAgo,
+		notificationVisual
+	} from '$stores/notifications';
 
 	export let visible = false;
 
-	interface Notification {
-		id: string;
-		icon: string;
-		iconGradient: string;
-		title: string;
-		message: string;
-		time: string;
-		unread: boolean;
-	}
+	$: isAdmin = $auth.user?.role === 'admin';
+	$: if (visible && isAdmin) loadNotifications();
 
-	const notifications: Notification[] = [
-		{
-			id: '1',
-			icon: 'mdi:download',
-			iconGradient: 'from-green-400 to-green-500',
-			title: 'Download Center',
-			message: 'Download complete',
-			time: 'Now',
-			unread: true
-		},
-		{
-			id: '2',
-			icon: 'mdi:harddisk',
-			iconGradient: 'from-slate-400 to-slate-500',
-			title: 'Storage Manager(2)',
-			message: 'Hard disk 6 is not in use yet. Please enter [Hard disk manager] to manage it.',
-			time: 'Now',
-			unread: true
-		},
-		{
-			id: '3',
-			icon: 'mdi:folder',
-			iconGradient: 'from-blue-400 to-blue-500',
-			title: 'File Manager (12)',
-			message: 'File deduplication has been completed. A total of 849 images, 137 videos, and ...',
-			time: '1 hour ago',
-			unread: true
-		},
-		{
-			id: '4',
-			icon: 'mdi:apps',
-			iconGradient: 'from-purple-400 to-purple-500',
-			title: 'App Center',
-			message: 'All apps have been upgraded to the latest version. Come and experience it.',
-			time: 'February 21st 13:51',
-			unread: false
-		}
-	];
-
-	function dismissNotification(id: string) {
-		// Would remove from store in real implementation
-		console.log('Dismiss:', id);
-	}
-
-	function clearAll() {
-		console.log('Clear all notifications');
+	function sourceLabel(source: string): string {
+		const sources = $t.notifications.sources as Record<string, string>;
+		return sources[source] || source;
 	}
 </script>
 
@@ -72,40 +34,65 @@
 <aside class="notification-center" class:visible>
 	<header class="notification-header">
 		<div class="flex items-center gap-2">
-			<Icon icon="mdi:home" class="w-5 h-5 text-slate-600" />
+			<Icon icon="mdi:bell-outline" class="w-5 h-5 text-slate-600" />
 			<h2 class="text-sm font-semibold text-slate-800">{$t.notifications.title}</h2>
+			{#if $unreadCount > 0}
+				<span class="unread-pill">{$unreadCount}</span>
+			{/if}
 		</div>
+		{#if $unreadCount > 0}
+			<button class="header-action" on:click={markAllNotificationsRead} title={$t.notifications.markAllRead}>
+				<Icon icon="mdi:check-all" class="w-4 h-4" />
+			</button>
+		{/if}
 	</header>
 
 	<div class="notification-list">
-		{#each notifications as notification}
-			<div class="notification-item" class:unread={notification.unread}>
-				<div class="notification-icon" style={gradientStyle(notification.iconGradient)}>
-					<Icon icon={notification.icon} class="w-5 h-5 text-white" />
-				</div>
-				<div class="notification-content">
-					<div class="notification-top">
-						<h4 class="notification-title">{notification.title}</h4>
-						<span class="notification-time">{notification.time}</span>
-					</div>
-					<p class="notification-message">{notification.message}</p>
-				</div>
-				<button
-					class="dismiss-btn"
-					on:click={() => dismissNotification(notification.id)}
-					title={$t.common.dismiss}
+		{#if !isAdmin}
+			<p class="notification-empty">{$t.notifications.adminOnly}</p>
+		{:else if $notifications.length === 0}
+			<p class="notification-empty">{$t.notifications.empty}</p>
+		{:else}
+			{#each $notifications as notification (notification.id)}
+				{@const visual = notificationVisual(notification)}
+				<!-- svelte-ignore a11y_no_static_element_interactions a11y_click_events_have_key_events -->
+				<div
+					class="notification-item"
+					class:unread={!notification.read}
+					on:click={() => !notification.read && markNotificationRead(notification.id)}
 				>
-					<Icon icon="mdi:close" class="w-4 h-4" />
-				</button>
-			</div>
-		{/each}
+					<div class="notification-icon" style={gradientStyle(visual.gradient)}>
+						<Icon icon={visual.icon} class="w-5 h-5 text-white" />
+					</div>
+					<div class="notification-content">
+						<div class="notification-top">
+							<h4 class="notification-title">{notification.title}</h4>
+							<span class="notification-time" title={new Date(notification.created_at).toLocaleString($locale)}>
+								{timeAgo(notification.created_at, $locale)}
+							</span>
+						</div>
+						<p class="notification-message">{notification.message}</p>
+						<span class="notification-source">{sourceLabel(notification.source)}</span>
+					</div>
+					<button
+						class="dismiss-btn"
+						on:click|stopPropagation={() => dismissNotification(notification.id)}
+						title={$t.common.dismiss}
+					>
+						<Icon icon="mdi:close" class="w-4 h-4" />
+					</button>
+				</div>
+			{/each}
+		{/if}
 	</div>
 
-	<footer class="notification-footer">
-		<button class="view-all-btn" on:click={clearAll}>
-			{$t.notifications.clearAll}
-		</button>
-	</footer>
+	{#if isAdmin && $notifications.length > 0}
+		<footer class="notification-footer">
+			<button class="view-all-btn" on:click={clearNotifications}>
+				{$t.notifications.clearAll}
+			</button>
+		</footer>
+	{/if}
 </aside>
 
 <style>
@@ -275,4 +262,33 @@
 		background: rgba(0, 0, 0, 0.1);
 		color: #334155;
 	}
+
+	.notification-empty {
+		padding: 2rem 1rem;
+		text-align: center;
+		font-size: 0.8125rem;
+		color: #64748b;
+	}
+	.notification-source {
+		display: inline-block;
+		margin-top: 0.25rem;
+		font-size: 0.6875rem;
+		color: #94a3b8;
+	}
+	.unread-pill {
+		font-size: 0.6875rem;
+		font-weight: 600;
+		padding: 0 0.4rem;
+		border-radius: 999px;
+		background: #ef4444;
+		color: white;
+		line-height: 1.1rem;
+	}
+	.header-action {
+		padding: 0.25rem;
+		border-radius: 0.375rem;
+		color: #475569;
+	}
+	.header-action:hover { background: rgb(15 23 42 / 0.06); }
+	.notification-item { cursor: pointer; }
 </style>
