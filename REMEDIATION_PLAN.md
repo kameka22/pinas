@@ -10,7 +10,7 @@
 
 | Sujet | Décision |
 |---|---|
-| Branches | Une branche par phase (`fix/p0-security`, `refactor/p1-backend`, …), PR vers `master`, squash. `chore/backend-deps-bump` (déjà prête) se merge en tête de la phase 1 après validation Pi. |
+| Branches | **Pas de branches** : tout le travail se fait directement sur `master` en local, un commit par item ; rien n'est pushé sans demande explicite. (`fix/p0-security` et `chore/backend-deps-bump` ont été rapatriées sur `master` le 2026-09-08.) |
 | Definition of Done | `cargo test` vert, `svelte-check` 0 erreur, `npm run build` OK, testé sur Pi (ou VM QEMU) pour tout ce qui touche au système, i18n en+fr à jour, README/TODO.md synchronisés. |
 | Ce qu'on **retire** plutôt que de finir | Domain/LDAP, Indexing Service, onglet *Device Analysis*, `Settings.svelte`, alias `NetdiskTools`. Un NAS Pi mono-site n'en a pas besoin ; afficher une entrée "under development" est pire que ne rien afficher. |
 | Hors périmètre de ce plan | La roadmap long terme de `TODO.md` §9 (rsync, quotas, UPS, SNMP, syslog distant, S3, LVM, bcache, cloud sync, RRD). Voir §9 de ce document pour la manière de la réintégrer une fois les phases 0–7 terminées. |
@@ -38,7 +38,7 @@ Taille totale : **M–L (≈ 3 j)**. Aucune dépendance.
 
 ## Phase 1 — Fondations backend
 
-Taille : **L (≈ 5 j)**. Dépend de P0. Commence par le merge de `chore/backend-deps-bump` (axum 0.8, sqlx 0.9, bollard 0.21, édition 2024) après test Pi.
+Taille : **L (≈ 5 j)**. Dépend de P0. Le bump de dépendances (axum 0.8, sqlx 0.9, bollard 0.21, édition 2024) est déjà sur `master` ; à valider sur le Pi avec le reste.
 
 | # | Item | Taille | Détail / critère de fin |
 |---|---|---|---|
