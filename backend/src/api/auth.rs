@@ -13,12 +13,13 @@ use std::sync::Mutex;
 use std::time::Instant;
 
 use crate::api::cookies;
-use crate::api::middleware::{AuthErrorResponse, AuthUser};
-use crate::services::auth::{extract_bearer_token, generate_jwt, verify_password};
+use crate::api::middleware::AuthUser;
+use crate::services::auth::{extract_bearer_token, generate_jwt, verify_password, AuthError};
 use crate::services::session::{create_session, delete_session};
 use crate::services::share::ShareService;
 use crate::services::user::{change_password as change_user_password, get_user_by_id, get_user_by_username};
 use crate::AppState;
+use crate::api::error::ApiError;
 
 /// Login rate limiting: max 5 attempts per 60 seconds per username
 const LOGIN_RATE_LIMIT_MAX: usize = 5;
@@ -107,39 +108,18 @@ async fn login(
 ) -> impl IntoResponse {
     // Rate limit check (per source IP, then per username)
     if !check_login_ip_rate_limit(&addr.ip()) || !check_login_rate_limit(&payload.username) {
-        return (
-            StatusCode::TOO_MANY_REQUESTS,
-            Json(AuthErrorResponse {
-                error: "Too many login attempts. Please try again later.".to_string(),
-                code: "RATE_LIMITED".to_string(),
-            }),
-        )
-            .into_response();
+        return ApiError::too_many_requests("Too many login attempts. Please try again later.".to_string()).with_code("RATE_LIMITED".to_string()).into_response();
     }
 
     // Get user by username
     let user = match get_user_by_username(&state.db, &payload.username).await {
         Ok(Some(user)) => user,
         Ok(None) => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(AuthErrorResponse {
-                    error: "Invalid credentials".to_string(),
-                    code: "INVALID_CREDENTIALS".to_string(),
-                }),
-            )
-                .into_response();
+            return ApiError::from(AuthError::InvalidCredentials).into_response();
         }
         Err(e) => {
             tracing::error!("Database error during login: {}", e);
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(AuthErrorResponse {
-                    error: "Internal server error".to_string(),
-                    code: "INTERNAL_ERROR".to_string(),
-                }),
-            )
-                .into_response();
+            return ApiError::internal("Internal server error".to_string()).with_code("INTERNAL_ERROR".to_string()).into_response();
         }
     };
 
@@ -147,25 +127,11 @@ async fn login(
     match verify_password(&payload.password, &user.password_hash) {
         Ok(true) => {}
         Ok(false) => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(AuthErrorResponse {
-                    error: "Invalid credentials".to_string(),
-                    code: "INVALID_CREDENTIALS".to_string(),
-                }),
-            )
-                .into_response();
+            return ApiError::from(AuthError::InvalidCredentials).into_response();
         }
         Err(e) => {
             tracing::error!("Password verification error: {}", e);
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(AuthErrorResponse {
-                    error: "Internal server error".to_string(),
-                    code: "INTERNAL_ERROR".to_string(),
-                }),
-            )
-                .into_response();
+            return ApiError::internal("Internal server error".to_string()).with_code("INTERNAL_ERROR".to_string()).into_response();
         }
     }
 
@@ -174,14 +140,7 @@ async fn login(
         Ok(token) => token,
         Err(e) => {
             tracing::error!("Token generation error: {}", e);
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(AuthErrorResponse {
-                    error: "Internal server error".to_string(),
-                    code: "INTERNAL_ERROR".to_string(),
-                }),
-            )
-                .into_response();
+            return ApiError::internal("Internal server error".to_string()).with_code("INTERNAL_ERROR".to_string()).into_response();
         }
     };
 
@@ -257,24 +216,10 @@ async fn me(State(state): State<AppState>, user: AuthUser) -> impl IntoResponse 
             };
             (StatusCode::OK, Json(user_info)).into_response()
         }
-        Ok(None) => (
-            StatusCode::NOT_FOUND,
-            Json(AuthErrorResponse {
-                error: "User not found".to_string(),
-                code: "USER_NOT_FOUND".to_string(),
-            }),
-        )
-            .into_response(),
+        Ok(None) => ApiError::not_found("User not found".to_string()).with_code("USER_NOT_FOUND".to_string()).into_response(),
         Err(e) => {
             tracing::error!("Database error: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(AuthErrorResponse {
-                    error: "Internal server error".to_string(),
-                    code: "INTERNAL_ERROR".to_string(),
-                }),
-            )
-                .into_response()
+            ApiError::internal("Internal server error".to_string()).with_code("INTERNAL_ERROR".to_string()).into_response()
         }
     }
 }
@@ -289,25 +234,11 @@ async fn change_password(
     let db_user = match get_user_by_id(&state.db, &user.id).await {
         Ok(Some(u)) => u,
         Ok(None) => {
-            return (
-                StatusCode::NOT_FOUND,
-                Json(AuthErrorResponse {
-                    error: "User not found".to_string(),
-                    code: "USER_NOT_FOUND".to_string(),
-                }),
-            )
-                .into_response();
+            return ApiError::not_found("User not found".to_string()).with_code("USER_NOT_FOUND".to_string()).into_response();
         }
         Err(e) => {
             tracing::error!("Database error: {}", e);
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(AuthErrorResponse {
-                    error: "Internal server error".to_string(),
-                    code: "INTERNAL_ERROR".to_string(),
-                }),
-            )
-                .into_response();
+            return ApiError::internal("Internal server error".to_string()).with_code("INTERNAL_ERROR".to_string()).into_response();
         }
     };
 
@@ -315,51 +246,23 @@ async fn change_password(
     match verify_password(&payload.current_password, &db_user.password_hash) {
         Ok(true) => {}
         Ok(false) => {
-            return (
-                StatusCode::UNAUTHORIZED,
-                Json(AuthErrorResponse {
-                    error: "Current password is incorrect".to_string(),
-                    code: "INVALID_PASSWORD".to_string(),
-                }),
-            )
-                .into_response();
+            return ApiError::unauthorized("Current password is incorrect".to_string()).with_code("INVALID_PASSWORD".to_string()).into_response();
         }
         Err(e) => {
             tracing::error!("Password verification error: {}", e);
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(AuthErrorResponse {
-                    error: "Internal server error".to_string(),
-                    code: "INTERNAL_ERROR".to_string(),
-                }),
-            )
-                .into_response();
+            return ApiError::internal("Internal server error".to_string()).with_code("INTERNAL_ERROR".to_string()).into_response();
         }
     }
 
     // Validate new password length
     if payload.new_password.len() < 8 {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(AuthErrorResponse {
-                error: "Password must be at least 8 characters".to_string(),
-                code: "VALIDATION_ERROR".to_string(),
-            }),
-        )
-            .into_response();
+        return ApiError::bad_request("Password must be at least 8 characters".to_string()).with_code("VALIDATION_ERROR".to_string()).into_response();
     }
 
     // Change password
     if let Err(e) = change_user_password(&state.db, &user.id, &payload.new_password).await {
         tracing::error!("Password change error: {}", e);
-        return (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(AuthErrorResponse {
-                error: "Failed to change password".to_string(),
-                code: "PASSWORD_CHANGE_FAILED".to_string(),
-            }),
-        )
-            .into_response();
+        return ApiError::internal("Failed to change password".to_string()).with_code("PASSWORD_CHANGE_FAILED".to_string()).into_response();
     }
 
     // Sync Samba password (non-blocking)

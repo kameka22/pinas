@@ -23,6 +23,7 @@ use crate::models::manifest::{
 };
 use crate::services::package::PackageService;
 use crate::AppState;
+use crate::api::error::ApiError;
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -42,7 +43,7 @@ async fn list_packages(State(state): State<AppState>) -> impl IntoResponse {
         Ok(packages) => Json(packages).into_response(),
         Err(e) => {
             tracing::error!("Failed to list packages: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+            ApiError::internal(e.to_string()).into_response()
         }
     }
 }
@@ -111,10 +112,10 @@ async fn get_package(
 
     match service.get_installed(&id).await {
         Ok(Some(package)) => Json(package).into_response(),
-        Ok(None) => (StatusCode::NOT_FOUND, "Package not found").into_response(),
+        Ok(None) => ApiError::not_found("Package not found").into_response(),
         Err(e) => {
             tracing::error!("Failed to get package: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+            ApiError::internal(e.to_string()).into_response()
         }
     }
 }
@@ -149,9 +150,7 @@ async fn install_package(
     // Initialize directories
     if let Err(e) = service.init_directories().await {
         tracing::error!("Failed to init directories: {}", e);
-        return (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({
-            "error": e.to_string()
-        }))).into_response();
+        return ApiError::internal(e.to_string()).into_response();
     }
 
     // Get manifest - try multiple methods
@@ -164,9 +163,7 @@ async fn install_package(
             Ok(manifest) => (manifest, Some(url.clone())),
             Err(e) => {
                 tracing::error!("Failed to fetch manifest: {}", e);
-                return (StatusCode::BAD_REQUEST, Json(serde_json::json!({
-                    "error": format!("Failed to fetch manifest: {}", e)
-                }))).into_response();
+                return ApiError::bad_request(format!("Failed to fetch manifest: {}", e)).into_response();
             }
         }
     } else if let Some(package_id) = &request.package_id {
@@ -175,15 +172,11 @@ async fn install_package(
             Ok((manifest, url)) => (manifest, url),
             Err(e) => {
                 tracing::error!("Failed to resolve package {}: {}", package_id, e);
-                return (StatusCode::BAD_REQUEST, Json(serde_json::json!({
-                    "error": format!("Failed to resolve package: {}", e)
-                }))).into_response();
+                return ApiError::bad_request(format!("Failed to resolve package: {}", e)).into_response();
             }
         }
     } else {
-        return (StatusCode::BAD_REQUEST, Json(serde_json::json!({
-            "error": "Either package_id, manifest, or manifest_url is required"
-        }))).into_response();
+        return ApiError::bad_request("Either package_id, manifest, or manifest_url is required").into_response();
     };
 
     // Start installation (creates DB records, returns task_id immediately)
@@ -191,9 +184,7 @@ async fn install_package(
         Ok(task_id) => task_id,
         Err(e) => {
             tracing::error!("Failed to start package installation: {}", e);
-            return (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({
-                "error": e.to_string()
-            }))).into_response();
+            return ApiError::internal(e.to_string()).into_response();
         }
     };
 
@@ -476,7 +467,7 @@ async fn uninstall_package(
         Ok(_) => StatusCode::NO_CONTENT.into_response(),
         Err(e) => {
             tracing::error!("Failed to uninstall package: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+            ApiError::internal(e.to_string()).into_response()
         }
     }
 }
@@ -490,10 +481,10 @@ async fn get_task(
 
     match service.get_task(&id).await {
         Ok(Some(task)) => Json(task).into_response(),
-        Ok(None) => (StatusCode::NOT_FOUND, "Task not found").into_response(),
+        Ok(None) => ApiError::not_found("Task not found").into_response(),
         Err(e) => {
             tracing::error!("Failed to get task: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+            ApiError::internal(e.to_string()).into_response()
         }
     }
 }

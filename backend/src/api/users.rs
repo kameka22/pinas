@@ -13,10 +13,10 @@ use crate::services::home::HomeService;
 use crate::services::share::ShareService;
 use crate::services::user::{
     change_password, create_user_with_home, delete_user_with_home,
-    get_user_by_id, list_users as list_users_service, update_user as update_user_service,
-    UserError, UserUpdate,
+    get_user_by_id, list_users as list_users_service, update_user as update_user_service, UserUpdate,
 };
 use crate::AppState;
+use crate::api::error::ApiError;
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -71,33 +71,6 @@ pub struct ChangePasswordRequest {
     pub password: String,
 }
 
-#[derive(Debug, Serialize)]
-pub struct ErrorResponse {
-    pub error: String,
-    pub code: String,
-}
-
-impl From<UserError> for (StatusCode, Json<ErrorResponse>) {
-    fn from(err: UserError) -> Self {
-        let (status, code) = match &err {
-            UserError::NotFound => (StatusCode::NOT_FOUND, "USER_NOT_FOUND"),
-            UserError::DuplicateUsername => (StatusCode::CONFLICT, "DUPLICATE_USERNAME"),
-            UserError::CannotDeleteSelf => (StatusCode::FORBIDDEN, "CANNOT_DELETE_SELF"),
-            UserError::CannotDeleteLastAdmin => (StatusCode::FORBIDDEN, "CANNOT_DELETE_LAST_ADMIN"),
-            UserError::DatabaseError(_) => (StatusCode::INTERNAL_SERVER_ERROR, "DATABASE_ERROR"),
-            UserError::AuthError(_) => (StatusCode::INTERNAL_SERVER_ERROR, "AUTH_ERROR"),
-        };
-
-        (
-            status,
-            Json(ErrorResponse {
-                error: err.to_string(),
-                code: code.to_string(),
-            }),
-        )
-    }
-}
-
 /// List all users (admin only)
 async fn list_users(
     State(state): State<AppState>,
@@ -110,8 +83,7 @@ async fn list_users(
         }
         Err(e) => {
             tracing::error!("Failed to list users: {}", e);
-            let (status, json) = e.into();
-            (status, json).into_response()
+            ApiError::from(e).into_response()
         }
     }
 }
@@ -124,25 +96,11 @@ async fn create_user(
 ) -> impl IntoResponse {
     // Validate input
     if payload.username.trim().is_empty() {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: "Username is required".to_string(),
-                code: "VALIDATION_ERROR".to_string(),
-            }),
-        )
-            .into_response();
+        return ApiError::bad_request("Username is required".to_string()).with_code("VALIDATION_ERROR".to_string()).into_response();
     }
 
     if payload.password.len() < 8 {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: "Password must be at least 8 characters".to_string(),
-                code: "VALIDATION_ERROR".to_string(),
-            }),
-        )
-            .into_response();
+        return ApiError::bad_request("Password must be at least 8 characters".to_string()).with_code("VALIDATION_ERROR".to_string()).into_response();
     }
 
     // Create HomeService to manage user's home directory
@@ -171,8 +129,7 @@ async fn create_user(
         }
         Err(e) => {
             tracing::error!("Failed to create user: {}", e);
-            let (status, json) = e.into();
-            (status, json).into_response()
+            ApiError::from(e).into_response()
         }
     }
 }
@@ -185,14 +142,7 @@ async fn get_user(
 ) -> impl IntoResponse {
     // Check if user is accessing their own profile or is admin
     if user.id != id && !user.is_admin {
-        return (
-            StatusCode::FORBIDDEN,
-            Json(ErrorResponse {
-                error: "Access denied".to_string(),
-                code: "FORBIDDEN".to_string(),
-            }),
-        )
-            .into_response();
+        return ApiError::forbidden("Access denied".to_string()).with_code("FORBIDDEN".to_string()).into_response();
     }
 
     match get_user_by_id(&state.db, &id).await {
@@ -200,18 +150,10 @@ async fn get_user(
             let response: UserResponse = db_user.into();
             (StatusCode::OK, Json(response)).into_response()
         }
-        Ok(None) => (
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse {
-                error: "User not found".to_string(),
-                code: "USER_NOT_FOUND".to_string(),
-            }),
-        )
-            .into_response(),
+        Ok(None) => ApiError::not_found("User not found".to_string()).with_code("USER_NOT_FOUND".to_string()).into_response(),
         Err(e) => {
             tracing::error!("Failed to get user: {}", e);
-            let (status, json) = e.into();
-            (status, json).into_response()
+            ApiError::from(e).into_response()
         }
     }
 }
@@ -228,14 +170,7 @@ async fn update_user(
     let is_admin = user.is_admin;
 
     if !is_self && !is_admin {
-        return (
-            StatusCode::FORBIDDEN,
-            Json(ErrorResponse {
-                error: "Access denied".to_string(),
-                code: "FORBIDDEN".to_string(),
-            }),
-        )
-            .into_response();
+        return ApiError::forbidden("Access denied".to_string()).with_code("FORBIDDEN".to_string()).into_response();
     }
 
     // Non-admin users can only update their own email
@@ -259,8 +194,7 @@ async fn update_user(
         }
         Err(e) => {
             tracing::error!("Failed to update user: {}", e);
-            let (status, json) = e.into();
-            (status, json).into_response()
+            ApiError::from(e).into_response()
         }
     }
 }
@@ -297,8 +231,7 @@ async fn delete_user(
         }
         Err(e) => {
             tracing::error!("Failed to delete user: {}", e);
-            let (status, json) = e.into();
-            (status, json).into_response()
+            ApiError::from(e).into_response()
         }
     }
 }
@@ -311,14 +244,7 @@ async fn change_user_password(
     Json(payload): Json<ChangePasswordRequest>,
 ) -> impl IntoResponse {
     if payload.password.len() < 8 {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: "Password must be at least 8 characters".to_string(),
-                code: "VALIDATION_ERROR".to_string(),
-            }),
-        )
-            .into_response();
+        return ApiError::bad_request("Password must be at least 8 characters".to_string()).with_code("VALIDATION_ERROR".to_string()).into_response();
     }
 
     match change_password(&state.db, &id, &payload.password).await {
@@ -338,8 +264,7 @@ async fn change_user_password(
         }
         Err(e) => {
             tracing::error!("Failed to change password: {}", e);
-            let (status, json) = e.into();
-            (status, json).into_response()
+            ApiError::from(e).into_response()
         }
     }
 }

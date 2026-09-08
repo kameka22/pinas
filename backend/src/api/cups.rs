@@ -1,6 +1,5 @@
 use axum::{
     extract::{Path, Query, State},
-    http::StatusCode,
     response::IntoResponse,
     routing::{delete, get, post, put},
     Json, Router,
@@ -9,11 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::services::cups::{AddPrinterRequest, CupsService, UpdatePrinterRequest};
 use crate::AppState;
-
-#[derive(Debug, Serialize)]
-struct ApiError {
-    message: String,
-}
+use crate::api::error::ApiError;
 
 #[derive(Debug, Serialize)]
 struct ApiSuccess {
@@ -21,21 +16,11 @@ struct ApiSuccess {
 }
 
 /// Guard: returns 503 if CUPS service is not enabled
-async fn require_enabled(service: &CupsService) -> Result<(), (StatusCode, Json<ApiError>)> {
+async fn require_enabled(service: &CupsService) -> Result<(), ApiError> {
     match service.get_status().await {
         Ok(status) if status.enabled => Ok(()),
-        Ok(_) => Err((
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(ApiError {
-                message: "CUPS service is not enabled. Enable it first.".to_string(),
-            }),
-        )),
-        Err(e) => Err((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ApiError {
-                message: e.to_string(),
-            }),
-        )),
+        Ok(_) => Err(ApiError::service_unavailable("CUPS service is not enabled. Enable it first.")),
+        Err(e) => Err(ApiError::internal(e.to_string())),
     }
 }
 
@@ -63,13 +48,7 @@ async fn get_status(State(_state): State<AppState>) -> impl IntoResponse {
         Ok(status) => Json(status).into_response(),
         Err(e) => {
             tracing::error!("Failed to get CUPS status: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ApiError {
-                    message: e.to_string(),
-                }),
-            )
-                .into_response()
+            ApiError::internal(e.to_string()).into_response()
         }
     }
 }
@@ -82,13 +61,7 @@ async fn enable(State(_state): State<AppState>) -> impl IntoResponse {
         Ok(()) => Json(ApiSuccess { success: true }).into_response(),
         Err(e) => {
             tracing::error!("Failed to enable CUPS: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ApiError {
-                    message: e.to_string(),
-                }),
-            )
-                .into_response()
+            ApiError::internal(e.to_string()).into_response()
         }
     }
 }
@@ -101,13 +74,7 @@ async fn disable(State(_state): State<AppState>) -> impl IntoResponse {
         Ok(()) => Json(ApiSuccess { success: true }).into_response(),
         Err(e) => {
             tracing::error!("Failed to disable CUPS: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ApiError {
-                    message: e.to_string(),
-                }),
-            )
-                .into_response()
+            ApiError::internal(e.to_string()).into_response()
         }
     }
 }
@@ -122,13 +89,7 @@ async fn get_printers(State(_state): State<AppState>) -> impl IntoResponse {
 
     match service.get_printers().await {
         Ok(printers) => Json(printers).into_response(),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ApiError {
-                message: e.to_string(),
-            }),
-        )
-            .into_response(),
+        Err(e) => ApiError::internal(e.to_string()).into_response(),
     }
 }
 
@@ -142,13 +103,7 @@ async fn detect_printers(State(_state): State<AppState>) -> impl IntoResponse {
 
     match service.detect_printers().await {
         Ok(printers) => Json(printers).into_response(),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ApiError {
-                message: e.to_string(),
-            }),
-        )
-            .into_response(),
+        Err(e) => ApiError::internal(e.to_string()).into_response(),
     }
 }
 
@@ -170,13 +125,7 @@ async fn get_drivers(
 
     match service.get_drivers(&query.uri).await {
         Ok(drivers) => Json(drivers).into_response(),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ApiError {
-                message: e.to_string(),
-            }),
-        )
-            .into_response(),
+        Err(e) => ApiError::internal(e.to_string()).into_response(),
     }
 }
 
@@ -195,13 +144,7 @@ async fn add_printer(
         Ok(()) => Json(ApiSuccess { success: true }).into_response(),
         Err(e) => {
             tracing::error!("Failed to add printer: {}", e);
-            (
-                StatusCode::BAD_REQUEST,
-                Json(ApiError {
-                    message: e.to_string(),
-                }),
-            )
-                .into_response()
+            ApiError::bad_request(e.to_string()).into_response()
         }
     }
 }
@@ -219,13 +162,7 @@ async fn remove_printer(
 
     match service.remove_printer(&name).await {
         Ok(()) => Json(ApiSuccess { success: true }).into_response(),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ApiError {
-                message: e.to_string(),
-            }),
-        )
-            .into_response(),
+        Err(e) => ApiError::internal(e.to_string()).into_response(),
     }
 }
 
@@ -243,13 +180,7 @@ async fn update_printer(
 
     match service.update_printer(&name, &payload).await {
         Ok(()) => Json(ApiSuccess { success: true }).into_response(),
-        Err(e) => (
-            StatusCode::BAD_REQUEST,
-            Json(ApiError {
-                message: e.to_string(),
-            }),
-        )
-            .into_response(),
+        Err(e) => ApiError::bad_request(e.to_string()).into_response(),
     }
 }
 
@@ -266,13 +197,7 @@ async fn test_page(
 
     match service.print_test_page(&name).await {
         Ok(()) => Json(ApiSuccess { success: true }).into_response(),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ApiError {
-                message: e.to_string(),
-            }),
-        )
-            .into_response(),
+        Err(e) => ApiError::internal(e.to_string()).into_response(),
     }
 }
 
@@ -294,13 +219,7 @@ async fn get_jobs(
 
     match service.get_jobs(query.printer.as_deref()).await {
         Ok(jobs) => Json(jobs).into_response(),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ApiError {
-                message: e.to_string(),
-            }),
-        )
-            .into_response(),
+        Err(e) => ApiError::internal(e.to_string()).into_response(),
     }
 }
 
@@ -317,12 +236,6 @@ async fn cancel_job(
 
     match service.cancel_job(id).await {
         Ok(()) => Json(ApiSuccess { success: true }).into_response(),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ApiError {
-                message: e.to_string(),
-            }),
-        )
-            .into_response(),
+        Err(e) => ApiError::internal(e.to_string()).into_response(),
     }
 }

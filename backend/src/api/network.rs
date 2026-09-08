@@ -1,6 +1,5 @@
 use axum::{
     extract::State,
-    http::StatusCode,
     response::IntoResponse,
     routing::{get, put},
     Json, Router,
@@ -10,11 +9,7 @@ use serde::Serialize;
 use crate::api::middleware::AdminUser;
 use crate::services::network::{DnsConfig, NetworkService, UpdateHostnameRequest, UpdateInterfaceRequest};
 use crate::AppState;
-
-#[derive(Debug, Serialize)]
-struct ApiError {
-    message: String,
-}
+use crate::api::error::ApiError;
 
 #[derive(Debug, Serialize)]
 struct ApiSuccess {
@@ -37,13 +32,7 @@ async fn get_status(State(_state): State<AppState>) -> impl IntoResponse {
         Ok(status) => Json(status).into_response(),
         Err(e) => {
             tracing::error!("Failed to get network status: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ApiError {
-                    message: e.to_string(),
-                }),
-            )
-                .into_response()
+            ApiError::internal(e.to_string()).into_response()
         }
     }
 }
@@ -60,13 +49,7 @@ async fn update_interface(
         Ok(()) => Json(ApiSuccess { success: true }).into_response(),
         Err(e) => {
             tracing::error!("Failed to update interface: {}", e);
-            (
-                StatusCode::BAD_REQUEST,
-                Json(ApiError {
-                    message: e.to_string(),
-                }),
-            )
-                .into_response()
+            ApiError::bad_request(e.to_string()).into_response()
         }
     }
 }
@@ -83,13 +66,7 @@ async fn update_dns(
         Ok(()) => Json(ApiSuccess { success: true }).into_response(),
         Err(e) => {
             tracing::error!("Failed to update DNS: {}", e);
-            (
-                StatusCode::BAD_REQUEST,
-                Json(ApiError {
-                    message: e.to_string(),
-                }),
-            )
-                .into_response()
+            ApiError::bad_request(e.to_string()).into_response()
         }
     }
 }
@@ -106,13 +83,7 @@ async fn update_hostname(
         Ok(()) => Json(ApiSuccess { success: true }).into_response(),
         Err(e) => {
             tracing::error!("Failed to update hostname: {}", e);
-            (
-                StatusCode::BAD_REQUEST,
-                Json(ApiError {
-                    message: e.to_string(),
-                }),
-            )
-                .into_response()
+            ApiError::bad_request(e.to_string()).into_response()
         }
     }
 }

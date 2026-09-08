@@ -5,12 +5,13 @@ use axum::{
     routing::{delete, get, post, put},
     Json, Router,
 };
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 use crate::api::middleware::AdminUser;
 use crate::models::{SmbGlobalConfig, SmbShareConfig};
-use crate::services::share::{ShareError, ShareService};
+use crate::services::share::ShareService;
 use crate::AppState;
+use crate::api::error::ApiError;
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -28,12 +29,6 @@ pub fn router() -> Router<AppState> {
 }
 
 // ─── Request / Response Types ─────────────────────────────────────
-
-#[derive(Debug, Serialize)]
-struct ErrorResponse {
-    error: String,
-    code: String,
-}
 
 #[derive(Debug, Deserialize)]
 pub struct CreateShareRequest {
@@ -63,25 +58,6 @@ pub struct ToggleRequest {
 
 // ─── Error Mapping ────────────────────────────────────────────────
 
-impl From<ShareError> for (StatusCode, Json<ErrorResponse>) {
-    fn from(err: ShareError) -> Self {
-        let (status, code) = match &err {
-            ShareError::NotFound => (StatusCode::NOT_FOUND, "SHARE_NOT_FOUND"),
-            ShareError::DuplicateName => (StatusCode::CONFLICT, "DUPLICATE_NAME"),
-            ShareError::DatabaseError(_) => (StatusCode::INTERNAL_SERVER_ERROR, "DATABASE_ERROR"),
-            ShareError::SystemError(_) => (StatusCode::INTERNAL_SERVER_ERROR, "SYSTEM_ERROR"),
-        };
-
-        (
-            status,
-            Json(ErrorResponse {
-                error: err.to_string(),
-                code: code.to_string(),
-            }),
-        )
-    }
-}
-
 // ─── Share CRUD Handlers ──────────────────────────────────────────
 
 /// List all shares
@@ -95,8 +71,7 @@ async fn list_shares(
         Ok(shares) => (StatusCode::OK, Json(shares)).into_response(),
         Err(e) => {
             tracing::error!("Failed to list shares: {}", e);
-            let (status, json) = e.into();
-            (status, json).into_response()
+            ApiError::from(e).into_response()
         }
     }
 }
@@ -109,36 +84,15 @@ async fn create_share(
 ) -> impl IntoResponse {
     // Validate input
     if payload.name.trim().is_empty() {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: "Share name is required".to_string(),
-                code: "VALIDATION_ERROR".to_string(),
-            }),
-        )
-            .into_response();
+        return ApiError::bad_request("Share name is required".to_string()).with_code("VALIDATION_ERROR".to_string()).into_response();
     }
 
     if payload.path.trim().is_empty() {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: "Share path is required".to_string(),
-                code: "VALIDATION_ERROR".to_string(),
-            }),
-        )
-            .into_response();
+        return ApiError::bad_request("Share path is required".to_string()).with_code("VALIDATION_ERROR".to_string()).into_response();
     }
 
     if payload.share_type != "smb" && payload.share_type != "nfs" {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: "Share type must be 'smb' or 'nfs'".to_string(),
-                code: "VALIDATION_ERROR".to_string(),
-            }),
-        )
-            .into_response();
+        return ApiError::bad_request("Share type must be 'smb' or 'nfs'".to_string()).with_code("VALIDATION_ERROR".to_string()).into_response();
     }
 
     let svc = ShareService::new(state.db.clone());
@@ -156,8 +110,7 @@ async fn create_share(
         Ok(share) => (StatusCode::CREATED, Json(share)).into_response(),
         Err(e) => {
             tracing::error!("Failed to create share: {}", e);
-            let (status, json) = e.into();
-            (status, json).into_response()
+            ApiError::from(e).into_response()
         }
     }
 }
@@ -173,8 +126,7 @@ async fn get_share(
     match svc.get_share(&id).await {
         Ok(share) => (StatusCode::OK, Json(share)).into_response(),
         Err(e) => {
-            let (status, json) = e.into();
-            (status, json).into_response()
+            ApiError::from(e).into_response()
         }
     }
 }
@@ -200,8 +152,7 @@ async fn update_share(
         Ok(share) => (StatusCode::OK, Json(share)).into_response(),
         Err(e) => {
             tracing::error!("Failed to update share: {}", e);
-            let (status, json) = e.into();
-            (status, json).into_response()
+            ApiError::from(e).into_response()
         }
     }
 }
@@ -218,8 +169,7 @@ async fn delete_share_handler(
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(e) => {
             tracing::error!("Failed to delete share: {}", e);
-            let (status, json) = e.into();
-            (status, json).into_response()
+            ApiError::from(e).into_response()
         }
     }
 }
@@ -237,8 +187,7 @@ async fn toggle_share(
         Ok(share) => (StatusCode::OK, Json(share)).into_response(),
         Err(e) => {
             tracing::error!("Failed to toggle share: {}", e);
-            let (status, json) = e.into();
-            (status, json).into_response()
+            ApiError::from(e).into_response()
         }
     }
 }
@@ -256,8 +205,7 @@ async fn get_samba_status(
         Ok(status) => (StatusCode::OK, Json(status)).into_response(),
         Err(e) => {
             tracing::error!("Failed to get Samba status: {}", e);
-            let (status, json) = e.into();
-            (status, json).into_response()
+            ApiError::from(e).into_response()
         }
     }
 }
@@ -273,8 +221,7 @@ async fn enable_samba(
         Ok(()) => StatusCode::OK.into_response(),
         Err(e) => {
             tracing::error!("Failed to enable Samba: {}", e);
-            let (status, json) = e.into();
-            (status, json).into_response()
+            ApiError::from(e).into_response()
         }
     }
 }
@@ -290,8 +237,7 @@ async fn disable_samba(
         Ok(()) => StatusCode::OK.into_response(),
         Err(e) => {
             tracing::error!("Failed to disable Samba: {}", e);
-            let (status, json) = e.into();
-            (status, json).into_response()
+            ApiError::from(e).into_response()
         }
     }
 }
@@ -307,8 +253,7 @@ async fn get_smb_config(
         Ok(config) => (StatusCode::OK, Json(config)).into_response(),
         Err(e) => {
             tracing::error!("Failed to get SMB config: {}", e);
-            let (status, json) = e.into();
-            (status, json).into_response()
+            ApiError::from(e).into_response()
         }
     }
 }
@@ -325,8 +270,7 @@ async fn update_smb_config(
         Ok(()) => StatusCode::OK.into_response(),
         Err(e) => {
             tracing::error!("Failed to update SMB config: {}", e);
-            let (status, json) = e.into();
-            (status, json).into_response()
+            ApiError::from(e).into_response()
         }
     }
 }

@@ -1,6 +1,5 @@
 use axum::{
     extract::State,
-    http::StatusCode,
     response::IntoResponse,
     routing::{get, post},
     Json, Router,
@@ -10,11 +9,7 @@ use serde::{Deserialize, Serialize};
 use crate::api::middleware::AdminUser;
 use crate::services::ssh::SshService;
 use crate::AppState;
-
-#[derive(Debug, Serialize)]
-struct ApiError {
-    message: String,
-}
+use crate::api::error::ApiError;
 
 #[derive(Debug, Serialize)]
 struct ApiSuccess {
@@ -37,7 +32,7 @@ async fn get_status(State(_state): State<AppState>) -> impl IntoResponse {
         Ok(status) => Json(status).into_response(),
         Err(e) => {
             tracing::error!("Failed to get SSH status: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(ApiError { message: e.to_string() })).into_response()
+            ApiError::internal(e.to_string()).into_response()
         }
     }
 }
@@ -50,7 +45,7 @@ async fn enable_ssh(State(_state): State<AppState>, _admin: AdminUser) -> impl I
         Ok(()) => Json(ApiSuccess { success: true }).into_response(),
         Err(e) => {
             tracing::error!("Failed to enable SSH: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(ApiError { message: e.to_string() })).into_response()
+            ApiError::internal(e.to_string()).into_response()
         }
     }
 }
@@ -63,7 +58,7 @@ async fn disable_ssh(State(_state): State<AppState>, _admin: AdminUser) -> impl 
         Ok(()) => Json(ApiSuccess { success: true }).into_response(),
         Err(e) => {
             tracing::error!("Failed to disable SSH: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(ApiError { message: e.to_string() })).into_response()
+            ApiError::internal(e.to_string()).into_response()
         }
     }
 }
@@ -85,7 +80,7 @@ async fn change_password(
         Ok(()) => Json(ApiSuccess { success: true }).into_response(),
         Err(e) => {
             tracing::error!("Failed to change SSH password: {}", e);
-            (StatusCode::BAD_REQUEST, Json(ApiError { message: e.to_string() })).into_response()
+            ApiError::bad_request(e.to_string()).into_response()
         }
     }
 }

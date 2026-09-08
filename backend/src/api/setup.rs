@@ -16,6 +16,7 @@ use crate::services::session::create_session;
 use crate::services::share::ShareService;
 use crate::services::user::{create_user_with_home, has_any_users};
 use crate::AppState;
+use crate::api::error::ApiError;
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -49,12 +50,6 @@ pub struct UserInfo {
     pub is_admin: bool,
 }
 
-#[derive(Debug, Serialize)]
-pub struct ErrorResponse {
-    pub error: String,
-    pub code: String,
-}
-
 /// Get setup status
 async fn get_setup_status(State(state): State<AppState>) -> impl IntoResponse {
     match has_any_users(&state.db).await {
@@ -67,14 +62,7 @@ async fn get_setup_status(State(state): State<AppState>) -> impl IntoResponse {
         }
         Err(e) => {
             tracing::error!("Failed to check setup status: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "Failed to check setup status".to_string(),
-                    code: "INTERNAL_ERROR".to_string(),
-                }),
-            )
-                .into_response()
+            ApiError::internal("Failed to check setup status".to_string()).with_code("INTERNAL_ERROR".to_string()).into_response()
         }
     }
 }
@@ -87,72 +75,30 @@ async fn complete_setup(
     // Check if setup is already complete
     match has_any_users(&state.db).await {
         Ok(true) => {
-            return (
-                StatusCode::CONFLICT,
-                Json(ErrorResponse {
-                    error: "Setup has already been completed".to_string(),
-                    code: "SETUP_ALREADY_COMPLETE".to_string(),
-                }),
-            )
-                .into_response();
+            return ApiError::conflict("Setup has already been completed".to_string()).with_code("SETUP_ALREADY_COMPLETE".to_string()).into_response();
         }
         Ok(false) => {}
         Err(e) => {
             tracing::error!("Failed to check setup status: {}", e);
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "Failed to check setup status".to_string(),
-                    code: "INTERNAL_ERROR".to_string(),
-                }),
-            )
-                .into_response();
+            return ApiError::internal("Failed to check setup status".to_string()).with_code("INTERNAL_ERROR".to_string()).into_response();
         }
     }
 
     // Validate input
     if payload.admin_username.trim().is_empty() {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: "Username is required".to_string(),
-                code: "VALIDATION_ERROR".to_string(),
-            }),
-        )
-            .into_response();
+        return ApiError::bad_request("Username is required".to_string()).with_code("VALIDATION_ERROR".to_string()).into_response();
     }
 
     if payload.admin_username.len() < 3 {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: "Username must be at least 3 characters".to_string(),
-                code: "VALIDATION_ERROR".to_string(),
-            }),
-        )
-            .into_response();
+        return ApiError::bad_request("Username must be at least 3 characters".to_string()).with_code("VALIDATION_ERROR".to_string()).into_response();
     }
 
     if payload.admin_password.len() < 8 {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: "Password must be at least 8 characters".to_string(),
-                code: "VALIDATION_ERROR".to_string(),
-            }),
-        )
-            .into_response();
+        return ApiError::bad_request("Password must be at least 8 characters".to_string()).with_code("VALIDATION_ERROR".to_string()).into_response();
     }
 
     if payload.machine_name.trim().is_empty() {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: "Machine name is required".to_string(),
-                code: "VALIDATION_ERROR".to_string(),
-            }),
-        )
-            .into_response();
+        return ApiError::bad_request("Machine name is required".to_string()).with_code("VALIDATION_ERROR".to_string()).into_response();
     }
 
     // Create HomeService to manage admin's home directory
@@ -172,14 +118,7 @@ async fn complete_setup(
         Ok(user) => user,
         Err(e) => {
             tracing::error!("Failed to create admin user: {}", e);
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "Failed to create admin user".to_string(),
-                    code: "USER_CREATION_FAILED".to_string(),
-                }),
-            )
-                .into_response();
+            return ApiError::internal("Failed to create admin user".to_string()).with_code("USER_CREATION_FAILED".to_string()).into_response();
         }
     };
 
@@ -206,14 +145,7 @@ async fn complete_setup(
         Ok(token) => token,
         Err(e) => {
             tracing::error!("Failed to generate token: {}", e);
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "Failed to generate authentication token".to_string(),
-                    code: "TOKEN_GENERATION_FAILED".to_string(),
-                }),
-            )
-                .into_response();
+            return ApiError::internal("Failed to generate authentication token".to_string()).with_code("TOKEN_GENERATION_FAILED".to_string()).into_response();
         }
     };
 

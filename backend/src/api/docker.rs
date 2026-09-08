@@ -10,6 +10,7 @@ use serde::Deserialize;
 use crate::models::manifest::ContainerConfig;
 use crate::services::docker::DockerService;
 use crate::AppState;
+use crate::api::error::ApiError;
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -74,7 +75,7 @@ async fn list_containers(
         Ok(containers) => Json(containers).into_response(),
         Err(e) => {
             tracing::error!("Failed to list containers: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+            ApiError::internal(e.to_string()).into_response()
         }
     }
 }
@@ -90,7 +91,7 @@ async fn get_container(
         Ok(container) => Json(container).into_response(),
         Err(e) => {
             tracing::error!("Failed to get container: {}", e);
-            (StatusCode::NOT_FOUND, e.to_string()).into_response()
+            ApiError::not_found(e.to_string()).into_response()
         }
     }
 }
@@ -106,7 +107,7 @@ async fn create_container(
         Ok(id) => Json(serde_json::json!({ "id": id })).into_response(),
         Err(e) => {
             tracing::error!("Failed to create container: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+            ApiError::internal(e.to_string()).into_response()
         }
     }
 }
@@ -129,7 +130,7 @@ async fn remove_container(
         Ok(_) => StatusCode::NO_CONTENT.into_response(),
         Err(e) => {
             tracing::error!("Failed to remove container: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+            ApiError::internal(e.to_string()).into_response()
         }
     }
 }
@@ -145,7 +146,7 @@ async fn start_container(
         Ok(_) => StatusCode::NO_CONTENT.into_response(),
         Err(e) => {
             tracing::error!("Failed to start container: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+            ApiError::internal(e.to_string()).into_response()
         }
     }
 }
@@ -161,7 +162,7 @@ async fn stop_container(
         Ok(_) => StatusCode::NO_CONTENT.into_response(),
         Err(e) => {
             tracing::error!("Failed to stop container: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+            ApiError::internal(e.to_string()).into_response()
         }
     }
 }
@@ -177,7 +178,7 @@ async fn restart_container(
         Ok(_) => StatusCode::NO_CONTENT.into_response(),
         Err(e) => {
             tracing::error!("Failed to restart container: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+            ApiError::internal(e.to_string()).into_response()
         }
     }
 }
@@ -205,7 +206,7 @@ async fn get_logs(
         Ok(logs) => Json(logs).into_response(),
         Err(e) => {
             tracing::error!("Failed to get logs: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+            ApiError::internal(e.to_string()).into_response()
         }
     }
 }
@@ -221,7 +222,7 @@ async fn get_container_stats(
         Ok(stats) => Json(stats).into_response(),
         Err(e) => {
             tracing::error!("Failed to get container stats: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+            ApiError::internal(e.to_string()).into_response()
         }
     }
 }
@@ -234,7 +235,7 @@ async fn list_images(State(_state): State<AppState>) -> impl IntoResponse {
         Ok(images) => Json(images).into_response(),
         Err(e) => {
             tracing::error!("Failed to list images: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+            ApiError::internal(e.to_string()).into_response()
         }
     }
 }
@@ -256,7 +257,7 @@ async fn pull_image(
         Ok(_) => StatusCode::NO_CONTENT.into_response(),
         Err(e) => {
             tracing::error!("Failed to pull image: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+            ApiError::internal(e.to_string()).into_response()
         }
     }
 }
@@ -273,7 +274,7 @@ async fn remove_image(
         Ok(_) => StatusCode::NO_CONTENT.into_response(),
         Err(e) => {
             tracing::error!("Failed to remove image: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+            ApiError::internal(e.to_string()).into_response()
         }
     }
 }
@@ -286,7 +287,7 @@ async fn list_volumes(State(_state): State<AppState>) -> impl IntoResponse {
         Ok(volumes) => Json(volumes).into_response(),
         Err(e) => {
             tracing::error!("Failed to list volumes: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+            ApiError::internal(e.to_string()).into_response()
         }
     }
 }
@@ -303,7 +304,7 @@ async fn remove_volume(
         Ok(_) => StatusCode::NO_CONTENT.into_response(),
         Err(e) => {
             tracing::error!("Failed to remove volume: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+            ApiError::internal(e.to_string()).into_response()
         }
     }
 }
@@ -316,7 +317,7 @@ async fn list_networks(State(_state): State<AppState>) -> impl IntoResponse {
         Ok(networks) => Json(networks).into_response(),
         Err(e) => {
             tracing::error!("Failed to list networks: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+            ApiError::internal(e.to_string()).into_response()
         }
     }
 }
@@ -332,7 +333,7 @@ async fn remove_network(
         Ok(_) => StatusCode::NO_CONTENT.into_response(),
         Err(e) => {
             tracing::error!("Failed to remove network: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+            ApiError::internal(e.to_string()).into_response()
         }
     }
 }
@@ -345,7 +346,7 @@ async fn prune_images(State(_state): State<AppState>) -> impl IntoResponse {
         Ok(result) => Json(result).into_response(),
         Err(e) => {
             tracing::error!("Failed to prune images: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+            ApiError::internal(e.to_string()).into_response()
         }
     }
 }
@@ -358,7 +359,7 @@ async fn prune_volumes(State(_state): State<AppState>) -> impl IntoResponse {
         Ok(result) => Json(result).into_response(),
         Err(e) => {
             tracing::error!("Failed to prune volumes: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+            ApiError::internal(e.to_string()).into_response()
         }
     }
 }

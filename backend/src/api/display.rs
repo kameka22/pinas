@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use crate::api::middleware::AuthUser;
 use crate::services::service::ServiceManager;
 use crate::AppState;
+use crate::api::error::ApiError;
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -104,14 +105,10 @@ async fn switch_service(
                 .await;
 
             if let Err(e) = svc.enable("kodi").await {
-                return (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({
-                    "error": format!("Failed to enable kodi: {}", e)
-                }))).into_response();
+                return ApiError::internal(format!("Failed to enable kodi: {}", e)).into_response();
             }
             if let Err(e) = svc.start("kodi").await {
-                return (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({
-                    "error": format!("Failed to start kodi: {}", e)
-                }))).into_response();
+                return ApiError::internal(format!("Failed to start kodi: {}", e)).into_response();
             }
 
             (StatusCode::OK, Json(serde_json::json!({
@@ -122,17 +119,13 @@ async fn switch_service(
         None => {
             // Stop + disable Kodi, start splash
             if let Err(e) = svc.stop("kodi").await {
-                return (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({
-                    "error": format!("Failed to stop kodi: {}", e)
-                }))).into_response();
+                return ApiError::internal(format!("Failed to stop kodi: {}", e)).into_response();
             }
             let _ = svc.disable("kodi").await;
 
             let _ = svc.enable("pinas-splash").await;
             if let Err(e) = svc.start("pinas-splash").await {
-                return (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({
-                    "error": format!("Failed to start pinas-splash: {}", e)
-                }))).into_response();
+                return ApiError::internal(format!("Failed to start pinas-splash: {}", e)).into_response();
             }
 
             (StatusCode::OK, Json(serde_json::json!({
@@ -141,9 +134,7 @@ async fn switch_service(
             }))).into_response()
         }
         Some(unknown) => {
-            (StatusCode::BAD_REQUEST, Json(serde_json::json!({
-                "error": format!("Unknown service: {}", unknown)
-            }))).into_response()
+            ApiError::bad_request(format!("Unknown service: {}", unknown)).into_response()
         }
     }
 }

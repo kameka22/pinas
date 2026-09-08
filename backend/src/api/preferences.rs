@@ -9,11 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::api::middleware::AuthUser;
 use crate::AppState;
-
-#[derive(Debug, Serialize)]
-struct ApiError {
-    message: String,
-}
+use crate::api::error::ApiError;
 
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
 struct PreferenceEntry {
@@ -52,13 +48,7 @@ async fn get_all_preferences(
         }
         Err(e) => {
             tracing::error!("Failed to get preferences: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ApiError {
-                    message: e.to_string(),
-                }),
-            )
-                .into_response()
+            ApiError::internal(e.to_string()).into_response()
         }
     }
 }
@@ -79,22 +69,10 @@ async fn get_preference(
 
     match result {
         Ok(Some(value)) => Json(serde_json::json!({ "value": value })).into_response(),
-        Ok(None) => (
-            StatusCode::NOT_FOUND,
-            Json(ApiError {
-                message: format!("Preference '{}' not found", key),
-            }),
-        )
-            .into_response(),
+        Ok(None) => ApiError::not_found(format!("Preference '{}' not found", key)).into_response(),
         Err(e) => {
             tracing::error!("Failed to get preference: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ApiError {
-                    message: e.to_string(),
-                }),
-            )
-                .into_response()
+            ApiError::internal(e.to_string()).into_response()
         }
     }
 }
@@ -122,13 +100,7 @@ async fn set_preference(
         Ok(_) => StatusCode::NO_CONTENT.into_response(),
         Err(e) => {
             tracing::error!("Failed to set preference: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ApiError {
-                    message: e.to_string(),
-                }),
-            )
-                .into_response()
+            ApiError::internal(e.to_string()).into_response()
         }
     }
 }

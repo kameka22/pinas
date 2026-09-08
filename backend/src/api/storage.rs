@@ -13,6 +13,7 @@ use crate::models::storage::{
 };
 use crate::services::storage::StorageService;
 use crate::AppState;
+use crate::api::error::ApiError;
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -66,7 +67,7 @@ async fn list_disks(State(state): State<AppState>) -> impl IntoResponse {
         Ok(disks) => Json(disks).into_response(),
         Err(e) => {
             tracing::error!("Failed to list disks: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+            ApiError::internal(e.to_string()).into_response()
         }
     }
 }
@@ -82,7 +83,7 @@ async fn get_disk_smart(
         Ok(info) => Json(info).into_response(),
         Err(e) => {
             tracing::error!("Failed to get S.M.A.R.T. info for {}: {}", name, e);
-            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+            ApiError::internal(e.to_string()).into_response()
         }
     }
 }
@@ -104,9 +105,9 @@ async fn wipe_disk(
                 Err(e) => {
                     tracing::error!("Failed to wipe disk {}: {}", name, e);
                     if e.to_string().contains("system disk") {
-                        (StatusCode::FORBIDDEN, e.to_string()).into_response()
+                        ApiError::forbidden(e.to_string()).into_response()
                     } else {
-                        (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+                        ApiError::internal(e.to_string()).into_response()
                     }
                 }
             }
@@ -129,9 +130,9 @@ async fn wipe_disk(
                 Err(e) => {
                     tracing::error!("Failed to start wipe for disk {}: {}", name, e);
                     if e.to_string().contains("system disk") {
-                        (StatusCode::FORBIDDEN, e.to_string()).into_response()
+                        ApiError::forbidden(e.to_string()).into_response()
                     } else {
-                        (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+                        ApiError::internal(e.to_string()).into_response()
                     }
                 }
             }
@@ -147,7 +148,7 @@ async fn get_candidates(State(state): State<AppState>) -> impl IntoResponse {
         Ok(candidates) => Json(candidates).into_response(),
         Err(e) => {
             tracing::error!("Failed to get candidates: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+            ApiError::internal(e.to_string()).into_response()
         }
     }
 }
@@ -162,7 +163,7 @@ async fn list_pools(State(state): State<AppState>) -> impl IntoResponse {
         Ok(pools) => Json(pools).into_response(),
         Err(e) => {
             tracing::error!("Failed to list pools: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+            ApiError::internal(e.to_string()).into_response()
         }
     }
 }
@@ -179,9 +180,9 @@ async fn create_pool(
         Err(e) => {
             tracing::error!("Failed to create pool: {}", e);
             if e.to_string().contains("system device") {
-                (StatusCode::FORBIDDEN, e.to_string()).into_response()
+                ApiError::forbidden(e.to_string()).into_response()
             } else {
-                (StatusCode::BAD_REQUEST, e.to_string()).into_response()
+                ApiError::bad_request(e.to_string()).into_response()
             }
         }
     }
@@ -196,10 +197,10 @@ async fn get_pool(
 
     match service.get_pool(&id).await {
         Ok(Some(pool)) => Json(pool).into_response(),
-        Ok(None) => StatusCode::NOT_FOUND.into_response(),
+        Ok(None) => ApiError::not_found("Not found").into_response(),
         Err(e) => {
             tracing::error!("Failed to get pool {}: {}", id, e);
-            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+            ApiError::internal(e.to_string()).into_response()
         }
     }
 }
@@ -216,7 +217,7 @@ async fn update_pool(
         Ok(_) => StatusCode::NO_CONTENT.into_response(),
         Err(e) => {
             tracing::error!("Failed to update pool {}: {}", id, e);
-            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+            ApiError::internal(e.to_string()).into_response()
         }
     }
 }
@@ -233,9 +234,9 @@ async fn delete_pool(
         Err(e) => {
             tracing::error!("Failed to delete pool {}: {}", id, e);
             if e.to_string().contains("mounted volumes") {
-                (StatusCode::CONFLICT, e.to_string()).into_response()
+                ApiError::conflict(e.to_string()).into_response()
             } else {
-                (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+                ApiError::internal(e.to_string()).into_response()
             }
         }
     }
@@ -252,7 +253,7 @@ async fn get_pool_health(
         Ok(health) => Json(health).into_response(),
         Err(e) => {
             tracing::error!("Failed to get pool health {}: {}", id, e);
-            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+            ApiError::internal(e.to_string()).into_response()
         }
     }
 }
@@ -281,7 +282,7 @@ async fn scrub_pool(
         }
         Err(e) => {
             tracing::error!("Failed to start scrub for pool {}: {}", id, e);
-            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+            ApiError::internal(e.to_string()).into_response()
         }
     }
 }
@@ -296,7 +297,7 @@ async fn list_volumes(State(state): State<AppState>) -> impl IntoResponse {
         Ok(volumes) => Json(volumes).into_response(),
         Err(e) => {
             tracing::error!("Failed to list volumes: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+            ApiError::internal(e.to_string()).into_response()
         }
     }
 }
@@ -313,12 +314,12 @@ async fn get_volume(
             if let Some(volume) = volumes.into_iter().find(|v| v.id == id) {
                 Json(volume).into_response()
             } else {
-                StatusCode::NOT_FOUND.into_response()
+                ApiError::not_found("Not found").into_response()
             }
         }
         Err(e) => {
             tracing::error!("Failed to get volume {}: {}", id, e);
-            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+            ApiError::internal(e.to_string()).into_response()
         }
     }
 }
@@ -335,7 +336,7 @@ async fn create_volume(
         Ok(volume_id) => (StatusCode::CREATED, Json(serde_json::json!({ "id": volume_id }))).into_response(),
         Err(e) => {
             tracing::error!("Failed to create volume in pool {}: {}", pool_id, e);
-            (StatusCode::BAD_REQUEST, e.to_string()).into_response()
+            ApiError::bad_request(e.to_string()).into_response()
         }
     }
 }
@@ -351,7 +352,7 @@ async fn delete_volume(
         Ok(_) => StatusCode::NO_CONTENT.into_response(),
         Err(e) => {
             tracing::error!("Failed to delete volume {}: {}", id, e);
-            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+            ApiError::internal(e.to_string()).into_response()
         }
     }
 }
@@ -367,7 +368,7 @@ async fn mount_volume(
         Ok(_) => StatusCode::NO_CONTENT.into_response(),
         Err(e) => {
             tracing::error!("Failed to mount volume {}: {}", id, e);
-            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+            ApiError::internal(e.to_string()).into_response()
         }
     }
 }
@@ -383,7 +384,7 @@ async fn unmount_volume(
         Ok(_) => StatusCode::NO_CONTENT.into_response(),
         Err(e) => {
             tracing::error!("Failed to unmount volume {}: {}", id, e);
-            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+            ApiError::internal(e.to_string()).into_response()
         }
     }
 }
@@ -400,7 +401,7 @@ async fn update_volume(
         Ok(_) => StatusCode::NO_CONTENT.into_response(),
         Err(e) => {
             tracing::error!("Failed to update volume {}: {}", id, e);
-            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+            ApiError::internal(e.to_string()).into_response()
         }
     }
 }
@@ -417,7 +418,7 @@ async fn resize_volume(
         Ok(_) => StatusCode::NO_CONTENT.into_response(),
         Err(e) => {
             tracing::error!("Failed to resize volume {}: {}", id, e);
-            (StatusCode::BAD_REQUEST, e.to_string()).into_response()
+            ApiError::bad_request(e.to_string()).into_response()
         }
     }
 }
@@ -448,9 +449,9 @@ async fn check_volume(
         Err(e) => {
             tracing::error!("Failed to start fsck for volume {}: {}", id, e);
             if e.to_string().contains("unmounted") {
-                (StatusCode::CONFLICT, e.to_string()).into_response()
+                ApiError::conflict(e.to_string()).into_response()
             } else {
-                (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+                ApiError::internal(e.to_string()).into_response()
             }
         }
     }
@@ -491,7 +492,7 @@ async fn get_smart_test_history(
         Ok(history) => Json(history).into_response(),
         Err(e) => {
             tracing::error!("Failed to get SMART history for {}: {}", name, e);
-            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+            ApiError::internal(e.to_string()).into_response()
         }
     }
 }
@@ -504,7 +505,7 @@ async fn list_smart_schedules(State(state): State<AppState>) -> impl IntoRespons
         Ok(schedules) => Json(schedules).into_response(),
         Err(e) => {
             tracing::error!("Failed to list SMART schedules: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+            ApiError::internal(e.to_string()).into_response()
         }
     }
 }
@@ -520,7 +521,7 @@ async fn create_smart_schedule(
         Ok(id) => (StatusCode::CREATED, Json(serde_json::json!({ "id": id }))).into_response(),
         Err(e) => {
             tracing::error!("Failed to create SMART schedule: {}", e);
-            (StatusCode::BAD_REQUEST, e.to_string()).into_response()
+            ApiError::bad_request(e.to_string()).into_response()
         }
     }
 }
@@ -536,7 +537,7 @@ async fn delete_smart_schedule(
         Ok(_) => StatusCode::NO_CONTENT.into_response(),
         Err(e) => {
             tracing::error!("Failed to delete SMART schedule {}: {}", id, e);
-            (StatusCode::NOT_FOUND, e.to_string()).into_response()
+            ApiError::not_found(e.to_string()).into_response()
         }
     }
 }
@@ -553,7 +554,7 @@ async fn toggle_smart_schedule(
         Ok(_) => StatusCode::NO_CONTENT.into_response(),
         Err(e) => {
             tracing::error!("Failed to toggle SMART schedule {}: {}", id, e);
-            (StatusCode::NOT_FOUND, e.to_string()).into_response()
+            ApiError::not_found(e.to_string()).into_response()
         }
     }
 }
@@ -571,7 +572,7 @@ async fn get_disk_power(
         Ok(settings) => Json(settings).into_response(),
         Err(e) => {
             tracing::error!("Failed to get power settings for {}: {}", name, e);
-            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+            ApiError::internal(e.to_string()).into_response()
         }
     }
 }
@@ -589,9 +590,9 @@ async fn set_disk_power(
         Err(e) => {
             tracing::error!("Failed to set power settings for {}: {}", name, e);
             if e.to_string().contains("not supported") {
-                (StatusCode::BAD_REQUEST, e.to_string()).into_response()
+                ApiError::bad_request(e.to_string()).into_response()
             } else {
-                (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+                ApiError::internal(e.to_string()).into_response()
             }
         }
     }
@@ -610,7 +611,7 @@ async fn list_snapshots(
         Ok(snapshots) => Json(snapshots).into_response(),
         Err(e) => {
             tracing::error!("Failed to list snapshots for volume {}: {}", id, e);
-            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+            ApiError::internal(e.to_string()).into_response()
         }
     }
 }
@@ -628,9 +629,9 @@ async fn create_snapshot(
         Err(e) => {
             tracing::error!("Failed to create snapshot for volume {}: {}", id, e);
             if e.to_string().contains("btrfs") || e.to_string().contains("mounted") {
-                (StatusCode::BAD_REQUEST, e.to_string()).into_response()
+                ApiError::bad_request(e.to_string()).into_response()
             } else {
-                (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+                ApiError::internal(e.to_string()).into_response()
             }
         }
     }
@@ -647,7 +648,7 @@ async fn delete_snapshot(
         Ok(_) => StatusCode::NO_CONTENT.into_response(),
         Err(e) => {
             tracing::error!("Failed to delete snapshot {} for volume {}: {}", snap_id, id, e);
-            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+            ApiError::internal(e.to_string()).into_response()
         }
     }
 }
@@ -681,9 +682,9 @@ async fn grow_pool(
         Err(e) => {
             tracing::error!("Failed to start grow for pool {}: {}", id, e);
             if e.to_string().contains("Cannot grow") || e.to_string().contains("must be") || e.to_string().contains("requires") {
-                (StatusCode::BAD_REQUEST, e.to_string()).into_response()
+                ApiError::bad_request(e.to_string()).into_response()
             } else {
-                (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+                ApiError::internal(e.to_string()).into_response()
             }
         }
     }
@@ -700,7 +701,7 @@ async fn list_filesystems(State(state): State<AppState>) -> impl IntoResponse {
         Ok(volumes) => Json(volumes).into_response(),
         Err(e) => {
             tracing::error!("Failed to list filesystems: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+            ApiError::internal(e.to_string()).into_response()
         }
     }
 }

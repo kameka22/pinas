@@ -5,24 +5,19 @@ use axum::{
     routing::{get, put},
     Json, Router,
 };
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 use crate::api::middleware::AdminUser;
 use crate::services::service_access::ServiceAccessService;
 use crate::services::share::ShareService;
 use crate::AppState;
+use crate::api::error::ApiError;
 
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/", get(list_service_access))
         .route("/{user_id}", get(get_user_service_access))
         .route("/{user_id}", put(update_user_service_access))
-}
-
-#[derive(Debug, Serialize)]
-struct ErrorResponse {
-    error: String,
-    code: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -43,14 +38,7 @@ async fn list_service_access(
         Ok(access) => (StatusCode::OK, Json(access)).into_response(),
         Err(e) => {
             tracing::error!("Failed to list service access: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "Failed to list service access".to_string(),
-                    code: "INTERNAL_ERROR".to_string(),
-                }),
-            )
-                .into_response()
+            ApiError::internal("Failed to list service access".to_string()).with_code("INTERNAL_ERROR".to_string()).into_response()
         }
     }
 }
@@ -67,14 +55,7 @@ async fn get_user_service_access(
         Ok(access) => (StatusCode::OK, Json(access)).into_response(),
         Err(e) => {
             tracing::error!("Failed to get service access: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "Failed to get service access".to_string(),
-                    code: "INTERNAL_ERROR".to_string(),
-                }),
-            )
-                .into_response()
+            ApiError::internal("Failed to get service access".to_string()).with_code("INTERNAL_ERROR".to_string()).into_response()
         }
     }
 }
@@ -100,14 +81,7 @@ async fn update_user_service_access(
     let username = match username {
         Some(u) => u,
         None => {
-            return (
-                StatusCode::NOT_FOUND,
-                Json(ErrorResponse {
-                    error: "User not found".to_string(),
-                    code: "USER_NOT_FOUND".to_string(),
-                }),
-            )
-                .into_response();
+            return ApiError::not_found("User not found".to_string()).with_code("USER_NOT_FOUND".to_string()).into_response();
         }
     };
 
@@ -118,14 +92,7 @@ async fn update_user_service_access(
     if let Some(smb) = payload.smb {
         if let Err(e) = svc.set_user_access(&user_id, "smb", smb).await {
             tracing::error!("Failed to set SMB access: {}", e);
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "Failed to update SMB access".to_string(),
-                    code: "INTERNAL_ERROR".to_string(),
-                }),
-            )
-                .into_response();
+            return ApiError::internal("Failed to update SMB access".to_string()).with_code("INTERNAL_ERROR".to_string()).into_response();
         }
     }
 
@@ -164,14 +131,7 @@ async fn update_user_service_access(
         Ok(access) => (StatusCode::OK, Json(access)).into_response(),
         Err(e) => {
             tracing::error!("Failed to get updated service access: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "Failed to get updated access".to_string(),
-                    code: "INTERNAL_ERROR".to_string(),
-                }),
-            )
-                .into_response()
+            ApiError::internal("Failed to get updated access".to_string()).with_code("INTERNAL_ERROR".to_string()).into_response()
         }
     }
 }

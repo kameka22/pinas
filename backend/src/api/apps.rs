@@ -1,6 +1,5 @@
 use axum::{
     extract::{Path, State},
-    http::StatusCode,
     response::Json,
     routing::get,
     Router,
@@ -10,6 +9,7 @@ use serde_json::json;
 use crate::models::manifest::FrontendConfig;
 use crate::models::package::{AppRegistryEntry, WindowConfigResponse};
 use crate::AppState;
+use crate::api::error::ApiError;
 
 /// Create the apps router
 pub fn router() -> Router<AppState> {
@@ -21,7 +21,7 @@ pub fn router() -> Router<AppState> {
 /// Get all installed apps with window support (for frontend registry)
 async fn get_registry(
     State(state): State<AppState>,
-) -> Result<Json<Vec<AppRegistryEntry>>, (StatusCode, Json<serde_json::Value>)> {
+) -> Result<Json<Vec<AppRegistryEntry>>, ApiError> {
     // Query all installed packages with frontend config
     let packages = sqlx::query_as::<_, (String, String, Option<String>)>(
         r#"
@@ -33,10 +33,7 @@ async fn get_registry(
     .fetch_all(&state.db)
     .await
     .map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({ "error": format!("Database error: {}", e) })),
-        )
+        ApiError::internal(format!("Database error: {}", e))
     })?;
 
     let mut entries = Vec::new();
@@ -69,7 +66,7 @@ async fn get_registry(
 async fn get_app_translations(
     State(state): State<AppState>,
     Path((app_id, locale)): Path<(String, String)>,
-) -> Result<Json<serde_json::Value>, (StatusCode, Json<serde_json::Value>)> {
+) -> Result<Json<serde_json::Value>, ApiError> {
     // First try to get from app_translations table
     let translation = sqlx::query_scalar::<_, String>(
         r#"
@@ -83,18 +80,12 @@ async fn get_app_translations(
     .fetch_optional(&state.db)
     .await
     .map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({ "error": format!("Database error: {}", e) })),
-        )
+        ApiError::internal(format!("Database error: {}", e))
     })?;
 
     if let Some(trans_str) = translation {
         let translations: serde_json::Value = serde_json::from_str(&trans_str).map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(json!({ "error": format!("Invalid JSON: {}", e) })),
-            )
+            ApiError::internal(format!("Invalid JSON: {}", e))
         })?;
         return Ok(Json(translations));
     }
@@ -111,10 +102,7 @@ async fn get_app_translations(
     .fetch_optional(&state.db)
     .await
     .map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({ "error": format!("Database error: {}", e) })),
-        )
+        ApiError::internal(format!("Database error: {}", e))
     })?;
 
     if let Some(config_str) = frontend_config {

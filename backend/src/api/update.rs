@@ -9,6 +9,7 @@ use serde::Serialize;
 
 use crate::services::update::UpdateService;
 use crate::AppState;
+use crate::api::error::ApiError;
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -29,11 +30,7 @@ async fn check_for_update(State(state): State<AppState>) -> impl IntoResponse {
         Ok(result) => Json(result).into_response(),
         Err(e) => {
             tracing::error!("Failed to check for updates: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({ "error": e.to_string() })),
-            )
-                .into_response()
+            ApiError::internal(e.to_string()).into_response()
         }
     }
 }
@@ -46,31 +43,19 @@ async fn install_update(State(state): State<AppState>) -> impl IntoResponse {
     let check = match service.check_for_update().await {
         Ok(c) => c,
         Err(e) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({ "error": e.to_string() })),
-            )
-                .into_response();
+            return ApiError::internal(e.to_string()).into_response();
         }
     };
 
     if !check.available {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({ "error": "No update available" })),
-        )
-            .into_response();
+        return ApiError::bad_request("No update available").into_response();
     }
 
     // Start the update
     let task_id = match service.install_update_start(&check.latest_version).await {
         Ok(id) => id,
         Err(e) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({ "error": e.to_string() })),
-            )
-                .into_response();
+            return ApiError::internal(e.to_string()).into_response();
         }
     };
 
@@ -101,11 +86,7 @@ async fn get_update_status(State(state): State<AppState>) -> impl IntoResponse {
         }
         Err(e) => {
             tracing::error!("Failed to get update status: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({ "error": e.to_string() })),
-            )
-                .into_response()
+            ApiError::internal(e.to_string()).into_response()
         }
     }
 }
@@ -158,20 +139,12 @@ async fn get_task_progress(
                 }))
                 .into_response()
             } else {
-                (
-                    StatusCode::NOT_FOUND,
-                    Json(serde_json::json!({ "error": "Task not found" })),
-                )
-                    .into_response()
+                ApiError::not_found("Task not found").into_response()
             }
         }
         Err(e) => {
             tracing::error!("Failed to get task progress: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({ "error": e.to_string() })),
-            )
-                .into_response()
+            ApiError::internal(e.to_string()).into_response()
         }
     }
 }
@@ -184,11 +157,7 @@ async fn get_update_history(State(state): State<AppState>) -> impl IntoResponse 
         Ok(entries) => Json(entries).into_response(),
         Err(e) => {
             tracing::error!("Failed to get update history: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({ "error": e.to_string() })),
-            )
-                .into_response()
+            ApiError::internal(e.to_string()).into_response()
         }
     }
 }
@@ -240,11 +209,7 @@ async fn dismiss_update(State(state): State<AppState>) -> impl IntoResponse {
         Ok(_) => StatusCode::NO_CONTENT.into_response(),
         Err(e) => {
             tracing::error!("Failed to dismiss update: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(serde_json::json!({ "error": e.to_string() })),
-            )
-                .into_response()
+            ApiError::internal(e.to_string()).into_response()
         }
     }
 }

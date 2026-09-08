@@ -12,9 +12,9 @@ use crate::services::group::{
     add_member, count_group_members, create_group as create_group_service,
     delete_group as delete_group_service, get_group_by_id, get_group_members,
     list_groups as list_groups_service, remove_member, update_group as update_group_service,
-    GroupError,
 };
 use crate::AppState;
+use crate::api::error::ApiError;
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -64,35 +64,6 @@ pub struct MemberResponse {
     pub is_admin: bool,
 }
 
-#[derive(Debug, Serialize)]
-pub struct ErrorResponse {
-    pub error: String,
-    pub code: String,
-}
-
-impl From<GroupError> for (StatusCode, Json<ErrorResponse>) {
-    fn from(err: GroupError) -> Self {
-        let (status, code) = match &err {
-            GroupError::NotFound => (StatusCode::NOT_FOUND, "GROUP_NOT_FOUND"),
-            GroupError::DuplicateName => (StatusCode::CONFLICT, "DUPLICATE_NAME"),
-            GroupError::CannotDeleteSystemGroup => {
-                (StatusCode::FORBIDDEN, "CANNOT_DELETE_SYSTEM_GROUP")
-            }
-            GroupError::NotAMember => (StatusCode::NOT_FOUND, "NOT_A_MEMBER"),
-            GroupError::AlreadyMember => (StatusCode::CONFLICT, "ALREADY_MEMBER"),
-            GroupError::DatabaseError(_) => (StatusCode::INTERNAL_SERVER_ERROR, "DATABASE_ERROR"),
-        };
-
-        (
-            status,
-            Json(ErrorResponse {
-                error: err.to_string(),
-                code: code.to_string(),
-            }),
-        )
-    }
-}
-
 /// List all groups (admin only)
 async fn list_groups(State(state): State<AppState>, _admin: AdminUser) -> impl IntoResponse {
     match list_groups_service(&state.db).await {
@@ -116,8 +87,7 @@ async fn list_groups(State(state): State<AppState>, _admin: AdminUser) -> impl I
         }
         Err(e) => {
             tracing::error!("Failed to list groups: {}", e);
-            let (status, json) = e.into();
-            (status, json).into_response()
+            ApiError::from(e).into_response()
         }
     }
 }
@@ -129,14 +99,7 @@ async fn create_group(
     Json(payload): Json<CreateGroupRequest>,
 ) -> impl IntoResponse {
     if payload.name.trim().is_empty() {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: "Group name is required".to_string(),
-                code: "VALIDATION_ERROR".to_string(),
-            }),
-        )
-            .into_response();
+        return ApiError::bad_request("Group name is required".to_string()).with_code("VALIDATION_ERROR".to_string()).into_response();
     }
 
     match create_group_service(&state.db, &payload.name, payload.description).await {
@@ -154,8 +117,7 @@ async fn create_group(
         }
         Err(e) => {
             tracing::error!("Failed to create group: {}", e);
-            let (status, json) = e.into();
-            (status, json).into_response()
+            ApiError::from(e).into_response()
         }
     }
 }
@@ -182,18 +144,10 @@ async fn get_group(
             };
             (StatusCode::OK, Json(response)).into_response()
         }
-        Ok(None) => (
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse {
-                error: "Group not found".to_string(),
-                code: "GROUP_NOT_FOUND".to_string(),
-            }),
-        )
-            .into_response(),
+        Ok(None) => ApiError::not_found("Group not found".to_string()).with_code("GROUP_NOT_FOUND".to_string()).into_response(),
         Err(e) => {
             tracing::error!("Failed to get group: {}", e);
-            let (status, json) = e.into();
-            (status, json).into_response()
+            ApiError::from(e).into_response()
         }
     }
 }
@@ -230,8 +184,7 @@ async fn update_group(
         }
         Err(e) => {
             tracing::error!("Failed to update group: {}", e);
-            let (status, json) = e.into();
-            (status, json).into_response()
+            ApiError::from(e).into_response()
         }
     }
 }
@@ -246,8 +199,7 @@ async fn delete_group(
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(e) => {
             tracing::error!("Failed to delete group: {}", e);
-            let (status, json) = e.into();
-            (status, json).into_response()
+            ApiError::from(e).into_response()
         }
     }
 }
@@ -261,19 +213,11 @@ async fn list_group_members(
     // Check if group exists
     match get_group_by_id(&state.db, &id).await {
         Ok(None) => {
-            return (
-                StatusCode::NOT_FOUND,
-                Json(ErrorResponse {
-                    error: "Group not found".to_string(),
-                    code: "GROUP_NOT_FOUND".to_string(),
-                }),
-            )
-                .into_response();
+            return ApiError::not_found("Group not found".to_string()).with_code("GROUP_NOT_FOUND".to_string()).into_response();
         }
         Err(e) => {
             tracing::error!("Failed to get group: {}", e);
-            let (status, json) = e.into();
-            return (status, json).into_response();
+            return ApiError::from(e).into_response();
         }
         Ok(Some(_)) => {}
     }
@@ -293,8 +237,7 @@ async fn list_group_members(
         }
         Err(e) => {
             tracing::error!("Failed to list group members: {}", e);
-            let (status, json) = e.into();
-            (status, json).into_response()
+            ApiError::from(e).into_response()
         }
     }
 }
@@ -310,8 +253,7 @@ async fn add_group_member(
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(e) => {
             tracing::error!("Failed to add member: {}", e);
-            let (status, json) = e.into();
-            (status, json).into_response()
+            ApiError::from(e).into_response()
         }
     }
 }
@@ -326,8 +268,7 @@ async fn remove_group_member(
         Ok(()) => StatusCode::NO_CONTENT.into_response(),
         Err(e) => {
             tracing::error!("Failed to remove member: {}", e);
-            let (status, json) = e.into();
-            (status, json).into_response()
+            ApiError::from(e).into_response()
         }
     }
 }

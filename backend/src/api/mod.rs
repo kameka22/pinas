@@ -1,6 +1,7 @@
 pub mod apps;
 pub mod auth;
 pub mod cookies;
+pub mod error;
 pub mod cups;
 pub mod display;
 pub mod docker;

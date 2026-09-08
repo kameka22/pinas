@@ -11,6 +11,7 @@ use crate::api::middleware::AuthUser;
 use crate::models::permission::{FolderPermissions, PermissionLevel};
 use crate::services::permission::PermissionService;
 use crate::AppState;
+use crate::api::error::ApiError;
 
 /// Create the permissions router
 pub fn router() -> Router<AppState> {
@@ -22,12 +23,6 @@ pub fn router() -> Router<AppState> {
         .route("/user/{user_id}", get(get_user_permissions))
         .route("/{id}", put(update_permission))
         .route("/{id}", delete(delete_permission))
-}
-
-/// Error response
-#[derive(Debug, Serialize)]
-struct ErrorResponse {
-    error: String,
 }
 
 /// Request to create a permission
@@ -68,26 +63,14 @@ async fn list_permissions(
 ) -> impl IntoResponse {
     // Only admins can view all permissions
     if !user.is_admin {
-        return (
-            StatusCode::FORBIDDEN,
-            Json(ErrorResponse {
-                error: "Admin access required".to_string(),
-            }),
-        )
-            .into_response();
+        return ApiError::forbidden("Admin access required".to_string()).into_response();
     }
 
     let service = PermissionService::new(state.db.clone());
 
     match service.list_all_grouped().await {
         Ok(permissions) => Json(permissions).into_response(),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: e.to_string(),
-            }),
-        )
-            .into_response(),
+        Err(e) => ApiError::internal(e.to_string()).into_response(),
     }
 }
 
@@ -97,26 +80,14 @@ async fn list_folders(
     user: AuthUser,
 ) -> impl IntoResponse {
     if !user.is_admin {
-        return (
-            StatusCode::FORBIDDEN,
-            Json(ErrorResponse {
-                error: "Admin access required".to_string(),
-            }),
-        )
-            .into_response();
+        return ApiError::forbidden("Admin access required".to_string()).into_response();
     }
 
     let service = PermissionService::new(state.db.clone());
 
     match service.list_configured_folders().await {
         Ok(folders) => Json(folders).into_response(),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: e.to_string(),
-            }),
-        )
-            .into_response(),
+        Err(e) => ApiError::internal(e.to_string()).into_response(),
     }
 }
 
@@ -127,13 +98,7 @@ async fn get_folder_permissions(
     Query(query): Query<FolderQuery>,
 ) -> impl IntoResponse {
     if !user.is_admin {
-        return (
-            StatusCode::FORBIDDEN,
-            Json(ErrorResponse {
-                error: "Admin access required".to_string(),
-            }),
-        )
-            .into_response();
+        return ApiError::forbidden("Admin access required".to_string()).into_response();
     }
 
     let service = PermissionService::new(state.db.clone());
@@ -144,13 +109,7 @@ async fn get_folder_permissions(
             permissions,
         })
         .into_response(),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: e.to_string(),
-            }),
-        )
-            .into_response(),
+        Err(e) => ApiError::internal(e.to_string()).into_response(),
     }
 }
 
@@ -162,13 +121,7 @@ async fn get_user_permissions(
 ) -> impl IntoResponse {
     // Users can view their own permissions, admins can view anyone's
     if !user.is_admin && user.id != target_user_id {
-        return (
-            StatusCode::FORBIDDEN,
-            Json(ErrorResponse {
-                error: "Access denied".to_string(),
-            }),
-        )
-            .into_response();
+        return ApiError::forbidden("Access denied".to_string()).into_response();
     }
 
     let service = PermissionService::new(state.db.clone());
@@ -187,13 +140,7 @@ async fn get_user_permissions(
                 .collect();
             Json(response).into_response()
         }
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: e.to_string(),
-            }),
-        )
-            .into_response(),
+        Err(e) => ApiError::internal(e.to_string()).into_response(),
     }
 }
 
@@ -204,25 +151,13 @@ async fn create_permission(
     Json(payload): Json<CreatePermissionRequest>,
 ) -> impl IntoResponse {
     if !user.is_admin {
-        return (
-            StatusCode::FORBIDDEN,
-            Json(ErrorResponse {
-                error: "Admin access required".to_string(),
-            }),
-        )
-            .into_response();
+        return ApiError::forbidden("Admin access required".to_string()).into_response();
     }
 
     let permission_level = match PermissionLevel::from_str(&payload.permission) {
         Some(p) => p,
         None => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(ErrorResponse {
-                    error: "Invalid permission level. Use 'none', 'read', or 'write'".to_string(),
-                }),
-            )
-                .into_response();
+            return ApiError::bad_request("Invalid permission level. Use 'none', 'read', or 'write'".to_string()).into_response();
         }
     };
 
@@ -248,18 +183,7 @@ async fn create_permission(
             }),
         )
             .into_response(),
-        Err(e) => {
-            let status = match &e {
-                crate::services::permission::PermissionError::InvalidPermission => {
-                    StatusCode::BAD_REQUEST
-                }
-                crate::services::permission::PermissionError::AlreadyExists => {
-                    StatusCode::CONFLICT
-                }
-                _ => StatusCode::INTERNAL_SERVER_ERROR,
-            };
-            (status, Json(ErrorResponse { error: e.to_string() })).into_response()
-        }
+        Err(e) => ApiError::from(e).into_response(),
     }
 }
 
@@ -271,25 +195,13 @@ async fn update_permission(
     Json(payload): Json<UpdatePermissionRequest>,
 ) -> impl IntoResponse {
     if !user.is_admin {
-        return (
-            StatusCode::FORBIDDEN,
-            Json(ErrorResponse {
-                error: "Admin access required".to_string(),
-            }),
-        )
-            .into_response();
+        return ApiError::forbidden("Admin access required".to_string()).into_response();
     }
 
     let permission_level = match PermissionLevel::from_str(&payload.permission) {
         Some(p) => p,
         None => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(ErrorResponse {
-                    error: "Invalid permission level. Use 'none', 'read', or 'write'".to_string(),
-                }),
-            )
-                .into_response();
+            return ApiError::bad_request("Invalid permission level. Use 'none', 'read', or 'write'".to_string()).into_response();
         }
     };
 
@@ -304,13 +216,7 @@ async fn update_permission(
             permission: perm.permission,
         })
         .into_response(),
-        Err(e) => {
-            let status = match &e {
-                crate::services::permission::PermissionError::NotFound => StatusCode::NOT_FOUND,
-                _ => StatusCode::INTERNAL_SERVER_ERROR,
-            };
-            (status, Json(ErrorResponse { error: e.to_string() })).into_response()
-        }
+        Err(e) => ApiError::from(e).into_response(),
     }
 }
 
@@ -321,25 +227,13 @@ async fn delete_permission(
     Path(id): Path<String>,
 ) -> impl IntoResponse {
     if !user.is_admin {
-        return (
-            StatusCode::FORBIDDEN,
-            Json(ErrorResponse {
-                error: "Admin access required".to_string(),
-            }),
-        )
-            .into_response();
+        return ApiError::forbidden("Admin access required".to_string()).into_response();
     }
 
     let service = PermissionService::new(state.db.clone());
 
     match service.delete(&id).await {
         Ok(_) => StatusCode::NO_CONTENT.into_response(),
-        Err(e) => {
-            let status = match &e {
-                crate::services::permission::PermissionError::NotFound => StatusCode::NOT_FOUND,
-                _ => StatusCode::INTERNAL_SERVER_ERROR,
-            };
-            (status, Json(ErrorResponse { error: e.to_string() })).into_response()
-        }
+        Err(e) => ApiError::from(e).into_response(),
     }
 }

@@ -10,6 +10,7 @@ use serde::Deserialize;
 use crate::api::middleware::AuthUser;
 use crate::services::kodi::{KodiService, MediaSource};
 use crate::AppState;
+use crate::api::error::ApiError;
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -53,11 +54,7 @@ async fn get_status(
 
     match kodi.get_status().await {
         Ok(status) => (StatusCode::OK, Json(status)).into_response(),
-        Err(e) => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(serde_json::json!({ "error": e.to_string() })),
-        )
-            .into_response(),
+        Err(e) => ApiError::service_unavailable(e.to_string()).into_response(),
     }
 }
 
@@ -69,11 +66,7 @@ async fn get_info(
 
     match kodi.get_info().await {
         Ok(info) => (StatusCode::OK, Json(info)).into_response(),
-        Err(e) => (
-            StatusCode::SERVICE_UNAVAILABLE,
-            Json(serde_json::json!({ "error": e.to_string() })),
-        )
-            .into_response(),
+        Err(e) => ApiError::service_unavailable(e.to_string()).into_response(),
     }
 }
 
@@ -87,11 +80,7 @@ async fn play_pause(
 
     match kodi.play_pause().await {
         Ok(_) => (StatusCode::OK, Json(serde_json::json!({ "success": true }))).into_response(),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({ "error": e.to_string() })),
-        )
-            .into_response(),
+        Err(e) => ApiError::internal(e.to_string()).into_response(),
     }
 }
 
@@ -103,11 +92,7 @@ async fn stop(
 
     match kodi.stop().await {
         Ok(_) => (StatusCode::OK, Json(serde_json::json!({ "success": true }))).into_response(),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({ "error": e.to_string() })),
-        )
-            .into_response(),
+        Err(e) => ApiError::internal(e.to_string()).into_response(),
     }
 }
 
@@ -119,11 +104,7 @@ async fn previous(
 
     match kodi.goto_previous().await {
         Ok(_) => (StatusCode::OK, Json(serde_json::json!({ "success": true }))).into_response(),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({ "error": e.to_string() })),
-        )
-            .into_response(),
+        Err(e) => ApiError::internal(e.to_string()).into_response(),
     }
 }
 
@@ -135,11 +116,7 @@ async fn next(
 
     match kodi.goto_next().await {
         Ok(_) => (StatusCode::OK, Json(serde_json::json!({ "success": true }))).into_response(),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({ "error": e.to_string() })),
-        )
-            .into_response(),
+        Err(e) => ApiError::internal(e.to_string()).into_response(),
     }
 }
 
@@ -151,11 +128,7 @@ async fn get_volume(
 
     match kodi.get_volume().await {
         Ok(volume) => (StatusCode::OK, Json(serde_json::json!({ "volume": volume }))).into_response(),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({ "error": e.to_string() })),
-        )
-            .into_response(),
+        Err(e) => ApiError::internal(e.to_string()).into_response(),
     }
 }
 
@@ -173,11 +146,7 @@ async fn set_volume(
 
     match kodi.set_volume(body.volume).await {
         Ok(_) => (StatusCode::OK, Json(serde_json::json!({ "success": true, "volume": body.volume }))).into_response(),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({ "error": e.to_string() })),
-        )
-            .into_response(),
+        Err(e) => ApiError::internal(e.to_string()).into_response(),
     }
 }
 
@@ -192,11 +161,7 @@ async fn input_action(
 
     match kodi.input_action(&action).await {
         Ok(_) => (StatusCode::OK, Json(serde_json::json!({ "success": true }))).into_response(),
-        Err(e) => (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({ "error": e.to_string() })),
-        )
-            .into_response(),
+        Err(e) => ApiError::bad_request(e.to_string()).into_response(),
     }
 }
 
@@ -217,11 +182,7 @@ async fn get_sources(
 
     match kodi.get_sources(query.source_type.as_deref()).await {
         Ok(sources) => (StatusCode::OK, Json(sources)).into_response(),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({ "error": e.to_string() })),
-        )
-            .into_response(),
+        Err(e) => ApiError::internal(e.to_string()).into_response(),
     }
 }
 
@@ -258,11 +219,7 @@ async fn add_source(
 
     match kodi.add_source(&source).await {
         Ok(_) => (StatusCode::CREATED, Json(source)).into_response(),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({ "error": e.to_string() })),
-        )
-            .into_response(),
+        Err(e) => ApiError::internal(e.to_string()).into_response(),
     }
 }
 
@@ -275,11 +232,7 @@ async fn remove_source(
 
     match kodi.remove_source(&source_id).await {
         Ok(_) => (StatusCode::OK, Json(serde_json::json!({ "success": true }))).into_response(),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({ "error": e.to_string() })),
-        )
-            .into_response(),
+        Err(e) => ApiError::internal(e.to_string()).into_response(),
     }
 }
 
@@ -299,11 +252,7 @@ async fn get_settings(
 
     match kodi.get_settings(query.category.as_deref()).await {
         Ok(settings) => (StatusCode::OK, Json(settings)).into_response(),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({ "error": e.to_string() })),
-        )
-            .into_response(),
+        Err(e) => ApiError::internal(e.to_string()).into_response(),
     }
 }
 
@@ -322,11 +271,7 @@ async fn set_setting(
 
     match kodi.set_setting(&setting_id, body.value).await {
         Ok(_) => (StatusCode::OK, Json(serde_json::json!({ "success": true }))).into_response(),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({ "error": e.to_string() })),
-        )
-            .into_response(),
+        Err(e) => ApiError::internal(e.to_string()).into_response(),
     }
 }
 
@@ -340,11 +285,7 @@ async fn get_addons(
 
     match kodi.get_addons().await {
         Ok(addons) => (StatusCode::OK, Json(addons)).into_response(),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({ "error": e.to_string() })),
-        )
-            .into_response(),
+        Err(e) => ApiError::internal(e.to_string()).into_response(),
     }
 }
 
@@ -357,11 +298,7 @@ async fn enable_addon(
 
     match kodi.set_addon_enabled(&addon_id, true).await {
         Ok(_) => (StatusCode::OK, Json(serde_json::json!({ "success": true }))).into_response(),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({ "error": e.to_string() })),
-        )
-            .into_response(),
+        Err(e) => ApiError::internal(e.to_string()).into_response(),
     }
 }
 
@@ -374,11 +311,7 @@ async fn disable_addon(
 
     match kodi.set_addon_enabled(&addon_id, false).await {
         Ok(_) => (StatusCode::OK, Json(serde_json::json!({ "success": true }))).into_response(),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({ "error": e.to_string() })),
-        )
-            .into_response(),
+        Err(e) => ApiError::internal(e.to_string()).into_response(),
     }
 }
 
@@ -393,11 +326,7 @@ async fn scan_library(
 
     match kodi.scan_library(&library_type).await {
         Ok(_) => (StatusCode::OK, Json(serde_json::json!({ "success": true, "message": "Library scan started" }))).into_response(),
-        Err(e) => (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({ "error": e.to_string() })),
-        )
-            .into_response(),
+        Err(e) => ApiError::bad_request(e.to_string()).into_response(),
     }
 }
 
@@ -410,11 +339,7 @@ async fn clean_library(
 
     match kodi.clean_library(&library_type).await {
         Ok(_) => (StatusCode::OK, Json(serde_json::json!({ "success": true, "message": "Library clean started" }))).into_response(),
-        Err(e) => (
-            StatusCode::BAD_REQUEST,
-            Json(serde_json::json!({ "error": e.to_string() })),
-        )
-            .into_response(),
+        Err(e) => ApiError::bad_request(e.to_string()).into_response(),
     }
 }
 
@@ -435,11 +360,7 @@ async fn send_notification(
 
     match kodi.send_notification(&body.title, &body.message).await {
         Ok(_) => (StatusCode::OK, Json(serde_json::json!({ "success": true }))).into_response(),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({ "error": e.to_string() })),
-        )
-            .into_response(),
+        Err(e) => ApiError::internal(e.to_string()).into_response(),
     }
 }
 
@@ -449,22 +370,14 @@ async fn reboot(
 ) -> impl IntoResponse {
     // Only admin can reboot
     if !user.is_admin {
-        return (
-            StatusCode::FORBIDDEN,
-            Json(serde_json::json!({ "error": "Admin permission required" })),
-        )
-            .into_response();
+        return ApiError::forbidden("Admin permission required").into_response();
     }
 
     let kodi = KodiService::new(state.config.dev_mode, state.config.kodi_username.clone(), state.config.kodi_password.clone());
 
     match kodi.reboot().await {
         Ok(_) => (StatusCode::OK, Json(serde_json::json!({ "success": true, "message": "Reboot initiated" }))).into_response(),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({ "error": e.to_string() })),
-        )
-            .into_response(),
+        Err(e) => ApiError::internal(e.to_string()).into_response(),
     }
 }
 
@@ -474,21 +387,13 @@ async fn shutdown(
 ) -> impl IntoResponse {
     // Only admin can shutdown
     if !user.is_admin {
-        return (
-            StatusCode::FORBIDDEN,
-            Json(serde_json::json!({ "error": "Admin permission required" })),
-        )
-            .into_response();
+        return ApiError::forbidden("Admin permission required").into_response();
     }
 
     let kodi = KodiService::new(state.config.dev_mode, state.config.kodi_username.clone(), state.config.kodi_password.clone());
 
     match kodi.shutdown().await {
         Ok(_) => (StatusCode::OK, Json(serde_json::json!({ "success": true, "message": "Shutdown initiated" }))).into_response(),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(serde_json::json!({ "error": e.to_string() })),
-        )
-            .into_response(),
+        Err(e) => ApiError::internal(e.to_string()).into_response(),
     }
 }

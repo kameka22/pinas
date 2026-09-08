@@ -17,6 +17,7 @@ use crate::services::home::HomeService;
 use crate::services::permission::PermissionService;
 use crate::services::user::get_user_by_id;
 use crate::AppState;
+use crate::api::error::ApiError;
 
 /// File or folder item
 #[derive(Debug, Serialize)]
@@ -82,12 +83,6 @@ pub struct CopyMoveRequest {
 #[derive(Debug, Serialize)]
 pub struct TaskResponse {
     pub task_id: String,
-}
-
-/// Error response
-#[derive(Debug, Serialize)]
-pub struct ErrorResponse {
-    pub error: String,
 }
 
 /// Maximum upload size: 512 MB
@@ -363,10 +358,7 @@ async fn list_files(
         match resolve_location_path(&state, &user, loc_id, AccessMode::Read).await {
             Ok(path) => path,
             Err(e) => {
-                return (
-                    StatusCode::BAD_REQUEST,
-                    Json(ErrorResponse { error: e }),
-                ).into_response();
+                return ApiError::bad_request(e).into_response();
             }
         }
     } else {
@@ -387,10 +379,7 @@ async fn list_files(
     // Ensure base directory exists
     if !base_path.exists() {
         if let Err(e) = fs::create_dir_all(&base_path) {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse { error: format!("Failed to create files directory: {}", e) }),
-            ).into_response();
+            return ApiError::internal(format!("Failed to create files directory: {}", e)).into_response();
         }
     }
 
@@ -400,36 +389,24 @@ async fn list_files(
     let full_path = match validate_path(&base_path, &rel_path) {
         Ok(p) => p,
         Err(e) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(ErrorResponse { error: e }),
-            ).into_response();
+            return ApiError::bad_request(e).into_response();
         }
     };
 
     // Check if path exists and is a directory
     if !full_path.exists() {
-        return (
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse { error: "Directory not found".to_string() }),
-        ).into_response();
+        return ApiError::not_found("Directory not found".to_string()).into_response();
     }
 
     if !full_path.is_dir() {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse { error: "Path is not a directory".to_string() }),
-        ).into_response();
+        return ApiError::bad_request("Path is not a directory".to_string()).into_response();
     }
 
     // Read directory entries
     let entries = match fs::read_dir(&full_path) {
         Ok(e) => e,
         Err(e) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse { error: format!("Failed to read directory: {}", e) }),
-            ).into_response();
+            return ApiError::internal(format!("Failed to read directory: {}", e)).into_response();
         }
     };
 
@@ -533,10 +510,7 @@ async fn create_folder(
         match resolve_location_path(&state, &user, loc_id, AccessMode::Write).await {
             Ok(path) => path,
             Err(e) => {
-                return (
-                    StatusCode::BAD_REQUEST,
-                    Json(ErrorResponse { error: e }),
-                ).into_response();
+                return ApiError::bad_request(e).into_response();
             }
         }
     } else {
@@ -548,37 +522,25 @@ async fn create_folder(
     let parent_path = match validate_path(&base_path, &payload.path) {
         Ok(p) => p,
         Err(e) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(ErrorResponse { error: e }),
-            ).into_response();
+            return ApiError::bad_request(e).into_response();
         }
     };
 
     // Validate folder name (no path separators)
     if payload.name.contains('/') || payload.name.contains('\\') || payload.name.starts_with('.') {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse { error: "Invalid folder name".to_string() }),
-        ).into_response();
+        return ApiError::bad_request("Invalid folder name".to_string()).into_response();
     }
 
     let new_folder_path = parent_path.join(&payload.name);
 
     // Check if already exists
     if new_folder_path.exists() {
-        return (
-            StatusCode::CONFLICT,
-            Json(ErrorResponse { error: "A file or folder with this name already exists".to_string() }),
-        ).into_response();
+        return ApiError::conflict("A file or folder with this name already exists".to_string()).into_response();
     }
 
     // Create the folder
     if let Err(e) = fs::create_dir(&new_folder_path) {
-        return (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse { error: format!("Failed to create folder: {}", e) }),
-        ).into_response();
+        return ApiError::internal(format!("Failed to create folder: {}", e)).into_response();
     }
 
     // Build relative path
@@ -614,10 +576,7 @@ async fn delete_file(
         match resolve_location_path(&state, &user, loc_id, AccessMode::Write).await {
             Ok(path) => path,
             Err(e) => {
-                return (
-                    StatusCode::BAD_REQUEST,
-                    Json(ErrorResponse { error: e }),
-                ).into_response();
+                return ApiError::bad_request(e).into_response();
             }
         }
     } else {
@@ -629,27 +588,18 @@ async fn delete_file(
     let full_path = match validate_path(&base_path, &query.path) {
         Ok(p) => p,
         Err(e) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(ErrorResponse { error: e }),
-            ).into_response();
+            return ApiError::bad_request(e).into_response();
         }
     };
 
     // Check if exists
     if !full_path.exists() {
-        return (
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse { error: "File or folder not found".to_string() }),
-        ).into_response();
+        return ApiError::not_found("File or folder not found".to_string()).into_response();
     }
 
     // Don't allow deleting the root
     if full_path.canonicalize().ok() == base_path.canonicalize().ok() {
-        return (
-            StatusCode::FORBIDDEN,
-            Json(ErrorResponse { error: "Cannot delete root directory".to_string() }),
-        ).into_response();
+        return ApiError::forbidden("Cannot delete root directory".to_string()).into_response();
     }
 
     // Delete
@@ -661,10 +611,7 @@ async fn delete_file(
 
     match result {
         Ok(_) => StatusCode::NO_CONTENT.into_response(),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse { error: format!("Failed to delete: {}", e) }),
-        ).into_response(),
+        Err(e) => ApiError::internal(format!("Failed to delete: {}", e)).into_response(),
     }
 }
 
@@ -679,10 +626,7 @@ async fn rename_file(
         match resolve_location_path(&state, &user, loc_id, AccessMode::Write).await {
             Ok(path) => path,
             Err(e) => {
-                return (
-                    StatusCode::BAD_REQUEST,
-                    Json(ErrorResponse { error: e }),
-                ).into_response();
+                return ApiError::bad_request(e).into_response();
             }
         }
     } else {
@@ -694,37 +638,25 @@ async fn rename_file(
     let full_path = match validate_path(&base_path, &payload.path) {
         Ok(p) => p,
         Err(e) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(ErrorResponse { error: e }),
-            ).into_response();
+            return ApiError::bad_request(e).into_response();
         }
     };
 
     // Check if exists
     if !full_path.exists() {
-        return (
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse { error: "File or folder not found".to_string() }),
-        ).into_response();
+        return ApiError::not_found("File or folder not found".to_string()).into_response();
     }
 
     // Validate new name
     if payload.new_name.contains('/') || payload.new_name.contains('\\') || payload.new_name.starts_with('.') {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse { error: "Invalid name".to_string() }),
-        ).into_response();
+        return ApiError::bad_request("Invalid name".to_string()).into_response();
     }
 
     // Build new path
     let parent = match full_path.parent() {
         Some(p) => p,
         None => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(ErrorResponse { error: "Cannot rename root".to_string() }),
-            ).into_response();
+            return ApiError::bad_request("Cannot rename root".to_string()).into_response();
         }
     };
 
@@ -732,18 +664,12 @@ async fn rename_file(
 
     // Check if destination exists
     if new_path.exists() {
-        return (
-            StatusCode::CONFLICT,
-            Json(ErrorResponse { error: "A file or folder with this name already exists".to_string() }),
-        ).into_response();
+        return ApiError::conflict("A file or folder with this name already exists".to_string()).into_response();
     }
 
     // Rename
     if let Err(e) = fs::rename(&full_path, &new_path) {
-        return (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse { error: format!("Failed to rename: {}", e) }),
-        ).into_response();
+        return ApiError::internal(format!("Failed to rename: {}", e)).into_response();
     }
 
     // Build new relative path
@@ -787,10 +713,7 @@ async fn create_file(
         match resolve_location_path(&state, &user, loc_id, AccessMode::Write).await {
             Ok(path) => path,
             Err(e) => {
-                return (
-                    StatusCode::BAD_REQUEST,
-                    Json(ErrorResponse { error: e }),
-                ).into_response();
+                return ApiError::bad_request(e).into_response();
             }
         }
     } else {
@@ -802,37 +725,25 @@ async fn create_file(
     let parent_path = match validate_path(&base_path, &payload.path) {
         Ok(p) => p,
         Err(e) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(ErrorResponse { error: e }),
-            ).into_response();
+            return ApiError::bad_request(e).into_response();
         }
     };
 
     // Validate file name (no path separators)
     if payload.name.contains('/') || payload.name.contains('\\') || payload.name.starts_with('.') {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse { error: "Invalid file name".to_string() }),
-        ).into_response();
+        return ApiError::bad_request("Invalid file name".to_string()).into_response();
     }
 
     let new_file_path = parent_path.join(&payload.name);
 
     // Check if already exists
     if new_file_path.exists() {
-        return (
-            StatusCode::CONFLICT,
-            Json(ErrorResponse { error: "A file or folder with this name already exists".to_string() }),
-        ).into_response();
+        return ApiError::conflict("A file or folder with this name already exists".to_string()).into_response();
     }
 
     // Create the empty file
     if let Err(e) = fs::File::create(&new_file_path) {
-        return (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse { error: format!("Failed to create file: {}", e) }),
-        ).into_response();
+        return ApiError::internal(format!("Failed to create file: {}", e)).into_response();
     }
 
     // Build relative path
@@ -890,20 +801,14 @@ async fn upload_file(
     let file_name = match file_name {
         Some(name) if !name.is_empty() => name,
         _ => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(ErrorResponse { error: "No file provided".to_string() }),
-            ).into_response();
+            return ApiError::bad_request("No file provided".to_string()).into_response();
         }
     };
 
     let file_data = match file_data {
         Some(data) => data,
         None => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(ErrorResponse { error: "No file data received".to_string() }),
-            ).into_response();
+            return ApiError::bad_request("No file data received".to_string()).into_response();
         }
     };
 
@@ -914,10 +819,7 @@ async fn upload_file(
         match resolve_location_path(&state, &user, loc_id, AccessMode::Write).await {
             Ok(path) => path,
             Err(e) => {
-                return (
-                    StatusCode::BAD_REQUEST,
-                    Json(ErrorResponse { error: e }),
-                ).into_response();
+                return ApiError::bad_request(e).into_response();
             }
         }
     } else {
@@ -929,18 +831,12 @@ async fn upload_file(
     let dir_path = match validate_path(&base_path, &dest_path) {
         Ok(p) => p,
         Err(e) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(ErrorResponse { error: e }),
-            ).into_response();
+            return ApiError::bad_request(e).into_response();
         }
     };
 
     if !dir_path.exists() {
-        return (
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse { error: "Destination directory not found".to_string() }),
-        ).into_response();
+        return ApiError::not_found("Destination directory not found".to_string()).into_response();
     }
 
     let target_path = dir_path.join(&file_name);
@@ -970,10 +866,7 @@ async fn upload_file(
                     progress: 0,
                     error_message: Some(format!("Failed to write file: {}", e)),
                 });
-                return (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(ErrorResponse { error: format!("Failed to write file: {}", e) }),
-                ).into_response();
+                return ApiError::internal(format!("Failed to write file: {}", e)).into_response();
             }
         }
         Err(e) => {
@@ -985,10 +878,7 @@ async fn upload_file(
                 progress: 0,
                 error_message: Some(format!("Failed to create file: {}", e)),
             });
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse { error: format!("Failed to create file: {}", e) }),
-            ).into_response();
+            return ApiError::internal(format!("Failed to create file: {}", e)).into_response();
         }
     }
 
@@ -1036,10 +926,7 @@ async fn copy_files(
         match resolve_location_path(&state, &user, loc_id, AccessMode::Write).await {
             Ok(path) => path,
             Err(e) => {
-                return (
-                    StatusCode::BAD_REQUEST,
-                    Json(ErrorResponse { error: e }),
-                ).into_response();
+                return ApiError::bad_request(e).into_response();
             }
         }
     } else {
@@ -1051,18 +938,12 @@ async fn copy_files(
     let dest_path = match validate_path(&base_path, &payload.destination) {
         Ok(p) => p,
         Err(e) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(ErrorResponse { error: e }),
-            ).into_response();
+            return ApiError::bad_request(e).into_response();
         }
     };
 
     if !dest_path.exists() || !dest_path.is_dir() {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse { error: "Destination directory not found".to_string() }),
-        ).into_response();
+        return ApiError::bad_request("Destination directory not found".to_string()).into_response();
     }
 
     // Validate all source paths upfront
@@ -1071,17 +952,11 @@ async fn copy_files(
         let source_path = match validate_path(&base_path, source) {
             Ok(p) => p,
             Err(e) => {
-                return (
-                    StatusCode::BAD_REQUEST,
-                    Json(ErrorResponse { error: format!("Invalid source path '{}': {}", source, e) }),
-                ).into_response();
+                return ApiError::bad_request(format!("Invalid source path '{}': {}", source, e)).into_response();
             }
         };
         if !source_path.exists() {
-            return (
-                StatusCode::NOT_FOUND,
-                Json(ErrorResponse { error: format!("Source not found: {}", source) }),
-            ).into_response();
+            return ApiError::not_found(format!("Source not found: {}", source)).into_response();
         }
         let name = source_path
             .file_name()
@@ -1158,10 +1033,7 @@ async fn move_files(
         match resolve_location_path(&state, &user, loc_id, AccessMode::Write).await {
             Ok(path) => path,
             Err(e) => {
-                return (
-                    StatusCode::BAD_REQUEST,
-                    Json(ErrorResponse { error: e }),
-                ).into_response();
+                return ApiError::bad_request(e).into_response();
             }
         }
     } else {
@@ -1173,18 +1045,12 @@ async fn move_files(
     let dest_path = match validate_path(&base_path, &payload.destination) {
         Ok(p) => p,
         Err(e) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(ErrorResponse { error: e }),
-            ).into_response();
+            return ApiError::bad_request(e).into_response();
         }
     };
 
     if !dest_path.exists() || !dest_path.is_dir() {
-        return (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse { error: "Destination directory not found".to_string() }),
-        ).into_response();
+        return ApiError::bad_request("Destination directory not found".to_string()).into_response();
     }
 
     // Validate all source paths upfront
@@ -1193,17 +1059,11 @@ async fn move_files(
         let source_path = match validate_path(&base_path, source) {
             Ok(p) => p,
             Err(e) => {
-                return (
-                    StatusCode::BAD_REQUEST,
-                    Json(ErrorResponse { error: format!("Invalid source path '{}': {}", source, e) }),
-                ).into_response();
+                return ApiError::bad_request(format!("Invalid source path '{}': {}", source, e)).into_response();
             }
         };
         if !source_path.exists() {
-            return (
-                StatusCode::NOT_FOUND,
-                Json(ErrorResponse { error: format!("Source not found: {}", source) }),
-            ).into_response();
+            return ApiError::not_found(format!("Source not found: {}", source)).into_response();
         }
         let name = source_path
             .file_name()

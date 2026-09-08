@@ -10,6 +10,7 @@ use serde::Deserialize;
 use crate::api::middleware::AdminUser;
 use crate::services::service::ServiceManager;
 use crate::AppState;
+use crate::api::error::ApiError;
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -31,7 +32,7 @@ async fn list_services(State(_state): State<AppState>) -> impl IntoResponse {
         Ok(services) => Json(services).into_response(),
         Err(e) => {
             tracing::error!("Failed to list services: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+            ApiError::internal(e.to_string()).into_response()
         }
     }
 }
@@ -47,7 +48,7 @@ async fn get_service_status(
         Ok(status) => Json(status).into_response(),
         Err(e) => {
             tracing::error!("Failed to get service status for {}: {}", name, e);
-            (StatusCode::NOT_FOUND, e.to_string()).into_response()
+            ApiError::not_found(e.to_string()).into_response()
         }
     }
 }
@@ -67,7 +68,7 @@ async fn start_service(
         }
         Err(e) => {
             tracing::error!("Failed to start service {}: {}", name, e);
-            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+            ApiError::internal(e.to_string()).into_response()
         }
     }
 }
@@ -87,7 +88,7 @@ async fn stop_service(
         }
         Err(e) => {
             tracing::error!("Failed to stop service {}: {}", name, e);
-            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+            ApiError::internal(e.to_string()).into_response()
         }
     }
 }
@@ -107,7 +108,7 @@ async fn restart_service(
         }
         Err(e) => {
             tracing::error!("Failed to restart service {}: {}", name, e);
-            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+            ApiError::internal(e.to_string()).into_response()
         }
     }
 }
@@ -127,7 +128,7 @@ async fn enable_service(
         }
         Err(e) => {
             tracing::error!("Failed to enable service {}: {}", name, e);
-            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+            ApiError::internal(e.to_string()).into_response()
         }
     }
 }
@@ -147,7 +148,7 @@ async fn disable_service(
         }
         Err(e) => {
             tracing::error!("Failed to disable service {}: {}", name, e);
-            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+            ApiError::internal(e.to_string()).into_response()
         }
     }
 }
@@ -176,7 +177,7 @@ async fn get_service_logs(
         Ok(logs) => Json(logs).into_response(),
         Err(e) => {
             tracing::error!("Failed to get logs for service {}: {}", name, e);
-            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+            ApiError::internal(e.to_string()).into_response()
         }
     }
 }
