@@ -80,6 +80,8 @@ Access at `http://localhost:5173`
 
 ### Build Scripts
 
+Every script is reachable from one entry point — `./scripts/pinas.sh` (interactive menu), `./scripts/pinas.sh list`, or `./scripts/pinas.sh <name> [args]` (e.g. `dev`, `check`, `build-x86`, `remote-build --arch x86`, `release --arch all`, `deploy --backend`).
+
 All build scripts run on a Linux VM (native ARM64 or x86_64). They share common options:
 
 ```bash
