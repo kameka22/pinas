@@ -15,7 +15,7 @@ use tokio::time::interval;
 
 use crate::api::cookies;
 use crate::models::storage::StorageAlertEvent;
-use crate::services::auth::validate_jwt;
+
 use crate::AppState;
 
 /// Query parameters for WebSocket connection
@@ -98,7 +98,7 @@ pub async fn ws_handler(
         None => return StatusCode::UNAUTHORIZED.into_response(),
     };
 
-    if validate_jwt(&token, &state.config).is_err() {
+    if crate::api::middleware::authenticate(&token, &state).await.is_err() {
         return StatusCode::UNAUTHORIZED.into_response();
     }
 

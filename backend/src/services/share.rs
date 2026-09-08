@@ -701,7 +701,19 @@ impl ShareService {
 
             conf.push_str(&format!("   browseable = {}\n", if smb_cfg.browseable { "yes" } else { "no" }));
             conf.push_str(&format!("   read only = {}\n", if smb_cfg.read_only { "yes" } else { "no" }));
-            conf.push_str(&format!("   guest ok = {}\n", if smb_cfg.guest_ok { "yes" } else { "no" }));
+            // Files are created as root (force user). A share that carries per-user
+            // permissions must therefore never be reachable as guest, whatever the UI toggle says.
+            let has_acl = permissions
+                .iter()
+                .any(|e| matches!(e.permission.as_str(), "read" | "write"));
+            if smb_cfg.guest_ok && has_acl {
+                tracing::warn!(
+                    "Share '{}' has folder permissions: ignoring guest_ok=true (guest access disabled)",
+                    share.name
+                );
+            }
+            let guest_ok = smb_cfg.guest_ok && !has_acl;
+            conf.push_str(&format!("   guest ok = {}\n", if guest_ok { "yes" } else { "no" }));
             conf.push_str(&format!("   create mask = {}\n", smb_cfg.create_mask));
             conf.push_str(&format!("   force create mode = {}\n", smb_cfg.create_mask));
             conf.push_str(&format!("   directory mask = {}\n", smb_cfg.directory_mask));
@@ -839,7 +851,7 @@ impl ShareService {
             let read_list = filter_by_smb(read_list);
             let write_list = filter_by_smb(write_list);
 
-            if !smb_cfg.guest_ok && !valid_users.is_empty() {
+            if !valid_users.is_empty() {
                 conf.push_str(&format!("   valid users = {}\n", valid_users.join(" ")));
             }
             if !read_list.is_empty() {

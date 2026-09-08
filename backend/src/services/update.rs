@@ -367,6 +367,26 @@ impl UpdateService {
         let archive_bytes = download_response.bytes().await?;
         self.broadcast_progress(task_id, "running", 40, 100, Some("Download complete"), None);
 
+        // 2b. Integrity: the release must ship `<archive>.sha256` and it must match.
+        // Without this, a compromised GitHub account or a TLS interception point
+        // could push arbitrary root-executed code to every device.
+        self.broadcast_progress(task_id, "running", 45, 100, Some("Verifying checksum..."), None);
+        let checksum_name = format!("{}.sha256", asset.name);
+        let checksum_asset = release
+            .assets
+            .iter()
+            .find(|a| a.name == checksum_name)
+            .ok_or_else(|| anyhow!("Release has no {} — refusing unverified update", checksum_name))?;
+        let checksum_body = client
+            .get(&checksum_asset.browser_download_url)
+            .header("User-Agent", "PiNAS-Update-Service")
+            .send()
+            .await?
+            .error_for_status()?
+            .text()
+            .await?;
+        verify_sha256(&archive_bytes, &checksum_body)?;
+
         // 3. Extract to storage (NOT /tmp/ — PrivateTmp=true would wipe it on service stop)
         let extract_dir = &format!("{}/data/update-staging", self.data_dir);
         if fs::metadata(extract_dir).await.is_ok() {
@@ -758,6 +778,31 @@ pub struct UpdateTaskProgress {
     pub version: String,
 }
 
+/// Verify `data` against the content of a `sha256sum`-style file
+/// (`<hex>  <filename>`; only the first token is used).
+fn verify_sha256(data: &[u8], checksum_file: &str) -> Result<()> {
+    use sha2::{Digest, Sha256};
+
+    let expected = checksum_file
+        .split_whitespace()
+        .next()
+        .ok_or_else(|| anyhow!("Empty checksum file"))?
+        .to_ascii_lowercase();
+    if expected.len() != 64 || !expected.chars().all(|c| c.is_ascii_hexdigit()) {
+        return Err(anyhow!("Malformed checksum file"));
+    }
+
+    let actual = hex::encode(Sha256::digest(data));
+    if actual != expected {
+        return Err(anyhow!(
+            "Checksum mismatch: archive is {} but release declares {}",
+            actual,
+            expected
+        ));
+    }
+    Ok(())
+}
+
 /// Compare version strings (simple numeric comparison)
 fn is_newer_version(current: &str, candidate: &str) -> bool {
     let parse = |v: &str| -> Vec<u32> {
@@ -806,5 +851,36 @@ fn determine_update_type(current: &str, new: &str) -> String {
         } else {
             "patch".to_string()
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const HELLO_SHA256: &str = "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824";
+
+    #[test]
+    fn sha256_accepts_matching_checksum_file() {
+        let file = format!("{}  pinas-update-v0.10.0.tar.gz\n", HELLO_SHA256);
+        assert!(verify_sha256(b"hello", &file).is_ok());
+        // Upper-case hex and no filename are fine too
+        assert!(verify_sha256(b"hello", &HELLO_SHA256.to_uppercase()).is_ok());
+    }
+
+    #[test]
+    fn sha256_rejects_mismatch_and_garbage() {
+        assert!(verify_sha256(b"hello!", HELLO_SHA256).is_err());
+        assert!(verify_sha256(b"hello", "").is_err());
+        assert!(verify_sha256(b"hello", "not-a-hash  file").is_err());
+        assert!(verify_sha256(b"hello", &HELLO_SHA256[..63]).is_err());
+    }
+
+    #[test]
+    fn version_comparison() {
+        assert!(is_newer_version("0.10.0", "0.11"));
+        assert!(!is_newer_version("0.10.0", "0.10"));
+        assert!(!is_newer_version("0.10.0", "0.9.9"));
+        assert!(is_newer_version("0.1.0", "0.10"));
     }
 }

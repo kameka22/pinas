@@ -8,6 +8,7 @@ use axum::{
 use serde::{Deserialize, Serialize};
 
 use crate::api::middleware::{AdminUser, AuthErrorResponse, AuthUser};
+use crate::services::session::delete_user_sessions;
 use crate::services::home::HomeService;
 use crate::services::share::ShareService;
 use crate::services::user::{
@@ -282,6 +283,9 @@ async fn delete_user(
 
     match delete_user_with_home(&state.db, &id, &admin.id, &home_service).await {
         Ok(()) => {
+            if let Err(e) = delete_user_sessions(&state.db, &id).await {
+                tracing::warn!("Failed to revoke sessions of deleted user: {}", e);
+            }
             // Remove Samba user (non-blocking)
             if let Some(username) = username {
                 let share_svc = ShareService::new(state.db.clone());
@@ -319,6 +323,10 @@ async fn change_user_password(
 
     match change_password(&state.db, &id, &payload.password).await {
         Ok(()) => {
+            // Force re-login everywhere with the new password
+            if let Err(e) = delete_user_sessions(&state.db, &id).await {
+                tracing::warn!("Failed to revoke sessions after password reset: {}", e);
+            }
             // Always sync Samba password — plaintext password is only available here.
             if let Ok(Some(user)) = get_user_by_id(&state.db, &id).await {
                 let share_svc = ShareService::new(state.db.clone());

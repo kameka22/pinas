@@ -166,6 +166,7 @@ fn default_lines() -> u32 {
 /// Get logs for a service
 async fn get_service_logs(
     State(_state): State<AppState>,
+    _admin: AdminUser,
     Path(name): Path<String>,
     Query(params): Query<LogsQuery>,
 ) -> impl IntoResponse {

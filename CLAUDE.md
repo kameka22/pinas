@@ -110,6 +110,7 @@ RUST_LOG=pinas=info,tower_http=info
 ## Conventions de code
 
 ### Rust
+- **Authentification** : `main.rs` sépare un routeur public (`/api/health`, `/api/auth`, `/api/setup`, `/api/ws`) d'un routeur protégé par `require_auth` (JWT + session en base). Les routeurs purement administratifs (`storage`, `docker`, `packages`, `system/update`, `cups`, `terminal`, `display`) sont enveloppés par `require_admin`. Un nouveau routeur va dans le bloc protégé ; un handler destructif prend `AdminUser` en paramètre. Ne jamais ajouter de route hors du bloc protégé sans raison documentée.
 - `thiserror` pour les erreurs custom
 - Async/await partout (Tokio runtime)
 - Structs avec `#[derive(Debug, Serialize, Deserialize)]`

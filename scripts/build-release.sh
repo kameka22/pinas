@@ -422,6 +422,9 @@ run_remote "cd $REMOTE_BUILD_DIR && tar -czf $REMOTE_PROJECT/build/$ARCHIVE_NAME
 
 ARCHIVE_SIZE=$(run_remote "ls -lh $REMOTE_PROJECT/build/$ARCHIVE_NAME | awk '{print \$5}'")
 ARCHIVE_SHA=$(run_remote "sha256sum $REMOTE_PROJECT/build/$ARCHIVE_NAME | awk '{print \$1}'")
+# Checksum file published next to the archive: the updater refuses to install without it
+CHECKSUM_NAME="${ARCHIVE_NAME}.sha256"
+run_remote "cd $REMOTE_PROJECT/build && sha256sum $ARCHIVE_NAME > $CHECKSUM_NAME"
 
 echo -e "    ${GREEN}Archive: $ARCHIVE_NAME ($ARCHIVE_SIZE)${NC}"
 echo -e "    SHA256: $ARCHIVE_SHA"
@@ -434,6 +437,7 @@ echo -e "${CYAN}>>> [4/4] Copying archive to local machine...${NC}"
 
 mkdir -p "$PROJECT_ROOT/build"
 copy_from_remote "$REMOTE_PROJECT/build/$ARCHIVE_NAME" "$PROJECT_ROOT/build/$ARCHIVE_NAME"
+copy_from_remote "$REMOTE_PROJECT/build/$CHECKSUM_NAME" "$PROJECT_ROOT/build/$CHECKSUM_NAME"
 
 if [ ! -f "$PROJECT_ROOT/build/$ARCHIVE_NAME" ]; then
     echo -e "${RED}Error: Failed to copy archive${NC}"
@@ -441,7 +445,7 @@ if [ ! -f "$PROJECT_ROOT/build/$ARCHIVE_NAME" ]; then
 fi
 
 # Clean up remote build
-run_remote "rm -rf $REMOTE_BUILD_DIR $REMOTE_PROJECT/build/$ARCHIVE_NAME"
+run_remote "rm -rf $REMOTE_BUILD_DIR $REMOTE_PROJECT/build/$ARCHIVE_NAME $REMOTE_PROJECT/build/$CHECKSUM_NAME"
 
 LOCAL_SIZE=$(ls -lh "$PROJECT_ROOT/build/$ARCHIVE_NAME" | awk '{print $5}')
 
@@ -453,9 +457,10 @@ echo ""
 echo -e "  Version:  ${CYAN}$VERSION${NC}"
 echo -e "  Mode:     ${CYAN}$MODE${NC}"
 echo -e "  Archive:  ${CYAN}build/$ARCHIVE_NAME${NC}"
+echo -e "  Checksum: ${CYAN}build/$CHECKSUM_NAME${NC}"
 echo -e "  Size:     ${CYAN}$LOCAL_SIZE${NC}"
 echo -e "  SHA256:   ${CYAN}$ARCHIVE_SHA${NC}"
 echo ""
 echo "To create a GitHub release:"
-echo -e "  ${YELLOW}gh release create v$VERSION build/$ARCHIVE_NAME --title \"PiNAS v$VERSION\" --notes \"$CHANGELOG_EN\"${NC}"
+echo -e "  ${YELLOW}gh release create v$VERSION build/$ARCHIVE_NAME build/$CHECKSUM_NAME --title \"PiNAS v$VERSION\" --notes \"$CHANGELOG_EN\"${NC}"
 echo ""

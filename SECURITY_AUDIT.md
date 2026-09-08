@@ -310,3 +310,51 @@ Validation du path puis opération async dans un `tokio::spawn`. Symlinks modifi
 15. Validation des containers Docker (volumes, caps, limites)
 16. Protection CSRF
 17. ~~Hasher les tokens en DB~~ CORRIGE
+
+---
+
+## Passe de septembre 2026 (branche `fix/p0-security`)
+
+### ~~26. 82 handlers API sans authentification~~ — CORRIGE
+
+**`backend/src/main.rs`, `backend/src/api/middleware.rs`**
+
+~~Aucun middleware global : la protection reposait sur la présence d'un extracteur `AuthUser`/`AdminUser` dans chaque handler. Les routeurs `storage` (33 handlers dont wipe disk), `docker` (19), `packages` (8, dont install), `system/update` (7, dont install), `cups` (13), `apps`, ainsi que `system/processes`, `system/processes/:pid/kill`, `services` (list/status/logs) et `locations` étaient accessibles à toute machine du LAN.~~
+
+**Correction** : le routeur est scindé en deux. Routes publiques : `/api/health`, `/api/auth/*` (handlers auto-protégés), `/api/setup/*` (refuse si le setup est terminé), `/api/ws` (valide lui-même le token). Tout le reste passe par `require_auth` (`route_layer`), qui valide le JWT **et** l'existence de la session en base, puis stocke l'`AuthUser` dans les extensions de requête. Les routeurs `storage`, `docker`, `packages`, `system/update`, `cups`, `terminal` et `display` reçoivent en plus `require_admin`. `get_processes`, `kill_process` et `services/:name/logs` exigent `AdminUser`. Vérifié par `curl` : anonyme → 401 sur 15 routes testées, non-admin → 403 sur les routeurs administratifs, admin → 200.
+
+### ~~27. Logout sans effet (sessions non vérifiées)~~ — CORRIGE
+
+**`backend/src/api/middleware.rs`, `backend/src/api/users.rs`, `backend/src/main.rs`**
+
+~~La table `sessions` était écrite au login et effacée au logout, mais le middleware ne validait que le JWT : un token restait utilisable 24 h après déconnexion, suppression ou changement de mot de passe.~~
+
+**Correction** : `authenticate()` vérifie `is_session_valid` (hash du token) à chaque requête HTTP et WebSocket ; réponse `401 SESSION_REVOKED`. `delete_user` et la réinitialisation de mot de passe par un admin appellent `delete_user_sessions`. Une tâche Tokio purge les sessions expirées toutes les heures. Vérifié : logout → 401, reset mot de passe → 401 puis relogin OK, suppression → 401.
+
+### ~~28. Mise à jour système sans vérification d'intégrité~~ — CORRIGE
+
+**`backend/src/services/update.rs`, `scripts/build-release.sh`**
+
+~~L'archive `pinas-update-*.tar.gz` était téléchargée depuis GitHub et extraite sans aucun contrôle : une compromission du compte GitHub ou une interception TLS permettait l'exécution de code en root sur tous les appareils.~~
+
+**Correction** : `build-release.sh` publie `<archive>.sha256` à côté de l'archive. `install_update` télécharge le fichier de somme, vérifie le SHA-256 (`verify_sha256`, testé) et **refuse toute release qui n'en fournit pas**. Étape suivante possible : signature minisign avec clé publique embarquée.
+
+### ~~29. Partages Samba : `guest ok` contournait les permissions~~ — CORRIGE
+
+**`backend/src/services/share.rs`**
+
+~~Tous les partages tournent avec `force user = root`. Si `guest_ok` était coché, `valid users` n'était pas émis et un invité écrivait en root malgré les `folder_permissions`.~~
+
+**Correction** : un partage portant au moins une permission `read`/`write` est généré avec `guest ok = no` quel que soit le réglage UI (avertissement dans les logs), et `valid users` est toujours émis. Décision documentée : `force user = root` est conservé (LibreELEC est mono-utilisateur, `/etc/passwd` en lecture seule), les ACL sont portées par `valid users`/`read list`/`write list`.
+
+### ~~30. Rate limiting login : par utilisateur seulement~~ — CORRIGE
+
+**`backend/src/api/auth.rs`, `backend/src/main.rs`**
+
+**Correction** : en plus de la limite par nom d'utilisateur (5/min), limite par IP source (20/min) via `ConnectInfo<SocketAddr>` ; le serveur est démarré avec `into_make_service_with_connect_info`. Vérifié : 6ᵉ tentative → 429.
+
+### 31. À valider sur le Pi (non testable en sandbox)
+
+- `pinas.service` : `ProtectSystem=strict` + `ReadWritePaths=/etc /var` sur le squashfs LibreELEC → l'unité démarre-t-elle ? (`journalctl -u pinas`)
+- `smbpasswd -a` exige un utilisateur Unix : création d'un utilisateur PiNAS → accès SMB effectif ?
+- `GET /api/services` renvoie 500 hors LibreELEC (`systemctl` absent) : le mode dev n'est pas honoré dans `ServiceManager::list_services` (→ Phase 1).

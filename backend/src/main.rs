@@ -7,6 +7,7 @@ use axum::{
     response::IntoResponse,
     routing::get,
     Json, Router,
+    middleware,
 };
 use serde::Serialize;
 use tokio::sync::{broadcast, Mutex};
@@ -114,6 +115,20 @@ async fn main() -> anyhow::Result<()> {
     // Apply saved disk power settings on boot
     services::storage::StorageService::apply_power_settings_on_boot(&db_for_power, dev_mode).await;
 
+    // Purge expired sessions every hour (sessions are checked on every request)
+    let db_for_sessions = state.db.clone();
+    tokio::spawn(async move {
+        let mut ticker = tokio::time::interval(std::time::Duration::from_secs(3600));
+        loop {
+            ticker.tick().await;
+            match services::session::cleanup_expired_sessions(&db_for_sessions).await {
+                Ok(n) if n > 0 => tracing::info!("Purged {} expired sessions", n),
+                Ok(_) => {}
+                Err(e) => tracing::warn!("Session cleanup failed: {}", e),
+            }
+        }
+    });
+
     // Capture TLS paths before state is moved into router
     let tls_cert_path = state.config.tls_cert_path.clone();
     let tls_key_path = state.config.tls_key_path.clone();
@@ -133,12 +148,16 @@ async fn main() -> anyhow::Result<()> {
 
         tracing::info!("PiNAS server starting on https://{}", addr);
         axum_server::bind_rustls(addr, tls_config)
-            .serve(app.into_make_service())
+            .serve(app.into_make_service_with_connect_info::<SocketAddr>())
             .await?;
     } else {
         tracing::info!("PiNAS server starting on http://{}", addr);
         let listener = tokio::net::TcpListener::bind(addr).await?;
-        axum::serve(listener, app).await?;
+        axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<SocketAddr>(),
+        )
+        .await?;
     }
 
     Ok(())
@@ -164,35 +183,49 @@ fn create_router(state: AppState) -> Router {
 
     let static_dir = state.config.static_dir.clone();
 
-    let mut app = Router::new()
-        // Health check
-        .route("/api/health", get(health_check))
-        // API routes
-        .nest("/api/auth", api::auth::router())
-        .nest("/api/setup", api::setup::router())
+    // Routers whose every route is administrative: system-level operations that
+    // no regular user should reach, even read-only.
+    let admin_only = |router: Router<AppState>| {
+        router.route_layer(middleware::from_fn(api::middleware::require_admin))
+    };
+
+    // Everything below requires a valid, non-revoked session. Handlers may
+    // additionally take `AuthUser` / `AdminUser` for finer-grained checks.
+    let protected = Router::new()
         .nest("/api/files", api::files::router())
-        .nest("/api/system/update", api::update::router())
+        .nest("/api/system/update", admin_only(api::update::router()))
         .nest("/api/system", api::system::router())
-        .nest("/api/storage", api::storage::router())
+        .nest("/api/storage", admin_only(api::storage::router()))
         .nest("/api/shares", api::shares::router())
         .nest("/api/users", api::users::router())
         .nest("/api/groups", api::groups::router())
-        .nest("/api/packages", api::packages::router())
-        .nest("/api/docker", api::docker::router())
+        .nest("/api/packages", admin_only(api::packages::router()))
+        .nest("/api/docker", admin_only(api::docker::router()))
         .nest("/api/apps", api::apps::router())
         .nest("/api/services", api::services::router())
-        .nest("/api/terminal", api::terminal::router())
+        .nest("/api/terminal", admin_only(api::terminal::router()))
         .nest("/api/locations", api::locations::router())
-        .nest("/api/display", api::display::router())
+        .nest("/api/display", admin_only(api::display::router()))
         .nest("/api/kodi", api::kodi::router())
         .nest("/api/network", api::network::router())
         .nest("/api/permissions", api::permissions::router())
         .nest("/api/preferences", api::preferences::router())
         .nest("/api/service-access", api::service_access::router())
         .nest("/api/ssh", api::ssh::router())
-        .nest("/api/cups", api::cups::router())
-        // WebSocket
+        .nest("/api/cups", admin_only(api::cups::router()))
+        .route_layer(middleware::from_fn_with_state(
+            state.clone(),
+            api::middleware::require_auth,
+        ));
+
+    let mut app = Router::new()
+        // Public: health, login/logout, first-boot setup (self-guarded),
+        // WebSocket (validates its own token, which may come from the query string)
+        .route("/api/health", get(health_check))
+        .nest("/api/auth", api::auth::router())
+        .nest("/api/setup", api::setup::router())
         .route("/api/ws", get(api::ws::ws_handler))
+        .merge(protected)
         // State
         .with_state(state);
 

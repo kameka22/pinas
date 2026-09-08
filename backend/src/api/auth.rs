@@ -4,6 +4,7 @@ use axum::{
     response::IntoResponse,
     routing::{get, post},
     Json, Router,
+    extract::ConnectInfo,
 };
 use chrono::{Duration, Utc};
 use serde::{Deserialize, Serialize};
@@ -22,6 +23,9 @@ use crate::AppState;
 /// Login rate limiting: max 5 attempts per 60 seconds per username
 const LOGIN_RATE_LIMIT_MAX: usize = 5;
 const LOGIN_RATE_LIMIT_WINDOW_SECS: u64 = 60;
+/// Per-source-IP budget: higher than the per-user one so a NAT'd household with a
+/// mistyped password isn't locked out, but low enough to stop username spraying.
+const LOGIN_IP_RATE_LIMIT_MAX: usize = 20;
 
 static LOGIN_RATE_LIMITER: std::sync::LazyLock<Mutex<HashMap<String, Vec<Instant>>>> =
     std::sync::LazyLock::new(|| Mutex::new(HashMap::new()));
@@ -36,6 +40,24 @@ fn check_login_rate_limit(username: &str) -> bool {
     timestamps.retain(|t| now.duration_since(*t) < window);
 
     if timestamps.len() >= LOGIN_RATE_LIMIT_MAX {
+        return false;
+    }
+
+    timestamps.push(now);
+    true
+}
+
+/// Check login rate limit for a client IP. Returns true if allowed.
+fn check_login_ip_rate_limit(ip: &std::net::IpAddr) -> bool {
+    let mut map = LOGIN_RATE_LIMITER.lock().unwrap();
+    let now = Instant::now();
+    let window = std::time::Duration::from_secs(LOGIN_RATE_LIMIT_WINDOW_SECS);
+
+    // Keyed with a prefix so it can't collide with a username
+    let timestamps = map.entry(format!("ip:{}", ip)).or_default();
+    timestamps.retain(|t| now.duration_since(*t) < window);
+
+    if timestamps.len() >= LOGIN_IP_RATE_LIMIT_MAX {
         return false;
     }
 
@@ -80,10 +102,11 @@ pub struct ChangePasswordRequest {
 /// Login endpoint
 async fn login(
     State(state): State<AppState>,
+    ConnectInfo(addr): ConnectInfo<std::net::SocketAddr>,
     Json(payload): Json<LoginRequest>,
 ) -> impl IntoResponse {
-    // Rate limit check (per username)
-    if !check_login_rate_limit(&payload.username) {
+    // Rate limit check (per source IP, then per username)
+    if !check_login_ip_rate_limit(&addr.ip()) || !check_login_rate_limit(&payload.username) {
         return (
             StatusCode::TOO_MANY_REQUESTS,
             Json(AuthErrorResponse {

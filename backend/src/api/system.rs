@@ -255,7 +255,7 @@ async fn shutdown(
 }
 
 /// Get list of running processes
-async fn get_processes(State(_state): State<AppState>) -> impl IntoResponse {
+async fn get_processes(State(_state): State<AppState>, _admin: AdminUser) -> impl IntoResponse {
     let mut sys = System::new_all();
     sys.refresh_all();
 
@@ -327,6 +327,7 @@ async fn get_processes(State(_state): State<AppState>) -> impl IntoResponse {
 /// Kill a process by PID
 async fn kill_process(
     State(_state): State<AppState>,
+    _admin: AdminUser,
     Path(pid): Path<u32>,
 ) -> impl IntoResponse {
     let mut sys = System::new_all();
