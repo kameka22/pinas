@@ -63,7 +63,7 @@ PiNAS transforms your Raspberry Pi into a full-featured NAS with a modern web in
 ### Prerequisites
 
 - Docker (for building — no local Rust/cargo needed)
-- Node.js 20+ / npm (for frontend dev)
+- Node.js 22+ / npm (for frontend dev)
 
 ### Frontend Dev
 

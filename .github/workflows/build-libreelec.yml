@@ -11,7 +11,6 @@ on:
       - '.github/workflows/build-libreelec.yml'
 
 env:
-  LIBREELEC_BRANCH: libreelec-12.2
   PROJECT: RPi
   DEVICE: RPi5
   ARCH: aarch64
@@ -55,7 +54,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
@@ -79,6 +78,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Read LibreELEC branch (libreelec/BRANCH)
+        run: echo "LIBREELEC_BRANCH=$(tr -d '[:space:]' < libreelec/BRANCH)" >> "$GITHUB_ENV"
 
       - name: Download backend artifact
         uses: actions/download-artifact@v4

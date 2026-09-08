@@ -47,7 +47,7 @@ rustup target add aarch64-unknown-linux-musl
 ### 3. Installer Node.js
 
 ```bash
-curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
 sudo apt-get install -y nodejs
 ```
 
@@ -77,7 +77,7 @@ cp -r frontend/build/* libreelec/packages/pinas/www/
 # Cloner LibreELEC
 mkdir -p extra
 cd extra
-git clone --branch libreelec-12.2 https://github.com/LibreELEC/LibreELEC.tv.git
+git clone --branch "$(cat ../libreelec/BRANCH)" https://github.com/LibreELEC/LibreELEC.tv.git   # branche définie dans libreelec/BRANCH
 cd LibreELEC.tv
 
 # Installer le package PiNAS

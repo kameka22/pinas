@@ -8,7 +8,8 @@ set -e
 # Configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-LIBREELEC_BRANCH="libreelec-12.2"
+# Branche LibreELEC cible : une seule source de vérité dans libreelec/BRANCH (surchargeable par env)
+LIBREELEC_BRANCH="${LIBREELEC_BRANCH:-$(tr -d '[:space:]' < "${PROJECT_ROOT}/libreelec/BRANCH")}"
 PROJECT="Virtual"
 ARCH="aarch64"
 RUST_TARGET="aarch64-unknown-linux-musl"

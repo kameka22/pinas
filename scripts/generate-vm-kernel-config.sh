@@ -30,7 +30,7 @@ fi
 # Check that RPi5 config exists
 if [ ! -f "$SOURCE_CONFIG" ]; then
     echo -e "${RED}Error: RPi5 kernel config not found at ${SOURCE_CONFIG}${NC}"
-    echo "Make sure you're on the correct LibreELEC branch (libreelec-12.2)"
+    echo "Make sure you're on the correct LibreELEC branch ($(tr -d '[:space:]' < "${PROJECT_ROOT}/libreelec/BRANCH"))"
     exit 1
 fi
 

@@ -45,6 +45,7 @@ PiNAS est un système d'exploitation NAS moderne, inspiré de Synology DSM, con�
 │       ├── stores/           # api, desktop, windows, websocket, system, update, onboarding, power, taskManager
 │       └── i18n/             # en, fr
 ├── libreelec/                # Package LibreELEC (voir libreelec/CLAUDE.md)
+│   ├── BRANCH                # Branche LibreELEC cible (lue par scripts/ et la CI)
 │   └── packages/pinas/      # package.mk, bin/, system.d/, tmpfiles.d/
 ├── app-catalog/              # Catalogue d'apps (voir app-catalog/CLAUDE.md)
 ├── scripts/                  # build-arm64.sh, deploy-pi.sh, etc.
