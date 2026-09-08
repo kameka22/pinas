@@ -378,7 +378,7 @@ async fn list_files(
 
     // Ensure base directory exists
     if !base_path.exists() {
-        if let Err(e) = fs::create_dir_all(&base_path) {
+        if let Err(e) = tokio::fs::create_dir_all(&base_path).await {
             return ApiError::internal(format!("Failed to create files directory: {}", e)).into_response();
         }
     }
@@ -403,7 +403,7 @@ async fn list_files(
     }
 
     // Read directory entries
-    let entries = match fs::read_dir(&full_path) {
+    let mut entries = match tokio::fs::read_dir(&full_path).await {
         Ok(e) => e,
         Err(e) => {
             return ApiError::internal(format!("Failed to read directory: {}", e)).into_response();
@@ -415,7 +415,7 @@ async fn list_files(
 
     let mut files: Vec<FileItem> = Vec::new();
 
-    for entry in entries.flatten() {
+    while let Ok(Some(entry)) = entries.next_entry().await {
         let path = entry.path();
         let name = entry.file_name().to_string_lossy().to_string();
 
@@ -424,7 +424,7 @@ async fn list_files(
             continue;
         }
 
-        let metadata = match entry.metadata() {
+        let metadata = match entry.metadata().await {
             Ok(m) => m,
             Err(_) => continue,
         };
@@ -604,9 +604,9 @@ async fn delete_file(
 
     // Delete
     let result = if full_path.is_dir() {
-        fs::remove_dir_all(&full_path)
+        tokio::fs::remove_dir_all(&full_path).await
     } else {
-        fs::remove_file(&full_path)
+        tokio::fs::remove_file(&full_path).await
     };
 
     match result {
@@ -668,7 +668,7 @@ async fn rename_file(
     }
 
     // Rename
-    if let Err(e) = fs::rename(&full_path, &new_path) {
+    if let Err(e) = tokio::fs::rename(&full_path, &new_path).await {
         return ApiError::internal(format!("Failed to rename: {}", e)).into_response();
     }
 
@@ -742,7 +742,7 @@ async fn create_file(
     }
 
     // Create the empty file
-    if let Err(e) = fs::File::create(&new_file_path) {
+    if let Err(e) = tokio::fs::File::create(&new_file_path).await {
         return ApiError::internal(format!("Failed to create file: {}", e)).into_response();
     }
 
@@ -971,7 +971,8 @@ async fn copy_files(
     let task_id_clone = task_id.clone();
 
     // Spawn background task for the copy operation
-    tokio::spawn(async move {
+    // Pure filesystem work (no awaits inside): keep it off the async workers
+    tokio::task::spawn_blocking(move || {
         let total = resolved_sources.len();
         for (i, (source_path, name)) in resolved_sources.iter().enumerate() {
             let progress = ((i as f64 / total as f64) * 100.0) as i32;
@@ -1078,7 +1079,8 @@ async fn move_files(
     let task_id_clone = task_id.clone();
 
     // Spawn background task for the move operation
-    tokio::spawn(async move {
+    // Pure filesystem work (no awaits inside): keep it off the async workers
+    tokio::task::spawn_blocking(move || {
         let total = resolved_sources.len();
         for (i, (source_path, name)) in resolved_sources.iter().enumerate() {
             let progress = ((i as f64 / total as f64) * 100.0) as i32;
