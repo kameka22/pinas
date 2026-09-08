@@ -1,34 +1,35 @@
 [package]
 name = "pinas"
 version = "0.10.0"
-edition = "2021"
+edition = "2024"
+rust-version = "1.95"
 description = "PiNAS - Modern NAS OS Backend"
 authors = ["PiNAS Team"]
 license = "GPL-3.0"
 
 [dependencies]
 # Web framework
-axum = { version = "0.7", features = ["ws", "multipart", "macros"] }
-tower-http = { version = "0.5", features = ["cors", "fs", "trace", "compression-gzip", "set-header"] }
+axum = { version = "0.8", features = ["ws", "multipart", "macros"] }
+tower-http = { version = "0.7", features = ["cors", "fs", "trace", "compression-gzip", "set-header"] }
 
 # Async runtime
 tokio = { version = "1", features = ["full"] }
 futures-util = "0.3"
 
 # Database
-sqlx = { version = "0.7", features = ["runtime-tokio", "sqlite", "migrate"] }
+sqlx = { version = "0.9", features = ["runtime-tokio", "sqlite", "migrate"] }
 
 # Serialization
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
 # Auth
-jsonwebtoken = "9"
-argon2 = "0.5"
+jsonwebtoken = { version = "11", features = ["rust_crypto"] }
+argon2 = "0.6"
 
 # System
-nix = { version = "0.27", features = ["fs", "mount", "user", "process", "signal"] }
-sysinfo = "0.30"
+nix = { version = "0.31", features = ["fs", "mount", "user", "process", "signal"] }
+sysinfo = "0.39"
 
 # Logging
 tracing = "0.1"
@@ -37,18 +38,18 @@ tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
 # Utils
 uuid = { version = "1", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
-thiserror = "1"
+thiserror = "2"
 anyhow = "1"
 dotenvy = "0.15"
 
 # Config
-config = "0.14"
+config = "0.15"
 
 # Docker
-bollard = "0.16"
+bollard = "0.21"
 
 # HTTP client (for fetching manifests)
-reqwest = { version = "0.11", features = ["json", "rustls-tls"], default-features = false }
+reqwest = { version = "0.13", features = ["json", "rustls"], default-features = false }
 
 # Archive extraction
 flate2 = "1.0"
@@ -62,21 +63,22 @@ sha2 = "0.10"
 hex = "0.4"
 
 # Secure random number generation
-getrandom = "0.2"
+getrandom = "0.4"
 
 # TLS (HTTPS)
-axum-server = { version = "0.7", features = ["tls-rustls"] }
-rcgen = "0.13"
+axum-server = { version = "0.8", features = ["tls-rustls"] }
+rcgen = "0.14"
 rustls = "0.23"
 
 # Base64
-base64 = "0.21"
+base64 = "0.23"
 
 # Hostname
 hostname = "0.4"
 
 [dev-dependencies]
 tokio-test = "0.4"
+tempfile = "3"
 
 [profile.release]
 lto = true

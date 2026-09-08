@@ -1,5 +1,4 @@
 use axum::{
-    async_trait,
     extract::FromRequestParts,
     http::{header, header::AUTHORIZATION, request::Parts, StatusCode},
     response::{IntoResponse, Response},
@@ -59,7 +58,6 @@ impl IntoResponse for AuthError {
 
 /// Extractor for authenticated users
 /// Extracts and validates the JWT from the Authorization header
-#[async_trait]
 impl FromRequestParts<AppState> for AuthUser {
     type Rejection = Response;
 
@@ -117,7 +115,6 @@ impl std::ops::Deref for AdminUser {
     }
 }
 
-#[async_trait]
 impl FromRequestParts<AppState> for AdminUser {
     type Rejection = Response;
 
@@ -144,7 +141,6 @@ impl FromRequestParts<AppState> for AdminUser {
 #[derive(Debug, Clone)]
 pub struct OptionalAuthUser(pub Option<AuthUser>);
 
-#[async_trait]
 impl FromRequestParts<AppState> for OptionalAuthUser {
     type Rejection = Response;
 

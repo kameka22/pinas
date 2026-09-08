@@ -15,7 +15,7 @@ use crate::AppState;
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/registry", get(get_registry))
-        .route("/:id/i18n/:locale", get(get_app_translations))
+        .route("/{id}/i18n/{locale}", get(get_app_translations))
 }
 
 /// Get all installed apps with window support (for frontend registry)
