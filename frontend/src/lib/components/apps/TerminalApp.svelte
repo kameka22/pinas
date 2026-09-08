@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount, tick } from 'svelte';
+	import { get } from 'svelte/store';
 	import { t } from '$lib/i18n';
 	import { auth } from '$stores/api';
 	import { systemInfo } from '$stores/system';

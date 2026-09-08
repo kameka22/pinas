@@ -15,9 +15,7 @@ const config = {
 		}),
 		alias: {
 			$components: 'src/lib/components',
-			$stores: 'src/lib/stores',
-			$api: 'src/lib/api',
-			$types: 'src/lib/types'
+			$stores: 'src/lib/stores'
 		}
 	}
 };

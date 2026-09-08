@@ -26,10 +26,16 @@ pub fn router() -> Router<AppState> {
 pub struct SystemInfo {
     pub version: String,
     pub hostname: String,
+    /// Board model from /proc/device-tree/model (e.g. "Raspberry Pi 5 Model B Rev 1.0")
+    pub model: Option<String>,
+    /// SoC serial from /proc/cpuinfo
+    pub serial: Option<String>,
     pub os_name: String,
     pub os_version: String,
     pub kernel_version: String,
     pub uptime: u64,
+    /// Unix timestamp of the last boot
+    pub boot_time: u64,
     pub cpu: CpuInfo,
     pub memory: MemoryInfo,
     pub load_average: LoadAverage,
@@ -41,6 +47,35 @@ pub struct CpuInfo {
     pub model: String,
     pub cores: usize,
     pub usage: f32,
+    pub frequency_mhz: u64,
+    /// Celsius, from /sys/class/thermal/thermal_zone0
+    pub temperature: Option<f32>,
+}
+
+fn read_device_model() -> Option<String> {
+    std::fs::read_to_string("/proc/device-tree/model")
+        .ok()
+        .map(|s| s.trim_end_matches('\0').trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
+fn read_cpu_serial() -> Option<String> {
+    let cpuinfo = std::fs::read_to_string("/proc/cpuinfo").ok()?;
+    cpuinfo
+        .lines()
+        .filter_map(|line| line.split_once(':'))
+        .find(|(key, _)| key.trim() == "Serial")
+        .map(|(_, value)| value.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
+fn read_cpu_temperature() -> Option<f32> {
+    std::fs::read_to_string("/sys/class/thermal/thermal_zone0/temp")
+        .ok()?
+        .trim()
+        .parse::<f32>()
+        .ok()
+        .map(|millidegrees| millidegrees / 1000.0)
 }
 
 #[derive(Debug, Serialize)]
@@ -106,17 +141,32 @@ async fn get_info(State(state): State<AppState>) -> impl IntoResponse {
 
     let load_avg = System::load_average();
 
+    let (model, serial, temperature) = if state.config.dev_mode {
+        (
+            Some("Raspberry Pi 5 Model B (simulated)".to_string()),
+            Some("10000000deadbeef".to_string()),
+            Some(45.0),
+        )
+    } else {
+        (read_device_model(), read_cpu_serial(), read_cpu_temperature())
+    };
+
     let info = SystemInfo {
         version: include_str!("../../../VERSION").trim().to_string(),
         hostname: System::host_name().unwrap_or_else(|| "unknown".to_string()),
+        model,
+        serial,
         os_name: System::name().unwrap_or_else(|| "unknown".to_string()),
         os_version: System::os_version().unwrap_or_else(|| "unknown".to_string()),
         kernel_version: System::kernel_version().unwrap_or_else(|| "unknown".to_string()),
         uptime: System::uptime(),
+        boot_time: System::boot_time(),
         cpu: CpuInfo {
             model: sys.cpus().first().map(|c| c.brand().to_string()).unwrap_or_default(),
             cores: sys.cpus().len(),
             usage: cpu_usage,
+            frequency_mhz: sys.cpus().first().map(|c| c.frequency()).unwrap_or(0),
+            temperature,
         },
         memory: MemoryInfo {
             total: total_memory,

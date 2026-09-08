@@ -7,8 +7,10 @@
 	import PrinterSettings from './PrinterSettings.svelte';
 	import NetworkSettings from './NetworkSettings.svelte';
 	import UpdateSettings from './UpdateSettings.svelte';
+	import { onMount } from 'svelte';
 	import { t } from '$lib/i18n';
-	import { systemInfo as systemInfoStore } from '$stores/system';
+	import { systemInfo as systemInfoStore, formatBytes, formatUptime } from '$stores/system';
+	import { api, auth, type NetworkInterface } from '$stores/api';
 	import { gradientStyle } from '$lib/utils/gradient';
 
 	export let config: { section?: string } | undefined = undefined;
@@ -110,34 +112,42 @@
 	let selectedItem: string | null = config?.section || null;
 	let activeTab = 'general';
 
-	// Mock system data
-	const systemInfo = {
-		deviceName: 'PiNAS-001',
-		systemVersion: $systemInfoStore?.version || '0.01',
-		deviceOwner: 'admin',
-		model: 'Raspberry Pi 5',
-		serialNumber: 'RPI5-XXXX-XXXX',
-		lastStartup: new Date().toLocaleString(),
-		powerTime: '02 hours 15 minutes',
+	// Primary network interface for the "About" card
+	let primaryInterface: NetworkInterface | null = null;
+	onMount(async () => {
+		try {
+			const status = await api.getNetworkStatus();
+			primaryInterface =
+				status.interfaces.find((i) => i.ip_address) ?? status.interfaces[0] ?? null;
+		} catch {
+			// Network card simply stays empty
+		}
+	});
+
+	const NA = '—';
+	$: systemInfo = {
+		deviceName: $systemInfoStore?.hostname ?? NA,
+		systemVersion: $systemInfoStore?.version ?? NA,
+		deviceOwner: $auth.user?.username ?? NA,
+		model: $systemInfoStore?.model ?? NA,
+		serialNumber: $systemInfoStore?.serial ?? NA,
+		lastStartup: $systemInfoStore ? new Date($systemInfoStore.bootTime * 1000).toLocaleString() : NA,
+		powerTime: $systemInfoStore ? formatUptime($systemInfoStore.uptime) : NA,
 		cpu: {
-			model: 'ARM Cortex-A76',
-			freq: '2400',
-			cores: '4',
-			threads: '4',
-			temp: '45'
+			model: $systemInfoStore?.cpu.model || NA,
+			freq: $systemInfoStore?.cpu.frequencyMhz ? `${$systemInfoStore.cpu.frequencyMhz} MHz` : null,
+			cores: $systemInfoStore?.cpu.cores ?? NA,
+			temp: $systemInfoStore?.cpu.temperature != null ? `${Math.round($systemInfoStore.cpu.temperature)}°C` : null
 		},
 		memory: {
-			model: 'LPDDR4X',
-			size: '8 GB',
-			speed: '4267 MHz'
+			size: $systemInfoStore ? formatBytes($systemInfoStore.memory.total) : NA
 		},
 		network: {
-			interface: 'eth0',
-			ip: '192.168.1.100',
-			speed: '1Gbps',
-			mtu: '1500',
-			mac: 'dc:a6:32:xx:xx:xx',
-			subnet: '255.255.255.0'
+			interface: primaryInterface?.display_name || primaryInterface?.name || NA,
+			ip: primaryInterface?.ip_address || NA,
+			speed: primaryInterface?.speed || null,
+			mac: primaryInterface?.mac_address || NA,
+			subnet: primaryInterface?.subnet_mask || NA
 		}
 	};
 
@@ -332,24 +342,22 @@
 									<span class="info-label">{$t.controlPanel.about.cpu}</span>
 									<span class="info-value hardware-specs">
 										{systemInfo.cpu.model}
-										<span class="spec-divider">|</span>
-										{systemInfo.cpu.freq}
+										{#if systemInfo.cpu.freq}
+											<span class="spec-divider">|</span>
+											{systemInfo.cpu.freq}
+										{/if}
 										<span class="spec-divider">|</span>
 										{systemInfo.cpu.cores} {$t.controlPanel.about.cores}
-										<span class="spec-divider">|</span>
-										{systemInfo.cpu.threads} {$t.controlPanel.about.threads}
-										<span class="spec-divider">|</span>
-										{systemInfo.cpu.temp}°C
+										{#if systemInfo.cpu.temp}
+											<span class="spec-divider">|</span>
+											{systemInfo.cpu.temp}
+										{/if}
 									</span>
 								</div>
 								<div class="info-line">
 									<span class="info-label">{$t.controlPanel.about.memory}</span>
 									<span class="info-value hardware-specs">
-										{systemInfo.memory.model}
-										<span class="spec-divider">|</span>
 										{systemInfo.memory.size}
-										<span class="spec-divider">|</span>
-										{systemInfo.memory.speed}
 									</span>
 								</div>
 							</div>
@@ -369,10 +377,10 @@
 									<span class="info-label">{systemInfo.network.interface}</span>
 									<span class="info-value hardware-specs">
 										{systemInfo.network.ip}
-										<span class="spec-divider">|</span>
-										{systemInfo.network.speed}
-										<span class="spec-divider">|</span>
-										MTU{systemInfo.network.mtu}
+										{#if systemInfo.network.speed}
+											<span class="spec-divider">|</span>
+											{systemInfo.network.speed}
+										{/if}
 									</span>
 								</div>
 								<div class="info-line">

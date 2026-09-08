@@ -162,11 +162,14 @@ class ApiClient {
 		return this.get<{
 			version: string;
 			hostname: string;
+			model: string | null;
+			serial: string | null;
 			os_name: string;
 			os_version: string;
 			kernel_version: string;
 			uptime: number;
-			cpu: { model: string; cores: number; usage: number };
+			boot_time: number;
+			cpu: { model: string; cores: number; usage: number; frequency_mhz: number; temperature: number | null };
 			memory: { total: number; used: number; available: number; usage_percent: number };
 			load_average: { one: number; five: number; fifteen: number };
 			dev_mode: boolean;

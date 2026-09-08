@@ -9,8 +9,6 @@ license = "GPL-3.0"
 [dependencies]
 # Web framework
 axum = { version = "0.7", features = ["ws", "multipart", "macros"] }
-axum-extra = { version = "0.9", features = ["typed-header"] }
-tower = "0.4"
 tower-http = { version = "0.5", features = ["cors", "fs", "trace", "compression-gzip", "set-header"] }
 
 # Async runtime
@@ -31,7 +29,6 @@ argon2 = "0.5"
 # System
 nix = { version = "0.27", features = ["fs", "mount", "user", "process", "signal"] }
 sysinfo = "0.30"
-tokio-process = "0.2"
 
 # Logging
 tracing = "0.1"
@@ -58,7 +55,6 @@ flate2 = "1.0"
 tar = "0.4"
 
 # Async utilities
-tokio-stream = "0.1"
 async-trait = "0.1"
 
 # SHA256 verification
@@ -72,7 +68,6 @@ getrandom = "0.2"
 axum-server = { version = "0.7", features = ["tls-rustls"] }
 rcgen = "0.13"
 rustls = "0.23"
-rustls-pemfile = "2"
 
 # Base64
 base64 = "0.21"

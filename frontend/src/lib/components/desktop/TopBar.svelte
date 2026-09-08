@@ -73,7 +73,7 @@
 		const action = powerModal.action;
 		closePowerModal();
 		const info = get(systemInfo);
-		if (info.devMode) {
+		if (info?.devMode) {
 			console.log(`[DEV] ${action} requested (no-op in dev mode)`);
 			return;
 		}
@@ -113,12 +113,26 @@
 			systemInfo.set({
 				version: info.version,
 				hostname: info.hostname,
+				model: info.model ?? null,
+				serial: info.serial ?? null,
 				osName: info.os_name,
 				osVersion: info.os_version,
 				kernelVersion: info.kernel_version,
 				uptime: info.uptime,
-				cpu: info.cpu,
-				memory: info.memory,
+				bootTime: info.boot_time,
+				cpu: {
+					model: info.cpu.model,
+					cores: info.cpu.cores,
+					usage: info.cpu.usage,
+					frequencyMhz: info.cpu.frequency_mhz,
+					temperature: info.cpu.temperature ?? null
+				},
+				memory: {
+					total: info.memory.total,
+					used: info.memory.used,
+					available: info.memory.available,
+					usagePercent: info.memory.usage_percent
+				},
 				loadAverage: info.load_average,
 				devMode: info.dev_mode ?? false,
 			});

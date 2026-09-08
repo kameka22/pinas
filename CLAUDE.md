@@ -30,7 +30,7 @@ PiNAS est un système d'exploitation NAS moderne, inspiré de Synology DSM, con�
 ```
 /
 ├── CLAUDE.md                 # Ce fichier (instructions globales)
-├── TODO.md / MVP.md / BUILD.md
+├── TODO.md / BUILD.md / STORAGE_MANAGER.md / SECURITY_AUDIT.md
 ├── backend/                  # API Rust (voir backend/CLAUDE.md)
 │   ├── src/
 │   │   ├── api/              # Handlers REST + WebSocket + middleware
@@ -128,5 +128,6 @@ RUST_LOG=pinas=info,tower_http=info
 
 ### Dev local
 - Pas de cargo installé localement, builds via Docker
-- `npm run check` peut échouer (rollup ARM64 mismatch), utiliser Docker
+- `npm run check` / `npm run build` échouent en local si le binaire natif rollup manque (bug npm optionalDependencies) : `cd frontend && npm install --no-save @rollup/rollup-linux-arm64-gnu@$(node -p "require('./node_modules/rollup/package.json').version")` (adapter la plateforme), sans toucher au lock
+- Pas de lint configuré (ESLint retiré) ; `npm run check` = svelte-check
 - Docker n'est PAS une app built-in, il s'installe via App Center
