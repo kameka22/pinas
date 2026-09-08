@@ -1,5 +1,5 @@
 # Development Dockerfile for Rust backend
-FROM rust:1.89-slim
+FROM rust:1.98-slim
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \

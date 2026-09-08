@@ -128,7 +128,7 @@ async fn handle_socket(
                 _ = stats_interval.tick() => {
                     sys.refresh_all();
 
-                    let cpu_usage = sys.global_cpu_info().cpu_usage();
+                    let cpu_usage = sys.global_cpu_usage();
                     let memory_total = sys.total_memory();
                     let memory_used = sys.used_memory();
                     let memory_usage = (memory_used as f32 / memory_total as f32) * 100.0;
@@ -141,7 +141,7 @@ async fn handle_socket(
                     });
 
                     let msg = serde_json::to_string(&event).unwrap();
-                    if sender.send(Message::Text(msg)).await.is_err() {
+                    if sender.send(Message::Text(msg.into())).await.is_err() {
                         break;
                     }
                 }
@@ -150,7 +150,7 @@ async fn handle_socket(
                         Ok(progress) => {
                             let event = WsEvent::TaskProgress(progress);
                             let msg = serde_json::to_string(&event).unwrap();
-                            if sender.send(Message::Text(msg)).await.is_err() {
+                            if sender.send(Message::Text(msg.into())).await.is_err() {
                                 break;
                             }
                         }
@@ -167,7 +167,7 @@ async fn handle_socket(
                         Ok(file_event) => {
                             let event = WsEvent::FileTask(file_event);
                             let msg = serde_json::to_string(&event).unwrap();
-                            if sender.send(Message::Text(msg)).await.is_err() {
+                            if sender.send(Message::Text(msg.into())).await.is_err() {
                                 break;
                             }
                         }
@@ -184,7 +184,7 @@ async fn handle_socket(
                         Ok(alert) => {
                             let event = WsEvent::StorageAlert(alert);
                             let msg = serde_json::to_string(&event).unwrap();
-                            if sender.send(Message::Text(msg)).await.is_err() {
+                            if sender.send(Message::Text(msg.into())).await.is_err() {
                                 break;
                             }
                         }

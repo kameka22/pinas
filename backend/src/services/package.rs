@@ -86,7 +86,7 @@ impl PackageService {
 
         // Generate random app password (32 hex chars = 16 bytes of entropy)
         let mut pwd_bytes = [0u8; 16];
-        getrandom::getrandom(&mut pwd_bytes).unwrap_or_else(|_| {
+        getrandom::fill(&mut pwd_bytes).unwrap_or_else(|_| {
             // Fallback: use uuid if getrandom fails
             let fallback = uuid::Uuid::new_v4().to_string().replace('-', "");
             pwd_bytes.copy_from_slice(&fallback.as_bytes()[..16]);

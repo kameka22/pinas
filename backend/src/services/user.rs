@@ -95,21 +95,24 @@ pub async fn create_user_with_home(
             let permission_service = PermissionService::new(db.clone());
             let home_path_str = home_path.to_string_lossy().to_string();
 
-            if let Err(e) = permission_service
+            match permission_service
                 .create(&home_path_str, Some(&user.id), None, PermissionLevel::Write)
                 .await
             {
-                tracing::warn!(
-                    "Failed to create home permission for user {}: {}",
-                    username,
-                    e
-                );
-            } else {
-                tracing::info!(
-                    "Created write permission for user {} on home directory {}",
-                    username,
-                    home_path_str
-                );
+                Err(e) => {
+                    tracing::warn!(
+                        "Failed to create home permission for user {}: {}",
+                        username,
+                        e
+                    );
+                }
+                Ok(_) => {
+                    tracing::info!(
+                        "Created write permission for user {} on home directory {}",
+                        username,
+                        home_path_str
+                    );
+                }
             }
         }
         Err(e) => {

@@ -23,20 +23,20 @@ pub fn router() -> Router<AppState> {
         .route("/playback/next", post(next))
         .route("/playback/volume", get(get_volume).post(set_volume))
         // Input/Navigation
-        .route("/input/:action", post(input_action))
+        .route("/input/{action}", post(input_action))
         // Media Sources
         .route("/sources", get(get_sources).post(add_source))
-        .route("/sources/:id", delete(remove_source))
+        .route("/sources/{id}", delete(remove_source))
         // Settings
         .route("/settings", get(get_settings))
-        .route("/settings/:setting_id", put(set_setting))
+        .route("/settings/{setting_id}", put(set_setting))
         // Addons
         .route("/addons", get(get_addons))
-        .route("/addons/:addon_id/enable", post(enable_addon))
-        .route("/addons/:addon_id/disable", post(disable_addon))
+        .route("/addons/{addon_id}/enable", post(enable_addon))
+        .route("/addons/{addon_id}/disable", post(disable_addon))
         // Library
-        .route("/library/:library_type/scan", post(scan_library))
-        .route("/library/:library_type/clean", post(clean_library))
+        .route("/library/{library_type}/scan", post(scan_library))
+        .route("/library/{library_type}/clean", post(clean_library))
         // System
         .route("/notification", post(send_notification))
         .route("/reboot", post(reboot))

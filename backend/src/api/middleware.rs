@@ -1,5 +1,4 @@
 use axum::{
-    async_trait,
     extract::{FromRequestParts, Request, State},
     http::{header, header::AUTHORIZATION, request::Parts, HeaderMap, StatusCode},
     middleware::Next,
@@ -145,7 +144,6 @@ pub async fn require_admin(req: Request, next: Next) -> Response {
 /// Extractor for authenticated users.
 /// Reuses the user resolved by `require_auth` when present; otherwise (public
 /// routers such as /api/auth) performs the full validation itself.
-#[async_trait]
 impl FromRequestParts<AppState> for AuthUser {
     type Rejection = Response;
 
@@ -175,7 +173,6 @@ impl std::ops::Deref for AdminUser {
     }
 }
 
-#[async_trait]
 impl FromRequestParts<AppState> for AdminUser {
     type Rejection = Response;
 
@@ -195,7 +192,6 @@ impl FromRequestParts<AppState> for AdminUser {
 #[derive(Debug, Clone)]
 pub struct OptionalAuthUser(pub Option<AuthUser>);
 
-#[async_trait]
 impl FromRequestParts<AppState> for OptionalAuthUser {
     type Rejection = Response;
 

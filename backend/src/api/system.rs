@@ -134,7 +134,7 @@ async fn get_info(State(state): State<AppState>) -> impl IntoResponse {
     let mut sys = System::new_all();
     sys.refresh_all();
 
-    let cpu_usage = sys.global_cpu_info().cpu_usage();
+    let cpu_usage = sys.global_cpu_usage();
     let total_memory = sys.total_memory();
     let used_memory = sys.used_memory();
     let available_memory = sys.available_memory();
@@ -265,7 +265,7 @@ async fn get_processes(State(_state): State<AppState>, _admin: AdminUser) -> imp
 
     let total_memory = sys.total_memory();
     let used_memory = sys.used_memory();
-    let cpu_usage = sys.global_cpu_info().cpu_usage();
+    let cpu_usage = sys.global_cpu_usage();
     let memory_usage = (used_memory as f32 / total_memory as f32) * 100.0;
 
     let mut processes: Vec<ProcessInfo> = sys
@@ -295,13 +295,13 @@ async fn get_processes(State(_state): State<AppState>, _admin: AdminUser) -> imp
 
             ProcessInfo {
                 pid: pid.as_u32(),
-                name: process.name().to_string(),
+                name: process.name().to_string_lossy().into_owned(),
                 user,
                 cpu: process.cpu_usage(),
                 memory: process.memory(),
                 memory_percent: (process.memory() as f32 / total_memory as f32) * 100.0,
                 status: status.to_string(),
-                command: process.cmd().join(" "),
+                command: process.cmd().iter().map(|c| c.to_string_lossy()).collect::<Vec<_>>().join(" "),
                 start_time: process.start_time(),
             }
         })

@@ -276,7 +276,7 @@ impl PermissionService {
                 placeholders
             );
 
-            let mut query_builder = sqlx::query_as::<_, FolderPermission>(&query);
+            let mut query_builder = sqlx::query_as::<_, FolderPermission>(sqlx::AssertSqlSafe(query));
             for gid in &group_ids {
                 query_builder = query_builder.bind(gid);
             }

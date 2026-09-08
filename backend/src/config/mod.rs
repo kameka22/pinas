@@ -201,7 +201,7 @@ impl AppConfig {
         // Generate new cryptographically secure secret (64 hex chars = 256 bits)
         use std::io::Write;
         let mut bytes = [0u8; 32];
-        getrandom::getrandom(&mut bytes)
+        getrandom::fill(&mut bytes)
             .map_err(|e| anyhow::anyhow!("Failed to generate random JWT secret: {}", e))?;
         let secret = hex::encode(bytes);
 
@@ -253,7 +253,7 @@ impl AppConfig {
         // Generate new (16 bytes = 32 hex chars)
         use std::io::Write;
         let mut bytes = [0u8; 16];
-        getrandom::getrandom(&mut bytes)
+        getrandom::fill(&mut bytes)
             .map_err(|e| anyhow::anyhow!("Failed to generate random {}: {}", label, e))?;
         let secret = hex::encode(bytes);
 

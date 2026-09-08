@@ -1,13 +1,13 @@
 use anyhow::{anyhow, Result};
-use bollard::container::{
-    Config, CreateContainerOptions, ListContainersOptions, LogOutput, LogsOptions,
-    RemoveContainerOptions, RestartContainerOptions, StartContainerOptions, StopContainerOptions,
-    Stats, StatsOptions,
+use bollard::container::LogOutput;
+use bollard::models::{ContainerCpuStats, ContainerCreateBody, ContainerStatsResponse, HostConfig, PortBinding};
+use bollard::query_parameters::{
+    CreateContainerOptionsBuilder, CreateImageOptionsBuilder, ListContainersOptionsBuilder,
+    ListImagesOptionsBuilder, ListNetworksOptions, ListVolumesOptions, LogsOptionsBuilder,
+    PruneImagesOptionsBuilder, PruneVolumesOptions, RemoveContainerOptionsBuilder,
+    RemoveImageOptionsBuilder, RemoveVolumeOptionsBuilder, RestartContainerOptionsBuilder,
+    StartContainerOptions, StatsOptionsBuilder, StopContainerOptionsBuilder,
 };
-use bollard::image::{ListImagesOptions, RemoveImageOptions};
-use bollard::models::{ContainerSummary, HostConfig, ImageSummary, PortBinding};
-use bollard::network::ListNetworksOptions;
-use bollard::volume::{ListVolumesOptions, RemoveVolumeOptions};
 use bollard::Docker;
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
@@ -139,11 +139,12 @@ impl DockerService {
 
     /// Try to reconnect to Docker daemon (useful after Docker is installed)
     pub async fn reconnect(&mut self) -> bool {
-        if let Ok(client) = Self::connect().await {
-            self.client = Some(client);
-            true
-        } else {
-            false
+        match Self::connect().await {
+            Ok(client) => {
+                self.client = Some(client);
+                true
+            }
+            Err(_) => false,
         }
     }
 
@@ -201,10 +202,7 @@ impl DockerService {
     pub async fn list_containers(&self, all: bool) -> Result<Vec<ContainerInfo>> {
         let client = self.client()?;
 
-        let options = ListContainersOptions::<String> {
-            all,
-            ..Default::default()
-        };
+        let options = ListContainersOptionsBuilder::new().all(all).build();
 
         let containers = client.list_containers(Some(options)).await?;
 
@@ -217,7 +215,7 @@ impl DockerService {
                     .unwrap_or_default(),
                 image: c.image.unwrap_or_default(),
                 status: c.status.unwrap_or_default(),
-                state: c.state.unwrap_or_default(),
+                state: c.state.map(|s| s.to_string()).unwrap_or_default(),
                 created: c.created.unwrap_or(0),
                 ports: c.ports.unwrap_or_default()
                     .into_iter()
@@ -244,7 +242,7 @@ impl DockerService {
     pub async fn start_container(&self, id_or_name: &str) -> Result<()> {
         let client = self.client()?;
         client
-            .start_container(id_or_name, None::<StartContainerOptions<String>>)
+            .start_container(id_or_name, None::<StartContainerOptions>)
             .await?;
         Ok(())
     }
@@ -253,7 +251,7 @@ impl DockerService {
     pub async fn stop_container(&self, id_or_name: &str) -> Result<()> {
         let client = self.client()?;
         client
-            .stop_container(id_or_name, Some(StopContainerOptions { t: 10 }))
+            .stop_container(id_or_name, Some(StopContainerOptionsBuilder::new().t(10).build()))
             .await?;
         Ok(())
     }
@@ -262,7 +260,7 @@ impl DockerService {
     pub async fn restart_container(&self, id_or_name: &str) -> Result<()> {
         let client = self.client()?;
         client
-            .restart_container(id_or_name, Some(RestartContainerOptions { t: 10 }))
+            .restart_container(id_or_name, Some(RestartContainerOptionsBuilder::new().t(10).build()))
             .await?;
         Ok(())
     }
@@ -273,10 +271,7 @@ impl DockerService {
         client
             .remove_container(
                 id_or_name,
-                Some(RemoveContainerOptions {
-                    force,
-                    ..Default::default()
-                }),
+                Some(RemoveContainerOptionsBuilder::new().force(force).build()),
             )
             .await?;
         Ok(())
@@ -286,12 +281,11 @@ impl DockerService {
     pub async fn get_logs(&self, id_or_name: &str, tail: usize) -> Result<Vec<String>> {
         let client = self.client()?;
 
-        let options = LogsOptions::<String> {
-            stdout: true,
-            stderr: true,
-            tail: tail.to_string(),
-            ..Default::default()
-        };
+        let options = LogsOptionsBuilder::new()
+            .stdout(true)
+            .stderr(true)
+            .tail(&tail.to_string())
+            .build();
 
         let mut logs = client.logs(id_or_name, Some(options));
         let mut lines = Vec::new();
@@ -314,10 +308,7 @@ impl DockerService {
     pub async fn get_container_stats(&self, id_or_name: &str) -> Result<ContainerStats> {
         let client = self.client()?;
 
-        let options = StatsOptions {
-            stream: false,
-            one_shot: true,
-        };
+        let options = StatsOptionsBuilder::new().stream(false).one_shot(true).build();
 
         let mut stats_stream = client.stats(id_or_name, Some(options));
 
@@ -325,8 +316,8 @@ impl DockerService {
             let stats = stats_result?;
 
             let cpu_percent = calculate_cpu_percent(&stats);
-            let memory_usage = stats.memory_stats.usage.unwrap_or(0);
-            let memory_limit = stats.memory_stats.limit.unwrap_or(1);
+            let memory_usage = stats.memory_stats.as_ref().and_then(|m| m.usage).unwrap_or(0);
+            let memory_limit = stats.memory_stats.as_ref().and_then(|m| m.limit).unwrap_or(1);
             let memory_percent = (memory_usage as f64 / memory_limit as f64) * 100.0;
 
             let (network_rx, network_tx) = stats
@@ -334,7 +325,7 @@ impl DockerService {
                 .as_ref()
                 .map(|networks| {
                     networks.values().fold((0u64, 0u64), |(rx, tx), net| {
-                        (rx + net.rx_bytes, tx + net.tx_bytes)
+                        (rx + net.rx_bytes.unwrap_or(0), tx + net.tx_bytes.unwrap_or(0))
                     })
                 })
                 .unwrap_or((0, 0));
@@ -356,10 +347,7 @@ impl DockerService {
     pub async fn list_images(&self) -> Result<Vec<ImageInfo>> {
         let client = self.client()?;
 
-        let options = ListImagesOptions::<String> {
-            all: false,
-            ..Default::default()
-        };
+        let options = ListImagesOptionsBuilder::new().all(false).build();
 
         let images = client.list_images(Some(options)).await?;
 
@@ -378,13 +366,9 @@ impl DockerService {
     pub async fn pull_image(&self, image: &str) -> Result<()> {
         let client = self.client()?;
 
-        use bollard::image::CreateImageOptions;
         use futures_util::TryStreamExt;
 
-        let options = CreateImageOptions {
-            from_image: image,
-            ..Default::default()
-        };
+        let options = CreateImageOptionsBuilder::new().from_image(image).build();
 
         let mut stream = client.create_image(Some(options), None, None);
 
@@ -401,10 +385,7 @@ impl DockerService {
     pub async fn remove_image(&self, image: &str, force: bool) -> Result<()> {
         let client = self.client()?;
 
-        let options = RemoveImageOptions {
-            force,
-            ..Default::default()
-        };
+        let options = RemoveImageOptionsBuilder::new().force(force).build();
 
         client.remove_image(image, Some(options), None).await?;
         Ok(())
@@ -414,11 +395,7 @@ impl DockerService {
     pub async fn list_volumes(&self) -> Result<Vec<VolumeInfo>> {
         let client = self.client()?;
 
-        let options = ListVolumesOptions::<String> {
-            ..Default::default()
-        };
-
-        let response = client.list_volumes(Some(options)).await?;
+        let response = client.list_volumes(None::<ListVolumesOptions>).await?;
         let volumes = response.volumes.unwrap_or_default();
 
         Ok(volumes
@@ -435,7 +412,7 @@ impl DockerService {
     /// Remove a volume
     pub async fn remove_volume(&self, name: &str, force: bool) -> Result<()> {
         let client = self.client()?;
-        client.remove_volume(name, Some(RemoveVolumeOptions { force })).await?;
+        client.remove_volume(name, Some(RemoveVolumeOptionsBuilder::new().force(force).build())).await?;
         Ok(())
     }
 
@@ -443,21 +420,13 @@ impl DockerService {
     pub async fn list_networks(&self) -> Result<Vec<NetworkInfo>> {
         let client = self.client()?;
 
-        let options = ListNetworksOptions::<String> {
-            ..Default::default()
-        };
-
-        let networks = client.list_networks(Some(options)).await?;
+        let networks = client.list_networks(None::<ListNetworksOptions>).await?;
 
         Ok(networks
             .into_iter()
             .map(|n| {
-                let containers: Vec<String> = n
-                    .containers
-                    .unwrap_or_default()
-                    .values()
-                    .filter_map(|c| c.name.clone())
-                    .collect();
+                // Engine API >= 1.53 no longer lists attached containers in /networks
+                let containers: Vec<String> = Vec::new();
 
                 NetworkInfo {
                     id: n.id.unwrap_or_default(),
@@ -484,7 +453,7 @@ impl DockerService {
         if !all {
             filters.insert("dangling", vec!["true"]);
         }
-        let options = bollard::image::PruneImagesOptions { filters };
+        let options = PruneImagesOptionsBuilder::new().filters(&filters).build();
         let result = client.prune_images(Some(options)).await?;
         let deleted = result.images_deleted.map(|v| v.len() as u64).unwrap_or(0);
         let space = result.space_reclaimed.unwrap_or(0) as u64;
@@ -494,10 +463,7 @@ impl DockerService {
     /// Prune unused volumes
     pub async fn prune_volumes(&self) -> Result<PruneResult> {
         let client = self.client()?;
-        let options = bollard::volume::PruneVolumesOptions::<String> {
-            filters: Default::default(),
-        };
-        let result = client.prune_volumes(Some(options)).await?;
+        let result = client.prune_volumes(None::<PruneVolumesOptions>).await?;
         let deleted = result.volumes_deleted.map(|v| v.len() as u64).unwrap_or(0);
         let space = result.space_reclaimed.unwrap_or(0) as u64;
         Ok(PruneResult { deleted, space_reclaimed: space })
@@ -592,7 +558,7 @@ impl DockerService {
         };
 
         // Build container config
-        let container_config = Config {
+        let container_config = ContainerCreateBody {
             image: Some(image.clone()),
             hostname: config.hostname.clone(),
             env: Some(env),
@@ -604,10 +570,7 @@ impl DockerService {
             ..Default::default()
         };
 
-        let options = CreateContainerOptions {
-            name: config.name.clone(),
-            platform: None,
-        };
+        let options = CreateContainerOptionsBuilder::new().name(&config.name).build();
 
         let response = client.create_container(Some(options), container_config).await?;
         Ok(response.id)
@@ -615,14 +578,25 @@ impl DockerService {
 }
 
 /// Calculate CPU percentage from stats
-fn calculate_cpu_percent(stats: &Stats) -> f64 {
-    let cpu_delta = stats.cpu_stats.cpu_usage.total_usage as f64
-        - stats.precpu_stats.cpu_usage.total_usage as f64;
+fn calculate_cpu_percent(stats: &ContainerStatsResponse) -> f64 {
+    let total_usage = |c: &Option<ContainerCpuStats>| {
+        c.as_ref()
+            .and_then(|c| c.cpu_usage.as_ref())
+            .and_then(|u| u.total_usage)
+            .unwrap_or(0) as f64
+    };
+    let system_usage = |c: &Option<ContainerCpuStats>| {
+        c.as_ref().and_then(|c| c.system_cpu_usage).unwrap_or(0) as f64
+    };
 
-    let system_delta = stats.cpu_stats.system_cpu_usage.unwrap_or(0) as f64
-        - stats.precpu_stats.system_cpu_usage.unwrap_or(0) as f64;
+    let cpu_delta = total_usage(&stats.cpu_stats) - total_usage(&stats.precpu_stats);
+    let system_delta = system_usage(&stats.cpu_stats) - system_usage(&stats.precpu_stats);
 
-    let cpu_count = stats.cpu_stats.online_cpus.unwrap_or(1) as f64;
+    let cpu_count = stats
+        .cpu_stats
+        .as_ref()
+        .and_then(|c| c.online_cpus)
+        .unwrap_or(1) as f64;
 
     if system_delta > 0.0 && cpu_delta > 0.0 {
         (cpu_delta / system_delta) * cpu_count * 100.0

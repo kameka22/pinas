@@ -22,10 +22,10 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/", get(list_users))
         .route("/", post(create_user))
-        .route("/:id", get(get_user))
-        .route("/:id", put(update_user))
-        .route("/:id", delete(delete_user))
-        .route("/:id/password", put(change_user_password))
+        .route("/{id}", get(get_user))
+        .route("/{id}", put(update_user))
+        .route("/{id}", delete(delete_user))
+        .route("/{id}/password", put(change_user_password))
 }
 
 #[derive(Debug, Serialize)]
