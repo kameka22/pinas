@@ -21,7 +21,7 @@
 			email = profile.email || '';
 			error = '';
 		} catch (e) {
-			error = 'Failed to load profile';
+			error = $t.common.errors.loadProfile;
 		}
 	}
 
@@ -44,7 +44,7 @@
 				success = false;
 			}, 2000);
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to save profile';
+			error = e instanceof Error ? e.message : $t.common.errors.saveProfile;
 		} finally {
 			saving = false;
 		}
@@ -114,7 +114,7 @@
 							disabled
 							class="disabled"
 						/>
-						<span class="field-hint">Username cannot be changed</span>
+						<span class="field-hint">{$t.profile.usernameLocked}</span>
 					</div>
 
 					<div class="form-group">

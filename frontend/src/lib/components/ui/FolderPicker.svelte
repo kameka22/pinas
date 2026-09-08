@@ -88,7 +88,7 @@
 			buildBreadcrumbs(path);
 		} catch (e) {
 			console.error('FolderPicker: Error loading folders', e);
-			error = e instanceof Error ? e.message : 'Failed to load folders';
+			error = e instanceof Error ? e.message : $t.common.errors.loadFolders;
 			folders = [];
 		} finally {
 			loading = false;

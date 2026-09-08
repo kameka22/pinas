@@ -28,7 +28,7 @@
 		try {
 			sshStatus = await api.getSshStatus();
 		} catch (e) {
-			sshError = e instanceof Error ? e.message : 'Failed to load SSH status';
+			sshError = e instanceof Error ? e.message : $t.common.errors.loadSshStatus;
 		} finally {
 			sshLoading = false;
 		}
@@ -48,7 +48,7 @@
 			}
 			await loadSshStatus();
 		} catch (e) {
-			sshError = e instanceof Error ? e.message : 'Failed to toggle SSH';
+			sshError = e instanceof Error ? e.message : $t.common.errors.toggleSsh;
 		} finally {
 			sshToggling = false;
 		}
@@ -84,7 +84,7 @@
 			await api.changeSshPassword(newPassword);
 			closePasswordModal();
 		} catch (e) {
-			passwordError = e instanceof Error ? e.message : 'Failed to change password';
+			passwordError = e instanceof Error ? e.message : $t.common.errors.changePassword;
 		} finally {
 			passwordSaving = false;
 		}

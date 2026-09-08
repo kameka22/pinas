@@ -64,7 +64,7 @@
 				handleClose();
 			}, 1500);
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to change password';
+			error = e instanceof Error ? e.message : $t.common.errors.changePassword;
 		} finally {
 			saving = false;
 		}
@@ -107,7 +107,7 @@
 					{/if}
 
 					<div class="form-group">
-						<label for="current-password">Current Password</label>
+						<label for="current-password">{$t.profile.currentPassword}</label>
 						<input
 							id="current-password"
 							type="password"
@@ -118,7 +118,7 @@
 					</div>
 
 					<div class="form-group">
-						<label for="new-password">New Password</label>
+						<label for="new-password">{$t.profile.newPassword}</label>
 						<input
 							id="new-password"
 							type="password"
@@ -129,7 +129,7 @@
 					</div>
 
 					<div class="form-group">
-						<label for="confirm-password">Confirm New Password</label>
+						<label for="confirm-password">{$t.profile.confirmNewPassword}</label>
 						<input
 							id="confirm-password"
 							type="password"

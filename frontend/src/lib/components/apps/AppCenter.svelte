@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { api } from '$stores/api';
 	import { onMount } from 'svelte';
 	import Icon from '@iconify/svelte';
 	import { t, locale, loadAppTranslations } from '$lib/i18n';
@@ -120,15 +121,11 @@
 		loading = true;
 		try {
 			// Load installed packages
-			const installedRes = await fetch('/api/packages');
-			if (installedRes.ok) {
-				installedPackages = await installedRes.json();
-			}
+			installedPackages = await api.getInstalledPackages<InstalledPackage>();
 
 			// Load catalog
-			const catalogRes = await fetch('/api/packages/catalog');
-			if (catalogRes.ok) {
-				const catalog = await catalogRes.json();
+			{
+				const catalog = await api.getCatalog<{ version?: string; apps?: CatalogApp[] }>();
 				catalogVersion = catalog.version || null;
 				packages = (catalog.apps || []).map((app: CatalogApp) => {
 					const installed = installedPackages.find((p) => p.id === app.id);
@@ -147,8 +144,6 @@
 						website: app.website
 					};
 				});
-			} else {
-				packages = [];
 			}
 		} catch (error) {
 			console.error('Failed to load packages:', error);
@@ -297,18 +292,7 @@
 		}
 
 		try {
-			const response = await fetch('/api/packages/install', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ package_id: pkg.id })
-			});
-
-			if (!response.ok) {
-				const error = await response.json();
-				throw new Error(error.error || 'Installation failed');
-			}
-
-			const result = await response.json();
+			const result = await api.installPackage(pkg.id);
 			if (result.task_id) {
 				activeTaskId = result.task_id;
 				activePackageId = pkg.id;
@@ -344,24 +328,21 @@
 					await onInstallComplete(packageId);
 					return;
 				} else if (wsProgress.status === 'failed') {
-					throw new Error(wsProgress.error_message || 'Installation failed');
+					throw new Error(wsProgress.error_message || $t.common.errors.installFailed);
 				}
 			}
 
 			// Fallback: poll API every 2s
 			try {
-				const response = await fetch(`/api/packages/task/${taskId}`);
-				if (response.ok) {
-					const task = await response.json();
-					if (task.status === 'completed') {
-						await onInstallComplete(packageId);
-						return;
-					} else if (task.status === 'failed') {
-						throw new Error(task.error_message || 'Installation failed');
-					}
+				const task = await api.getPackageTask(taskId);
+				if (task.status === 'completed') {
+					await onInstallComplete(packageId);
+					return;
+				} else if (task.status === 'failed') {
+					throw new Error(task.error_message || $t.common.errors.installFailed);
 				}
 			} catch (error) {
-				if (error instanceof Error && error.message !== 'Installation failed') {
+				if (error instanceof Error && error.message !== $t.common.errors.installFailed) {
 					console.error('Failed to check task status:', error);
 				} else {
 					throw error;
@@ -406,14 +387,7 @@
 		installError = null;
 
 		try {
-			const response = await fetch(`/api/packages/${pkg.id}?delete_data=${deleteAppData}`, {
-				method: 'DELETE'
-			});
-
-			if (!response.ok) {
-				const error = await response.json();
-				throw new Error(error.error || 'Uninstall failed');
-			}
+			await api.uninstallPackage(pkg.id, deleteAppData);
 
 			// Reload
 			await loadPackages();

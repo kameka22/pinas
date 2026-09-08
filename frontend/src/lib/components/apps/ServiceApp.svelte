@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { api } from '$stores/api';
+	import { errorMessage } from '$stores/toasts';
 	import { onMount, onDestroy } from 'svelte';
 	import Icon from '@iconify/svelte';
 	import { t } from '$lib/i18n';
@@ -43,44 +45,21 @@
 
 	async function fetchStatus() {
 		try {
-			const response = await fetch(`/api/services/${config.service_name}/status`);
-			if (response.ok) {
-				status = await response.json();
-			} else {
-				// Mock status for development
-				status = {
-					running: Math.random() > 0.3,
-					enabled: true,
-					uptime: Math.floor(Math.random() * 86400),
-					memory_usage: Math.floor(Math.random() * 100000000),
-					cpu_usage: Math.random() * 5
-				};
-			}
+			status = await api.getServiceStatus(config.service_name);
+			error = null;
 		} catch (e) {
-			// Mock for development
-			status = {
-				running: true,
-				enabled: true,
-				uptime: 3600,
-				memory_usage: 50000000,
-				cpu_usage: 2.5
-			};
+			// Real error surfaced to the user; the backend simulates services in dev mode itself
+			status = null;
+			error = errorMessage(e, $t.common.errors.loadFailed);
 		}
 		loading = false;
 	}
 
 	async function fetchLogs() {
 		try {
-			const response = await fetch(`/api/services/${config.service_name}/logs?lines=100`);
-			if (response.ok) {
-				logs = await response.json();
-			}
+			logs = (await api.getServiceLogs(config.service_name, 100)) as LogEntry[];
 		} catch (e) {
-			// Mock logs
-			logs = [
-				{ timestamp: new Date().toISOString(), level: 'info', message: `${config.service_name} started successfully` },
-				{ timestamp: new Date().toISOString(), level: 'info', message: 'Listening on all interfaces' },
-			];
+			logs = [];
 		}
 	}
 
@@ -89,19 +68,10 @@
 		error = null;
 
 		try {
-			const response = await fetch(`/api/services/${config.service_name}/${action}`, {
-				method: 'POST'
-			});
-
-			if (!response.ok) {
-				throw new Error(`Failed to ${action} service`);
-			}
-
+			await api.serviceAction(config.service_name, action);
 			await fetchStatus();
 		} catch (e) {
-			error = e instanceof Error ? e.message : `Failed to ${action} service`;
-			// Mock success for dev
-			await fetchStatus();
+			error = errorMessage(e, $t.common.errors.serviceAction.replace('{action}', action));
 		} finally {
 			actionInProgress = false;
 		}

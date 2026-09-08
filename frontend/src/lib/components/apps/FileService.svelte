@@ -248,7 +248,7 @@
 							</div>
 
 							{#if activeShares.length === 0}
-								<p class="no-shares">No active SMB shares</p>
+								<p class="no-shares">{$t.fileService.noActiveShares}</p>
 							{:else}
 								<div class="shares-list">
 									{#each activeShares as share}

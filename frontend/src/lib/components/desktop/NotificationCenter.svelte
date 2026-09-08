@@ -75,9 +75,6 @@
 			<Icon icon="mdi:home" class="w-5 h-5 text-slate-600" />
 			<h2 class="text-sm font-semibold text-slate-800">{$t.notifications.title}</h2>
 		</div>
-		<button class="settings-btn" title={$t.topBar.userMenu.settings}>
-			<Icon icon="mdi:cog" class="w-4 h-4" />
-		</button>
 	</header>
 
 	<div class="notification-list">
@@ -96,7 +93,7 @@
 				<button
 					class="dismiss-btn"
 					on:click={() => dismissNotification(notification.id)}
-					title="Dismiss"
+					title={$t.common.dismiss}
 				>
 					<Icon icon="mdi:close" class="w-4 h-4" />
 				</button>

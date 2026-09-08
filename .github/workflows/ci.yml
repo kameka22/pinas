@@ -38,4 +38,7 @@ jobs:
         working-directory: frontend
       - run: npm run build
         working-directory: frontend
-      # svelte-check is added once REMEDIATION_PLAN P2.6 brings it to zero errors
+      - run: npm run check
+        working-directory: frontend
+      - run: npm test
+        working-directory: frontend

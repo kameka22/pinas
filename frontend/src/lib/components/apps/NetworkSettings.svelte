@@ -43,7 +43,7 @@
 			dnsPrimary = networkStatus.dns.primary;
 			dnsSecondary = networkStatus.dns.secondary;
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to load network status';
+			error = e instanceof Error ? e.message : $t.common.errors.loadNetwork;
 		} finally {
 			loading = false;
 		}
@@ -76,7 +76,7 @@
 
 			await loadNetworkStatus();
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to save settings';
+			error = e instanceof Error ? e.message : $t.common.errors.saveFailed;
 		} finally {
 			saving = false;
 		}
@@ -117,7 +117,7 @@
 			closeEditModal();
 			await loadNetworkStatus();
 		} catch (e) {
-			editError = e instanceof Error ? e.message : 'Failed to save interface';
+			editError = e instanceof Error ? e.message : $t.common.errors.saveInterface;
 		} finally {
 			editSaving = false;
 		}

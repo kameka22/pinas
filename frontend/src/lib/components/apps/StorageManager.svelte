@@ -705,7 +705,7 @@
 			await loadSmartSchedules();
 			showCreateScheduleModal = false;
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to create schedule';
+			error = e instanceof Error ? e.message : $t.common.errors.createSchedule;
 		}
 	}
 
@@ -714,7 +714,7 @@
 			await api.deleteSmartSchedule(id);
 			await loadSmartSchedules();
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to delete schedule';
+			error = e instanceof Error ? e.message : $t.common.errors.deleteSchedule;
 		}
 	}
 
@@ -723,7 +723,7 @@
 			await api.toggleSmartSchedule(id, enabled);
 			await loadSmartSchedules();
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to toggle schedule';
+			error = e instanceof Error ? e.message : $t.common.errors.toggleSchedule;
 		}
 	}
 
@@ -764,7 +764,7 @@
 			});
 			showPowerModal = false;
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to save power settings';
+			error = e instanceof Error ? e.message : $t.common.errors.savePowerSettings;
 		}
 	}
 
@@ -792,7 +792,7 @@
 			await api.createSnapshot(snapshotVolume.id, { name: newSnapshotName });
 			snapshots = await api.listSnapshots(snapshotVolume.id);
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to create snapshot';
+			error = e instanceof Error ? e.message : $t.common.errors.createSnapshot;
 		}
 	}
 
@@ -802,7 +802,7 @@
 			await api.deleteSnapshot(snapshotVolume.id, snapId);
 			snapshots = await api.listSnapshots(snapshotVolume.id);
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to delete snapshot';
+			error = e instanceof Error ? e.message : $t.common.errors.deleteSnapshot;
 		}
 	}
 
@@ -828,7 +828,7 @@
 			growingPools = growingPools;
 			showGrowPoolModal = false;
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to start pool expansion';
+			error = e instanceof Error ? e.message : $t.common.errors.growPool;
 		}
 	}
 
@@ -1033,7 +1033,7 @@
 													<span class="health-item scrub-info">
 														<Icon icon="mdi:check-circle-outline" class="w-3.5 h-3.5" />
 														{$t.storageManager.health?.lastScrub || 'Last scrub'}: {formatRelativeDate(poolHealth[pool.id].last_scrub?.date || '')}
-														{#if poolHealth[pool.id].last_scrub?.errors_found && poolHealth[pool.id].last_scrub.errors_found > 0}
+														{#if (poolHealth[pool.id].last_scrub?.errors_found ?? 0) > 0}
 															<span class="scrub-errors">({poolHealth[pool.id].last_scrub?.errors_found} {$t.storageManager.health?.errorsFound || 'errors'})</span>
 														{/if}
 													</span>

@@ -22,18 +22,50 @@ pub struct LogEntry {
     pub message: String,
 }
 
+/// Services shown in the simulated (dev mode) environment
+const SIMULATED_SERVICES: &[(&str, bool, &str)] = &[
+    ("pinas", true, "PiNAS - NAS Management Service"),
+    ("smbd", true, "Samba SMB Daemon"),
+    ("nmbd", true, "Samba NMB Daemon"),
+    ("docker", false, "Docker Application Container Engine"),
+    ("sshd", true, "OpenSSH server daemon"),
+];
+
 /// Service for managing systemd services
-pub struct ServiceManager;
+pub struct ServiceManager {
+    dev_mode: bool,
+}
 
 impl ServiceManager {
     pub fn new() -> Self {
-        Self
+        Self { dev_mode: crate::config::AppConfig::global().dev_mode }
+    }
+
+    fn simulated_status(name: &str) -> ServiceStatus {
+        let (running, description) = SIMULATED_SERVICES
+            .iter()
+            .find(|(n, _, _)| *n == name)
+            .map(|(_, running, desc)| (*running, Some(desc.to_string())))
+            .unwrap_or((false, None));
+        ServiceStatus {
+            name: name.to_string(),
+            running,
+            enabled: running,
+            uptime: running.then_some(3600),
+            memory_usage: running.then_some(24 * 1024 * 1024),
+            cpu_usage: running.then_some(0.5),
+            pid: running.then_some(4242),
+            description,
+        }
     }
 
     /// Get status of a specific service
     pub async fn get_status(&self, service_name: &str) -> anyhow::Result<ServiceStatus> {
         // Sanitize service name to prevent command injection
         let safe_name = sanitize_service_name(service_name)?;
+        if self.dev_mode {
+            return Ok(Self::simulated_status(&safe_name));
+        }
 
         // Check if service is active
         let active_output = AsyncCommand::new("systemctl")
@@ -124,6 +156,10 @@ impl ServiceManager {
     /// Start a service
     pub async fn start(&self, service_name: &str) -> anyhow::Result<()> {
         let safe_name = sanitize_service_name(service_name)?;
+        if self.dev_mode {
+            tracing::info!("[DEV MODE] Would start service {}", safe_name);
+            return Ok(());
+        }
 
         let output = AsyncCommand::new("systemctl")
             .args(["start", &safe_name])
@@ -141,6 +177,10 @@ impl ServiceManager {
     /// Stop a service
     pub async fn stop(&self, service_name: &str) -> anyhow::Result<()> {
         let safe_name = sanitize_service_name(service_name)?;
+        if self.dev_mode {
+            tracing::info!("[DEV MODE] Would stop service {}", safe_name);
+            return Ok(());
+        }
 
         let output = AsyncCommand::new("systemctl")
             .args(["stop", &safe_name])
@@ -158,6 +198,10 @@ impl ServiceManager {
     /// Restart a service
     pub async fn restart(&self, service_name: &str) -> anyhow::Result<()> {
         let safe_name = sanitize_service_name(service_name)?;
+        if self.dev_mode {
+            tracing::info!("[DEV MODE] Would restart service {}", safe_name);
+            return Ok(());
+        }
 
         let output = AsyncCommand::new("systemctl")
             .args(["restart", &safe_name])
@@ -175,6 +219,10 @@ impl ServiceManager {
     /// Enable a service (start on boot)
     pub async fn enable(&self, service_name: &str) -> anyhow::Result<()> {
         let safe_name = sanitize_service_name(service_name)?;
+        if self.dev_mode {
+            tracing::info!("[DEV MODE] Would enable service {}", safe_name);
+            return Ok(());
+        }
 
         let output = AsyncCommand::new("systemctl")
             .args(["enable", &safe_name])
@@ -192,6 +240,10 @@ impl ServiceManager {
     /// Disable a service
     pub async fn disable(&self, service_name: &str) -> anyhow::Result<()> {
         let safe_name = sanitize_service_name(service_name)?;
+        if self.dev_mode {
+            tracing::info!("[DEV MODE] Would disable service {}", safe_name);
+            return Ok(());
+        }
 
         let output = AsyncCommand::new("systemctl")
             .args(["disable", &safe_name])
@@ -209,6 +261,13 @@ impl ServiceManager {
     /// Get logs for a service
     pub async fn get_logs(&self, service_name: &str, lines: u32) -> anyhow::Result<Vec<LogEntry>> {
         let safe_name = sanitize_service_name(service_name)?;
+        if self.dev_mode {
+            return Ok(vec![LogEntry {
+                timestamp: chrono::Utc::now().to_rfc3339(),
+                level: "info".to_string(),
+                message: format!("[DEV MODE] {} is simulated; no journal available", safe_name),
+            }]);
+        }
         let lines_str = lines.min(1000).to_string(); // Cap at 1000 lines
 
         let output = AsyncCommand::new("journalctl")
@@ -269,6 +328,9 @@ impl ServiceManager {
 
     /// List all services (filtered by PiNAS-managed ones)
     pub async fn list_services(&self) -> anyhow::Result<Vec<ServiceStatus>> {
+        if self.dev_mode {
+            return Ok(SIMULATED_SERVICES.iter().map(|(n, _, _)| Self::simulated_status(n)).collect());
+        }
         let output = AsyncCommand::new("systemctl")
             .args(["list-units", "--type=service", "--all", "--no-pager", "--plain"])
             .output()

@@ -34,7 +34,61 @@ export default {
 		searchApplications: 'Search applications...',
 		refresh: 'Refresh',
 		retry: 'Retry',
-		copy: 'Copy'
+		copy: 'Copy',
+		errors: {
+			forbidden: 'You do not have permission to do this',
+			generic: 'Something went wrong',
+			loadFailed: 'Failed to load data',
+			saveFailed: 'Failed to save settings',
+			connectionFailed: 'Connection failed',
+			installFailed: 'Installation failed',
+			uninstallFailed: 'Uninstall failed',
+			updateServiceAccess: 'Failed to update service access',
+			updatePermission: 'Failed to update permission',
+			addFolder: 'Failed to add folder',
+			changePassword: 'Failed to change password',
+			loadFolders: 'Failed to load folders',
+			loadProfile: 'Failed to load profile',
+			saveProfile: 'Failed to save profile',
+			loadSshStatus: 'Failed to load SSH status',
+			toggleSsh: 'Failed to toggle SSH',
+			loadCupsStatus: 'Failed to load CUPS status',
+			toggleCups: 'Failed to toggle CUPS',
+			addPrinter: 'Failed to add printer',
+			loadNetwork: 'Failed to load network status',
+			saveInterface: 'Failed to save interface',
+			createUser: 'Failed to create user',
+			updateUser: 'Failed to update user',
+			deleteUser: 'Failed to delete user',
+			createGroup: 'Failed to create group',
+			updateGroup: 'Failed to update group',
+			deleteGroup: 'Failed to delete group',
+			createSchedule: 'Failed to create schedule',
+			deleteSchedule: 'Failed to delete schedule',
+			toggleSchedule: 'Failed to toggle schedule',
+			savePowerSettings: 'Failed to save power settings',
+			createSnapshot: 'Failed to create snapshot',
+			deleteSnapshot: 'Failed to delete snapshot',
+			growPool: 'Failed to start pool expansion',
+			loadLocations: 'Failed to load locations',
+			loadFiles: 'Failed to load files',
+			serviceAction: 'Failed to {action} service'
+		},
+		noLogs: 'No logs available',
+		dismiss: 'Dismiss'
+	},
+
+	login: {
+		subtitle: 'Sign in to your account',
+		signIn: 'Sign In',
+		footer: 'Secure NAS Management System'
+	},
+
+	profile: {
+		currentPassword: 'Current Password',
+		newPassword: 'New Password',
+		confirmNewPassword: 'Confirm New Password',
+		usernameLocked: 'Username cannot be changed'
 	},
 
 	// Password validation rules
@@ -271,6 +325,7 @@ export default {
 
 	// Top Bar
 	topBar: {
+		widgets: 'Widgets',
 		search: 'Search...',
 		notifications: 'Notifications',
 		noNotifications: 'No notifications',
@@ -1139,6 +1194,7 @@ export default {
 
 	// File Service
 	fileService: {
+		noActiveShares: 'No active SMB shares',
 		title: 'File Services',
 		ssh: {
 			description: 'Secure Shell access for remote administration',

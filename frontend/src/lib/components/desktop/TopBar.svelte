@@ -226,11 +226,7 @@
 
 		<div class="divider"></div>
 
-		<!-- Quick actions -->
-		<button class="topbar-btn" title="Widgets">
-			<Icon icon="mdi:widgets-outline" class="w-5 h-5" />
-		</button>
-
+		<!-- Quick actions (widgets panel and global search arrive with REMEDIATION_PLAN P7) -->
 		{#if updateAvailable}
 			<button class="topbar-btn update-btn" title="Update available: v{updateVersion}" on:click={openSettingsUpdates}>
 				<Icon icon="mdi:arrow-up-circle" class="w-5 h-5" />
@@ -241,10 +237,6 @@
 		<button class="topbar-btn relative" title={$t.topBar.notifications} on:click={() => showNotifications = !showNotifications}>
 			<Icon icon="mdi:bell-outline" class="w-5 h-5" />
 			<span class="notification-badge">3</span>
-		</button>
-
-		<button class="topbar-btn" title={$t.common.search}>
-			<Icon icon="mdi:magnify" class="w-5 h-5" />
 		</button>
 
 		<div class="divider"></div>

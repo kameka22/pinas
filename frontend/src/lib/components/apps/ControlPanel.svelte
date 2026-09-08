@@ -284,9 +284,6 @@
 									<span class="info-label">{$t.controlPanel.about.deviceName}</span>
 									<span class="info-value">
 										{systemInfo.deviceName}
-										<button class="edit-btn">
-											<Icon icon="mdi:pencil" class="w-4 h-4" />
-										</button>
 									</span>
 								</div>
 								<div class="info-block">

@@ -55,7 +55,7 @@
 				await loadJobs();
 			}
 		} catch (e) {
-			cupsError = e instanceof Error ? e.message : 'Failed to load CUPS status';
+			cupsError = e instanceof Error ? e.message : $t.common.errors.loadCupsStatus;
 		} finally {
 			cupsLoading = false;
 		}
@@ -75,7 +75,7 @@
 			}
 			await loadStatus();
 		} catch (e) {
-			cupsError = e instanceof Error ? e.message : 'Failed to toggle CUPS';
+			cupsError = e instanceof Error ? e.message : $t.common.errors.toggleCups;
 		} finally {
 			cupsToggling = false;
 		}
@@ -161,7 +161,7 @@
 			await loadPrinters();
 			await loadStatus();
 		} catch (e) {
-			addError = e instanceof Error ? e.message : 'Failed to add printer';
+			addError = e instanceof Error ? e.message : $t.common.errors.addPrinter;
 		} finally {
 			adding = false;
 		}

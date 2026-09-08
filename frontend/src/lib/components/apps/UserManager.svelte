@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { toasts, errorMessage } from '$stores/toasts';
 	import { onMount } from 'svelte';
 	import Icon from '@iconify/svelte';
 	import { t } from '$lib/i18n';
@@ -182,7 +183,7 @@
 			groups = groupsData;
 			serviceAccess = accessData;
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to load data';
+			error = e instanceof Error ? e.message : $t.common.errors.loadFailed;
 			console.error('Failed to load user manager data:', e);
 		} finally {
 			loading = false;
@@ -206,7 +207,7 @@
 			serviceAccess = serviceAccess; // trigger reactivity
 		} catch (e) {
 			console.error('Failed to update service access:', e);
-			alert(e instanceof Error ? e.message : 'Failed to update service access');
+			toasts.error(errorMessage(e, $t.common.errors.updateServiceAccess));
 		}
 	}
 
@@ -299,7 +300,7 @@
 			showAddUserModal = false;
 			await loadData();
 		} catch (e) {
-			actionError = e instanceof Error ? e.message : 'Failed to create user';
+			actionError = e instanceof Error ? e.message : $t.common.errors.createUser;
 		} finally {
 			actionLoading = false;
 		}
@@ -319,7 +320,7 @@
 			showEditUserModal = false;
 			await loadData();
 		} catch (e) {
-			actionError = e instanceof Error ? e.message : 'Failed to update user';
+			actionError = e instanceof Error ? e.message : $t.common.errors.updateUser;
 		} finally {
 			actionLoading = false;
 		}
@@ -336,7 +337,7 @@
 			selectedUser = null;
 			await loadData();
 		} catch (e) {
-			actionError = e instanceof Error ? e.message : 'Failed to delete user';
+			actionError = e instanceof Error ? e.message : $t.common.errors.deleteUser;
 		} finally {
 			actionLoading = false;
 		}
@@ -358,7 +359,7 @@
 			showAddGroupModal = false;
 			await loadData();
 		} catch (e) {
-			actionError = e instanceof Error ? e.message : 'Failed to create group';
+			actionError = e instanceof Error ? e.message : $t.common.errors.createGroup;
 		} finally {
 			actionLoading = false;
 		}
@@ -377,7 +378,7 @@
 			showEditGroupModal = false;
 			await loadData();
 		} catch (e) {
-			actionError = e instanceof Error ? e.message : 'Failed to update group';
+			actionError = e instanceof Error ? e.message : $t.common.errors.updateGroup;
 		} finally {
 			actionLoading = false;
 		}
@@ -394,7 +395,7 @@
 			selectedGroup = null;
 			await loadData();
 		} catch (e) {
-			actionError = e instanceof Error ? e.message : 'Failed to delete group';
+			actionError = e instanceof Error ? e.message : $t.common.errors.deleteGroup;
 		} finally {
 			actionLoading = false;
 		}
@@ -437,7 +438,7 @@
 			await loadPermissions();
 		} catch (e) {
 			console.error('Failed to update permission:', e);
-			alert(e instanceof Error ? e.message : 'Failed to update permission');
+			toasts.error(errorMessage(e, $t.common.errors.updatePermission));
 		}
 	}
 
@@ -459,7 +460,7 @@
 			await loadPermissions();
 		} catch (e) {
 			console.error('Failed to add folder:', e);
-			alert(e instanceof Error ? e.message : 'Failed to add folder');
+			toasts.error(errorMessage(e, $t.common.errors.addFolder));
 		}
 	}
 
@@ -838,9 +839,7 @@
 					</div>
 				</section>
 
-				<div class="settings-footer">
-					<button class="btn-primary">{$t.common.apply}</button>
-				</div>
+				<!-- Password policy is persisted/enforced in REMEDIATION_PLAN P4.5 -->
 			</div>
 		{/if}
 	</div>

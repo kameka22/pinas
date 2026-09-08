@@ -53,20 +53,20 @@ Taille : **L (≈ 5 j)**. Dépend de P0. Le bump de dépendances (axum 0.8, sqlx
 
 ---
 
-## Phase 2 — Fondations frontend
+## Phase 2 — Fondations frontend ✅ (terminée le 2026-09-08)
 
 Taille : **M–L (≈ 4 j)**. Dépend de P1 (format d'erreur JSON unifié).
 
 | # | Item | Taille | Détail / critère de fin |
 |---|---|---|---|
-| 2.1 | **Un seul client HTTP** | M | Migrer les 27 `fetch('/api/…')` bruts (`DockerApp` 17, `AppCenter` 5, `ServiceApp` 3, `TerminalApp` 2) vers `api.ts` (méthodes typées `getContainers()`, `installPackage()`, …). Le client gère 401 → écran de login, 403 → toast, erreurs → `AppError` typé. Critère : `grep -rn "fetch(\`/api\|fetch('/api" components` = 0 (hors upload). |
-| 2.2 | **Système de toasts** | S | Store `toasts.ts` + composant `ToastHost.svelte` dans le desktop. Remplacer les **12 `alert()`** (Kodi, DisplayApp, UserManager). |
-| 2.3 | **i18n des 44 chaînes en dur** | S | `'Failed to update permission'`, `'Failed to add folder'`, `'Configuration options coming soon'`, `'Widgets'`, `'Dashboard'`… → clés `en.ts`/`fr.ts`. Critère : script CI qui échoue sur `alert('` et sur `: 'Failed` dans les `.svelte`. |
-| 2.4 | **Supprimer le mock aléatoire de `ServiceApp`** | S | En cas d'erreur : état `error` + message, jamais `Math.random()`. Le mode simulé ne s'active que si `$systemInfo.devMode`. |
-| 2.5 | **Suppressions** | S | `Settings.svelte` (orphelin, 6 boutons morts), alias `NetdiskTools → Dashboard` dans `index.ts`, `frontend/yarn.lock` (le projet est npm), dossiers `test/build_python_direct`, `build/`, `build.log`. |
-| 2.6 | **Erreur `StorageManager.svelte:1036`** | S | `poolHealth[pool.id].last_scrub` possiblement null → chaînage optionnel. `svelte-check` = 0 erreur, et **ajouter `svelte-check` à la CI**. |
-| 2.7 | **Tests frontend** | M | Vitest + `@testing-library/svelte`. Cibles : `api.ts` (gestion 401/403, parsing d'erreurs), stores `windows`/`desktop` (ouverture/focus/fermeture), `formatBytes`/`formatUptime`, un test de rendu par app critique (FileManager, StorageManager, UserManager) avec API mockée. Critère : ≥ 30 tests, en CI. |
-| 2.8 | **Boutons morts** | S | Retirer ou brancher : TopBar *Widgets* et *Search* (→ P7), FileManager *Sort* (→ P6), TimeLanguage *Apply/Sync* (→ P4), UserManager *Apply* (→ P4), Dashboard *Refresh*, NotificationCenter *Settings* (→ P3). Aucun `<button>` sans handler ne doit rester (lint custom ou revue). |
+| 2.1 ✅ | **Un seul client HTTP** | M | Migrer les 27 `fetch('/api/…')` bruts (`DockerApp` 17, `AppCenter` 5, `ServiceApp` 3, `TerminalApp` 2) vers `api.ts` (méthodes typées `getContainers()`, `installPackage()`, …). Le client gère 401 → écran de login, 403 → toast, erreurs → `AppError` typé. Critère : `grep -rn "fetch(\`/api\|fetch('/api" components` = 0 (hors upload). |
+| 2.2 ✅ | **Système de toasts** | S | Store `toasts.ts` + composant `ToastHost.svelte` dans le desktop. Remplacer les **12 `alert()`** (Kodi, DisplayApp, UserManager). |
+| 2.3 ✅ | **i18n des 44 chaînes en dur** | S | `'Failed to update permission'`, `'Failed to add folder'`, `'Configuration options coming soon'`, `'Widgets'`, `'Dashboard'`… → clés `en.ts`/`fr.ts`. Critère : script CI qui échoue sur `alert('` et sur `: 'Failed` dans les `.svelte`. |
+| 2.4 ✅ | **Supprimer le mock aléatoire de `ServiceApp`** | S | En cas d'erreur : état `error` + message, jamais `Math.random()`. Le mode simulé ne s'active que si `$systemInfo.devMode`. |
+| 2.5 ✅ | **Suppressions** | S | `Settings.svelte` (orphelin, 6 boutons morts), alias `NetdiskTools → Dashboard` dans `index.ts`, `frontend/yarn.lock` (le projet est npm), dossiers `test/build_python_direct`, `build/`, `build.log`. |
+| 2.6 ✅ | **Erreur `StorageManager.svelte:1036`** | S | `poolHealth[pool.id].last_scrub` possiblement null → chaînage optionnel. `svelte-check` = 0 erreur, et **ajouter `svelte-check` à la CI**. |
+| 2.7 ✅ | **Tests frontend** | M | Vitest + `@testing-library/svelte`. Cibles : `api.ts` (gestion 401/403, parsing d'erreurs), stores `windows`/`desktop` (ouverture/focus/fermeture), `formatBytes`/`formatUptime`, un test de rendu par app critique (FileManager, StorageManager, UserManager) avec API mockée. Critère : ≥ 30 tests, en CI. |
+| 2.8 ✅ | **Boutons morts** | S | Retirer ou brancher : TopBar *Widgets* et *Search* (→ P7), FileManager *Sort* (→ P6), TimeLanguage *Apply/Sync* (→ P4), UserManager *Apply* (→ P4), Dashboard *Refresh*, NotificationCenter *Settings* (→ P3). Aucun `<button>` sans handler ne doit rester (lint custom ou revue). |
 
 ---
 
@@ -146,7 +146,7 @@ Taille : **M (≈ 3 j)**. Dépend de P2, P3.
 
 | # | Item | Taille | Détail / critère de fin |
 |---|---|---|---|
-| 8.1 ◐ | **CI complète** | S | Workflow `ci.yml` séparé de `build-libreelec.yml`, sur PR et push : `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test`, `npm ci && npm run check && npm run build`, test de génération `smb.conf`. Le build d'image reste manuel/tag. |
+| 8.1 ✅ | **CI complète** | S | Workflow `ci.yml` séparé de `build-libreelec.yml`, sur PR et push : `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test`, `npm ci && npm run check && npm run build`, test de génération `smb.conf`. Le build d'image reste manuel/tag. |
 | 8.2 | **Release** | S | `build-release.sh` : génère `.sha256` (P0.4), tag `vX.Y.Z` depuis `VERSION`, notes de release depuis les commits conventionnels. Une seule source de version : `VERSION` → injecté dans `Cargo.toml`/`package.json`/`package.mk` par le script (plus de dérive). |
 | 8.3 | **Validation Pi** | M | Check-list exécutée à chaque release : boot + `journalctl -u pinas`, onboarding, login/logout (révocation), SMB depuis un client, Storage (pool RAID1 sur 2 clés USB), App Center (installer Jellyfin), Docker, Terminal, Process Manager, mise à jour depuis la version N-1, cohabitation Kodi (bascule `display`). Résultats consignés dans `docs/RELEASE_CHECKLIST.md`. |
 | 8.4 | **App-catalog** | S | Tester l'upgrade Paperless 2 → 3 et Nextcloud 32 → 33 sur une instance existante avant push ; migrer `photoprism` de `mariadb:10.5.12` (EOL) vers `mariadb:11` avec procédure dump/restore documentée ; automatiser le script de vérification des tags (déjà écrit) en action GitHub hebdomadaire ouvrant une PR. |

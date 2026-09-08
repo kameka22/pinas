@@ -1,5 +1,5 @@
 import { writable, derived, get } from 'svelte/store';
-import { api } from './api';
+import { api, auth } from './api';
 
 export interface DesktopApp {
 	id: string;
@@ -15,6 +15,7 @@ export interface DesktopApp {
 		minHeight: number;
 	};
 	isInstalled?: boolean; // true for dynamically installed apps
+	adminOnly?: boolean; // hidden from non-admin users (backend enforces it too)
 	appConfig?: Record<string, unknown>; // Component-specific config (e.g., port, path for IframeApp)
 }
 
@@ -58,6 +59,7 @@ export const builtInApps: DesktopApp[] = [
 		labelKey: 'appCenter',
 		icon: 'mdi:store',
 		component: 'AppCenter',
+		adminOnly: true,
 		gradient: 'from-purple-500 to-pink-500'
 	},
 	{
@@ -66,6 +68,7 @@ export const builtInApps: DesktopApp[] = [
 		labelKey: 'storage',
 		icon: 'mdi:harddisk',
 		component: 'StorageManager',
+		adminOnly: true,
 		gradient: 'from-slate-500 to-slate-600'
 	},
 	{
@@ -74,6 +77,7 @@ export const builtInApps: DesktopApp[] = [
 		labelKey: 'shares',
 		icon: 'mdi:folder-network',
 		component: 'ShareManager',
+		adminOnly: true,
 		gradient: 'from-blue-400 to-blue-500'
 	},
 	{
@@ -82,6 +86,7 @@ export const builtInApps: DesktopApp[] = [
 		labelKey: 'terminal',
 		icon: 'mdi:console',
 		component: 'TerminalApp',
+		adminOnly: true,
 		gradient: 'from-gray-700 to-gray-800'
 	},
 	{
@@ -90,6 +95,7 @@ export const builtInApps: DesktopApp[] = [
 		labelKey: 'processManager',
 		icon: 'mdi:chart-timeline-variant',
 		component: 'ProcessManager',
+		adminOnly: true,
 		gradient: 'from-emerald-500 to-teal-600'
 	},
 	{
@@ -98,6 +104,7 @@ export const builtInApps: DesktopApp[] = [
 		labelKey: 'display',
 		icon: 'mdi:monitor-screenshot',
 		component: 'DisplayApp',
+		adminOnly: true,
 		gradient: 'from-indigo-500 to-purple-500'
 	}
 ];
@@ -106,8 +113,9 @@ export const builtInApps: DesktopApp[] = [
 export const installedApps = writable<DesktopApp[]>([]);
 
 // Combined list of all apps (built-in + installed)
-export const allApps = derived(installedApps, ($installedApps) => {
-	return [...builtInApps, ...$installedApps];
+export const allApps = derived([installedApps, auth], ([$installedApps, $auth]) => {
+	const isAdmin = $auth.user?.role === 'admin';
+	return [...builtInApps, ...$installedApps].filter((app) => isAdmin || !app.adminOnly);
 });
 
 // Fetch installed apps from the backend registry

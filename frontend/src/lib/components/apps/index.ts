@@ -5,7 +5,6 @@ import Dashboard from './Dashboard.svelte';
 import StorageManager from './StorageManager.svelte';
 import ShareManager from './ShareManager.svelte';
 import UserManager from './UserManager.svelte';
-import Settings from './Settings.svelte';
 import ControlPanel from './ControlPanel.svelte';
 import FileManager from './FileManager.svelte';
 import AppCenter from './AppCenter.svelte';
@@ -38,7 +37,6 @@ export const appComponents: Record<string, AnyComponent> = {
 	StorageManager,
 	ShareManager,
 	UserManager,
-	Settings,
 	ControlPanel,
 	FileManager,
 	AppCenter,
@@ -58,9 +56,6 @@ export const appComponents: Record<string, AnyComponent> = {
 	Webview: WebviewApp,
 	Service: ServiceApp,
 
-	// Placeholders (map to Dashboard for now)
-	NetdiskTools: Dashboard,
-	Support: Dashboard,
 	TaskManager: ProcessManager
 };
 
@@ -85,7 +80,6 @@ export {
 	StorageManager,
 	ShareManager,
 	UserManager,
-	Settings,
 	ControlPanel,
 	FileManager,
 	AppCenter,

@@ -1,6 +1,15 @@
-import { writable } from 'svelte/store';
+import { writable, get } from 'svelte/store';
+import { toasts } from './toasts';
+import { t } from '$lib/i18n';
 
 const API_BASE = '/api';
+
+/** Result of a request that must not throw on HTTP errors (terminal, task polling) */
+export interface RawResponse<T> {
+	ok: boolean;
+	status: number;
+	data: T | null;
+}
 
 // Auth state
 interface AuthState {
@@ -69,15 +78,7 @@ class ApiClient {
 		const response = await fetch(url, options);
 
 		if (!response.ok) {
-			if (response.status === 401) {
-				// Token expired or invalid
-				this.logout();
-			}
-
-			const error = await response.json().catch(() => ({ message: 'Request failed' }));
-			const apiError = new Error(error.message || error.error || `HTTP ${response.status}`) as any;
-			apiError.status = response.status;
-			throw apiError;
+			throw await this.toError(response);
 		}
 
 		// Handle empty responses (204 No Content or empty body)
@@ -93,6 +94,42 @@ class ApiClient {
 		}
 
 		return JSON.parse(text) as T;
+	}
+
+	/** Build the Error for a failed response; handles the session-wide side effects (401 → logout, 403 → toast). */
+	private async toError(response: Response): Promise<Error & { status: number; code?: string }> {
+		if (response.status === 401) {
+			// Token expired, revoked or invalid
+			this.logout();
+		}
+		const body = await response.json().catch(() => ({}));
+		const message = body.error || body.message || `HTTP ${response.status}`;
+		if (response.status === 403) {
+			const tr = get(t) as any;
+			toasts.error(tr?.common?.errors?.forbidden || message);
+		}
+		const apiError = new Error(message) as Error & { status: number; code?: string };
+		apiError.status = response.status;
+		apiError.code = body.code;
+		return apiError;
+	}
+
+	/** Like request() but returns the status and parsed body instead of throwing on HTTP errors. */
+	async requestRaw<T>(method: string, endpoint: string, data?: unknown): Promise<RawResponse<T>> {
+		const options: RequestInit = {
+			method,
+			headers: { 'Content-Type': 'application/json' },
+			credentials: 'include'
+		};
+		if (data) options.body = JSON.stringify(data);
+		const response = await fetch(`${this.baseUrl}${endpoint}`, options);
+		if (response.status === 401) this.logout();
+		const text = await response.text();
+		let parsed: T | null = null;
+		if (text && text.trim() !== '') {
+			try { parsed = JSON.parse(text) as T; } catch { parsed = null; }
+		}
+		return { ok: response.ok, status: response.status, data: parsed };
 	}
 
 	async get<T>(endpoint: string): Promise<T> {
@@ -747,6 +784,38 @@ class ApiClient {
 	async setPreference(key: string, value: string): Promise<void> {
 		return this.put<void>(`/preferences/${encodeURIComponent(key)}`, { value });
 	}
+
+	// ─── Docker / Packages / Services / Terminal (typed, single client) ───
+	// Docker
+	getDockerStatus() { return this.get<DockerStats>('/docker/status'); }
+	getContainers(all = true) { return this.get<DockerContainer[]>(`/docker/containers?all=${all}`); }
+	startContainer(id: string) { return this.post<void>(`/docker/containers/${encodeURIComponent(id)}/start`); }
+	stopContainer(id: string) { return this.post<void>(`/docker/containers/${encodeURIComponent(id)}/stop`); }
+	restartContainer(id: string) { return this.post<void>(`/docker/containers/${encodeURIComponent(id)}/restart`); }
+	removeContainer(id: string, force = true) { return this.delete<void>(`/docker/containers/${encodeURIComponent(id)}?force=${force}`); }
+	getContainerLogs(id: string, tail = 100) { return this.get<string[]>(`/docker/containers/${encodeURIComponent(id)}/logs?tail=${tail}`); }
+	getImages() { return this.get<DockerImage[]>('/docker/images'); }
+	pullImage(image: string) { return this.post<void>('/docker/images/pull', { image }); }
+	removeImage(id: string, force = true) { return this.delete<void>(`/docker/images/${encodeURIComponent(id)}?force=${force}`); }
+	pruneImages() { return this.post<{ deleted: number; space_reclaimed: number }>('/docker/images/prune'); }
+	getDockerVolumes() { return this.get<DockerVolume[]>('/docker/volumes'); }
+	removeVolume(name: string, force = true) { return this.delete<void>(`/docker/volumes/${encodeURIComponent(name)}?force=${force}`); }
+	pruneVolumes() { return this.post<{ deleted: number; space_reclaimed: number }>('/docker/volumes/prune'); }
+	getNetworks() { return this.get<DockerNetwork[]>('/docker/networks'); }
+	removeNetwork(id: string) { return this.delete<void>(`/docker/networks/${encodeURIComponent(id)}`); }
+	// Packages
+	getInstalledPackages<T = unknown>() { return this.get<T[]>('/packages'); }
+	getCatalog<T = unknown>() { return this.get<T>('/packages/catalog'); }
+	installPackage(packageId: string) { return this.post<{ task_id: string }>('/packages/install', { package_id: packageId }); }
+	getPackageTask(taskId: string) { return this.get<PackageTask>(`/packages/task/${encodeURIComponent(taskId)}`); }
+	uninstallPackage(packageId: string, deleteData = false) { return this.delete<void>(`/packages/${encodeURIComponent(packageId)}?delete_data=${deleteData}`); }
+	// Services
+	getServiceStatus(name: string) { return this.get<ServiceStatus>(`/services/${encodeURIComponent(name)}/status`); }
+	getServiceLogs(name: string, lines = 100) { return this.get<ServiceLogEntry[]>(`/services/${encodeURIComponent(name)}/logs?lines=${lines}`); }
+	serviceAction(name: string, action: 'start' | 'stop' | 'restart' | 'enable' | 'disable') { return this.post<void>(`/services/${encodeURIComponent(name)}/${action}`); }
+	// Terminal (errors carry a body the UI wants to show, so no throw)
+	terminalExec(command: string, cwd: string) { return this.requestRaw<TerminalExecResponse>('POST', '/terminal/exec', { command, cwd }); }
+	terminalComplete(partial: string, cwd: string) { return this.requestRaw<TerminalCompleteResponse>('POST', '/terminal/complete', { partial, cwd }); }
 }
 
 // File item type
@@ -1322,5 +1391,24 @@ export interface UserServiceAccess {
 	nfs: boolean;
 	ftp: boolean;
 }
+
+
+// ─── Docker ────────────────────────────────────────────────────────
+export interface DockerContainer { id: string; name: string; image: string; status: string; state: string; created: number; ports: { host: number | null; container: number; protocol: string }[] }
+export interface DockerImage { id: string; repo_tags: string[]; size: number; created: number }
+export interface DockerVolume { name: string; driver: string; mount_point: string; created: string }
+export interface DockerNetwork { id: string; name: string; driver: string; scope: string; containers: string[] }
+export interface DockerStats { running: boolean; version: string | null; containers_total: number; containers_running: number; containers_paused: number; containers_stopped: number; images: number; data_usage: number | null }
+
+// ─── Packages ──────────────────────────────────────────────────────
+export interface PackageTask { id: string; package_id: string; status: string; progress: number; total_steps: number; current_step: string | null; error_message: string | null }
+
+// ─── Services ──────────────────────────────────────────────────────
+export interface ServiceStatus { name: string; running: boolean; enabled: boolean; uptime: number | null; memory_usage: number | null; cpu_usage: number | null; pid: number | null }
+export interface ServiceLogEntry { timestamp: string; level: string; message: string }
+
+// ─── Terminal ──────────────────────────────────────────────────────
+export interface TerminalExecResponse { output: string; exit_code: number; dev_mode: boolean; cwd: string }
+export interface TerminalCompleteResponse { matches: { name: string; is_dir: boolean }[]; common_prefix: string }
 
 export const api = new ApiClient(API_BASE);

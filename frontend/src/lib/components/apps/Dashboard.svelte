@@ -28,10 +28,6 @@
 	<!-- Header -->
 	<header class="dashboard-header">
 		<h1>Dashboard</h1>
-		<button class="btn-refresh">
-			<Icon icon="mdi:refresh" class="w-4 h-4" />
-			Refresh
-		</button>
 	</header>
 
 	<!-- Stats Grid -->

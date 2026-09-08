@@ -34,7 +34,61 @@ export default {
 		searchApplications: 'Rechercher des applications...',
 		refresh: 'Actualiser',
 		retry: 'Réessayer',
-		copy: 'Copier'
+		copy: 'Copier',
+		errors: {
+			forbidden: "Vous n'avez pas les droits pour cette action",
+			generic: 'Une erreur est survenue',
+			loadFailed: 'Échec du chargement des données',
+			saveFailed: "Échec de l'enregistrement des paramètres",
+			connectionFailed: 'Connexion impossible',
+			installFailed: "Échec de l'installation",
+			uninstallFailed: 'Échec de la désinstallation',
+			updateServiceAccess: "Échec de la mise à jour de l'accès au service",
+			updatePermission: 'Échec de la mise à jour de la permission',
+			addFolder: "Échec de l'ajout du dossier",
+			changePassword: 'Échec du changement de mot de passe',
+			loadFolders: 'Échec du chargement des dossiers',
+			loadProfile: 'Échec du chargement du profil',
+			saveProfile: "Échec de l'enregistrement du profil",
+			loadSshStatus: "Échec du chargement de l'état SSH",
+			toggleSsh: 'Échec du changement d\'état SSH',
+			loadCupsStatus: "Échec du chargement de l'état CUPS",
+			toggleCups: 'Échec du changement d\'état CUPS',
+			addPrinter: "Échec de l'ajout de l'imprimante",
+			loadNetwork: "Échec du chargement de l'état réseau",
+			saveInterface: "Échec de l'enregistrement de l'interface",
+			createUser: "Échec de la création de l'utilisateur",
+			updateUser: "Échec de la mise à jour de l'utilisateur",
+			deleteUser: "Échec de la suppression de l'utilisateur",
+			createGroup: 'Échec de la création du groupe',
+			updateGroup: 'Échec de la mise à jour du groupe',
+			deleteGroup: 'Échec de la suppression du groupe',
+			createSchedule: 'Échec de la création de la planification',
+			deleteSchedule: 'Échec de la suppression de la planification',
+			toggleSchedule: "Échec du changement d'état de la planification",
+			savePowerSettings: "Échec de l'enregistrement des paramètres d'alimentation",
+			createSnapshot: 'Échec de la création du snapshot',
+			deleteSnapshot: 'Échec de la suppression du snapshot',
+			growPool: "Échec du démarrage de l'extension du pool",
+			loadLocations: 'Échec du chargement des emplacements',
+			loadFiles: 'Échec du chargement des fichiers',
+			serviceAction: 'Échec de l\'action « {action} » sur le service'
+		},
+		noLogs: 'Aucun journal disponible',
+		dismiss: 'Ignorer'
+	},
+
+	login: {
+		subtitle: 'Connectez-vous à votre compte',
+		signIn: 'Se connecter',
+		footer: 'Système de gestion NAS sécurisé'
+	},
+
+	profile: {
+		currentPassword: 'Mot de passe actuel',
+		newPassword: 'Nouveau mot de passe',
+		confirmNewPassword: 'Confirmer le nouveau mot de passe',
+		usernameLocked: "Le nom d'utilisateur ne peut pas être modifié"
 	},
 
 	// Password validation rules
@@ -271,6 +325,7 @@ export default {
 
 	// Top Bar
 	topBar: {
+		widgets: 'Widgets',
 		search: 'Rechercher...',
 		notifications: 'Notifications',
 		noNotifications: 'Aucune notification',
@@ -1139,6 +1194,7 @@ export default {
 
 	// File Service
 	fileService: {
+		noActiveShares: 'Aucun partage SMB actif',
 		title: 'Services de fichiers',
 		ssh: {
 			description: 'Accès Shell sécurisé pour l\'administration à distance',

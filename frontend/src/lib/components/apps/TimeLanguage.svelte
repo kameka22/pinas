@@ -136,10 +136,7 @@
 					</div>
 
 					<div class="setting-row">
-						<button class="btn-secondary">
-							<Icon icon="mdi:sync" class="w-4 h-4" />
-							{$t.timeLanguage.time.syncNow}
-						</button>
+						<!-- "Sync now" is wired to timedatectl in REMEDIATION_PLAN P4.1 -->
 					</div>
 				{/if}
 			</div>
@@ -175,12 +172,7 @@
 		{/if}
 	</div>
 
-	<!-- Apply Button -->
-	<div class="actions-bar">
-		<button class="btn-primary">
-			{$t.common.apply}
-		</button>
-	</div>
+	<!-- Apply arrives with the backend time/NTP endpoints (REMEDIATION_PLAN P4.1) -->
 </div>
 
 <style>

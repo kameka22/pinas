@@ -174,7 +174,7 @@
 				selectLocation(locations[0]);
 			}
 		} catch (e) {
-			locationsError = e instanceof Error ? e.message : 'Failed to load locations';
+			locationsError = e instanceof Error ? e.message : $t.common.errors.loadLocations;
 			locations = [];
 		} finally {
 			locationsLoading = false;
@@ -198,7 +198,7 @@
 			currentPath = path;
 			selectedFiles = [];
 		} catch (e) {
-			error = e instanceof Error ? e.message : 'Failed to load files';
+			error = e instanceof Error ? e.message : $t.common.errors.loadFiles;
 			files = [];
 		} finally {
 			loading = false;
@@ -865,9 +865,6 @@
 				</button>
 			</div>
 			<div class="action-right">
-				<button class="action-btn" title={$t.fileManager.toolbar.sort}>
-					<Icon icon="mdi:sort-variant" class="w-5 h-5" />
-				</button>
 				<div class="view-dropdown-container">
 					<button
 						class="action-btn view-btn"

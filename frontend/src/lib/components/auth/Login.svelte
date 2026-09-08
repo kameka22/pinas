@@ -40,7 +40,7 @@
 				<Icon icon="mdi:nas" class="w-12 h-12" />
 			</div>
 			<h1>PiNAS</h1>
-			<p>Sign in to your account</p>
+			<p>{$t.login.subtitle}</p>
 		</div>
 
 		<form on:submit={handleSubmit}>
@@ -87,13 +87,13 @@
 					<span>Signing in...</span>
 				{:else}
 					<Icon icon="mdi:login" class="w-5 h-5" />
-					<span>Sign In</span>
+					<span>{$t.login.signIn}</span>
 				{/if}
 			</button>
 		</form>
 
 		<div class="login-footer">
-			<p>Secure NAS Management System</p>
+			<p>{$t.login.footer}</p>
 		</div>
 	</div>
 </div>

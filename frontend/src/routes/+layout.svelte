@@ -14,6 +14,7 @@
 	import UpdateScreen from '$components/apps/UpdateScreen.svelte';
 	import PowerScreen from '$components/desktop/PowerScreen.svelte';
 	import TaskManager from '$components/desktop/TaskManager.svelte';
+	import ToastHost from '$components/ui/ToastHost.svelte';
 	import { connectWebSocket } from '$stores/websocket';
 	import { isSetupComplete, isLoading, initOnboarding } from '$stores/onboarding';
 	import { auth, api } from '$stores/api';
@@ -140,6 +141,9 @@
 
 	<!-- Window Manager -->
 	<WindowManager />
+
+	<!-- Global toasts (errors, confirmations) -->
+	<ToastHost />
 
 	<!-- Notification Center -->
 	<NotificationCenter bind:visible={showNotifications} />

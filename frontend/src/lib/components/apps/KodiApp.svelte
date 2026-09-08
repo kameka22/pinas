@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { toasts, errorMessage } from '$stores/toasts';
 	import Icon from '@iconify/svelte';
 	import { t } from '$lib/i18n';
 	import { onMount, onDestroy } from 'svelte';
@@ -168,7 +169,7 @@
 			newSource = { name: '', path: '', source_type: 'video' };
 			await loadSources();
 		} catch (e) {
-			alert(e instanceof Error ? e.message : $t.kodi.errors.addSourceFailed);
+			toasts.error(errorMessage(e, $t.kodi.errors.addSourceFailed));
 		}
 	}
 
@@ -178,7 +179,7 @@
 			await api.delete(`/kodi/sources/${sourceId}`);
 			await loadSources();
 		} catch (e) {
-			alert(e instanceof Error ? e.message : $t.kodi.errors.removeSourceFailed);
+			toasts.error(errorMessage(e, $t.kodi.errors.removeSourceFailed));
 		}
 	}
 
@@ -190,7 +191,7 @@
 			const setting = settings.find((s) => s.id === settingId);
 			if (setting) setting.value = value;
 		} catch (e) {
-			alert(e instanceof Error ? e.message : $t.kodi.errors.updateSettingFailed);
+			toasts.error(errorMessage(e, $t.kodi.errors.updateSettingFailed));
 		}
 	}
 
@@ -202,7 +203,7 @@
 			addon.enabled = !addon.enabled;
 			addons = [...addons];
 		} catch (e) {
-			alert(e instanceof Error ? e.message : $t.kodi.errors.toggleAddonFailed);
+			toasts.error(errorMessage(e, $t.kodi.errors.toggleAddonFailed));
 		}
 	}
 
@@ -210,9 +211,9 @@
 	async function scanLibrary(type: string) {
 		try {
 			await api.post(`/kodi/library/${type}/scan`);
-			alert($t.kodi.library.scanStarted);
+			toasts.success($t.kodi.library.scanStarted);
 		} catch (e) {
-			alert(e instanceof Error ? e.message : $t.kodi.errors.scanFailed);
+			toasts.error(errorMessage(e, $t.kodi.errors.scanFailed));
 		}
 	}
 

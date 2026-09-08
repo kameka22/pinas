@@ -118,6 +118,11 @@ RUST_LOG=pinas=info,tower_http=info
 - Frontend servi depuis `/storage/.pinas/www/` via tower-http
 
 ### Svelte
+- **Un seul client HTTP** : `$stores/api` (`api.getX()` typés, `api.requestRaw()` quand le corps d'erreur doit être lu). Jamais de `fetch('/api/…')` dans un composant. Le client gère 401 → déconnexion, 403 → toast.
+- **Erreurs utilisateur** : `toasts.error(errorMessage(e, $t.common.errors.<clé>))` (`$stores/toasts`), jamais `alert()`. Aucune chaîne anglaise en dur : tout passe par `$t` (`en.ts`/`fr.ts` doivent rester strictement parallèles — un test l'impose).
+- Une app réservée aux admins porte `adminOnly: true` dans `stores/desktop.ts` (le backend l'impose aussi).
+- Pas de bouton sans handler : on retire ce qui n'est pas branché plutôt que d'afficher un placeholder.
+- Tests : Vitest (`npm test`), fichiers `*.test.ts` à côté des stores.
 - Composants en PascalCase : `DiskManager.svelte`
 - Stores dans `$lib/stores/`, composants apps dans `$lib/components/apps/`
 - Types partagés dans les stores
@@ -131,5 +136,5 @@ RUST_LOG=pinas=info,tower_http=info
 ### Dev local
 - Pas de cargo installé localement, builds via Docker
 - `npm run check` / `npm run build` échouent en local si le binaire natif rollup manque (bug npm optionalDependencies) : `cd frontend && npm install --no-save @rollup/rollup-linux-arm64-gnu@$(node -p "require('./node_modules/rollup/package.json').version")` (adapter la plateforme), sans toucher au lock
-- Pas de lint configuré (ESLint retiré) ; `npm run check` = svelte-check
+- Pas de lint configuré (ESLint retiré) ; `npm run check` = svelte-check (0 erreur attendu), `npm test` = Vitest
 - Docker n'est PAS une app built-in, il s'installe via App Center

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { api } from '$stores/api';
 	import Icon from '@iconify/svelte';
 	import { onMount, onDestroy } from 'svelte';
 	import { t } from '$lib/i18n';
@@ -141,8 +142,7 @@
 	// Fetch data
 	async function fetchDockerStatus() {
 		try {
-			const response = await fetch('/api/docker/status');
-			if (response.ok) dockerStats = await response.json();
+			dockerStats = await api.getDockerStatus();
 		} catch (e) {
 			console.error('Failed to fetch Docker status:', e);
 		}
@@ -150,8 +150,7 @@
 
 	async function fetchContainers() {
 		try {
-			const response = await fetch('/api/docker/containers?all=true');
-			if (response.ok) containers = await response.json();
+			containers = await api.getContainers(true);
 		} catch (e) {
 			console.error('Failed to fetch containers:', e);
 		}
@@ -159,8 +158,7 @@
 
 	async function fetchImages() {
 		try {
-			const response = await fetch('/api/docker/images');
-			if (response.ok) images = await response.json();
+			images = await api.getImages();
 		} catch (e) {
 			console.error('Failed to fetch images:', e);
 		}
@@ -168,8 +166,7 @@
 
 	async function fetchVolumes() {
 		try {
-			const response = await fetch('/api/docker/volumes');
-			if (response.ok) volumes = await response.json();
+			volumes = await api.getDockerVolumes();
 		} catch (e) {
 			console.error('Failed to fetch volumes:', e);
 		}
@@ -177,8 +174,7 @@
 
 	async function fetchNetworks() {
 		try {
-			const response = await fetch('/api/docker/networks');
-			if (response.ok) networks = await response.json();
+			networks = await api.getNetworks();
 		} catch (e) {
 			console.error('Failed to fetch networks:', e);
 		}
@@ -186,14 +182,11 @@
 
 	async function fetchSystemStats() {
 		try {
-			const response = await fetch('/api/system/info');
-			if (response.ok) {
-				const data = await response.json();
-				cpuUsage = Math.round(data.cpu.usage);
-				memoryUsage = Math.round(data.memory.usage_percent);
-				memoryTotal = data.memory.total;
-				memoryAvailable = data.memory.available;
-			}
+			const data = await api.getSystemInfo();
+			cpuUsage = Math.round(data.cpu.usage);
+			memoryUsage = Math.round(data.memory.usage_percent);
+			memoryTotal = data.memory.total;
+			memoryAvailable = data.memory.available;
 		} catch (e) {
 			console.error('Failed to fetch system stats:', e);
 		}
@@ -245,7 +238,7 @@
 			dc.stopTitle || 'Stop Container',
 			(dc.stopMessage || 'Are you sure you want to stop "{name}"?').replace('{name}', c.name),
 			dc.stopBtn || 'Stop', false, async () => {
-				await fetch(`/api/docker/containers/${c.id}/stop`, { method: 'POST' });
+				await api.stopContainer(c.id);
 				await fetchContainers();
 			}
 		);
@@ -256,7 +249,7 @@
 			dc.startTitle || 'Start Container',
 			(dc.startMessage || 'Are you sure you want to start "{name}"?').replace('{name}', c.name),
 			dc.startBtn || 'Start', false, async () => {
-				await fetch(`/api/docker/containers/${c.id}/start`, { method: 'POST' });
+				await api.startContainer(c.id);
 				await fetchContainers();
 			}
 		);
@@ -267,7 +260,7 @@
 			dc.restartTitle || 'Restart Container',
 			(dc.restartMessage || 'Are you sure you want to restart "{name}"?').replace('{name}', c.name),
 			dc.restartBtn || 'Restart', false, async () => {
-				await fetch(`/api/docker/containers/${c.id}/restart`, { method: 'POST' });
+				await api.restartContainer(c.id);
 				await fetchContainers();
 			}
 		);
@@ -278,7 +271,7 @@
 			dc.removeContainerTitle || 'Remove Container',
 			(dc.removeContainerMessage || 'Remove container "{name}"? This cannot be undone.').replace('{name}', c.name),
 			dc.removeBtn || 'Remove', true, async () => {
-				await fetch(`/api/docker/containers/${c.id}?force=true`, { method: 'DELETE' });
+				await api.removeContainer(c.id, true);
 				await fetchContainers();
 			}
 		);
@@ -290,7 +283,7 @@
 			dc.removeImageTitle || 'Remove Image',
 			(dc.removeImageMessage || 'Remove image "{name}"? This cannot be undone.').replace('{name}', name),
 			dc.removeBtn || 'Remove', true, async () => {
-				await fetch(`/api/docker/images/${encodeURIComponent(img.id)}?force=true`, { method: 'DELETE' });
+				await api.removeImage(img.id, true);
 				await fetchImages();
 			}
 		);
@@ -301,7 +294,7 @@
 			dc.removeVolumeTitle || 'Remove Volume',
 			(dc.removeVolumeMessage || 'Remove volume "{name}"? All data will be lost.').replace('{name}', vol.name),
 			dc.removeBtn || 'Remove', true, async () => {
-				await fetch(`/api/docker/volumes/${encodeURIComponent(vol.name)}?force=true`, { method: 'DELETE' });
+				await api.removeVolume(vol.name, true);
 				await fetchVolumes();
 			}
 		);
@@ -312,7 +305,7 @@
 			dc.removeNetworkTitle || 'Remove Network',
 			(dc.removeNetworkMessage || 'Remove network "{name}"?').replace('{name}', net.name),
 			dc.removeBtn || 'Remove', true, async () => {
-				await fetch(`/api/docker/networks/${encodeURIComponent(net.id)}`, { method: 'DELETE' });
+				await api.removeNetwork(net.id);
 				await fetchNetworks();
 			}
 		);
@@ -324,7 +317,7 @@
 			dc.pruneImagesTitle || 'Prune Images',
 			dc.pruneImagesMessage || 'This will remove all unused images. This cannot be undone.',
 			dc.pruneImagesBtn || 'Prune', true, async () => {
-				await fetch('/api/docker/images/prune', { method: 'POST' });
+				await api.pruneImages();
 				await fetchImages();
 			}
 		);
@@ -335,7 +328,7 @@
 			dc.pruneVolumesTitle || 'Prune Volumes',
 			dc.pruneVolumesMessage || 'This will remove all unused volumes. All data will be lost.',
 			dc.pruneVolumesBtn || 'Prune', true, async () => {
-				await fetch('/api/docker/volumes/prune', { method: 'POST' });
+				await api.pruneVolumes();
 				await fetchVolumes();
 			}
 		);
@@ -353,8 +346,7 @@
 	async function fetchLogs(tail: number) {
 		logLoading = true;
 		try {
-			const response = await fetch(`/api/docker/containers/${logContainerId}/logs?tail=${tail}`);
-			if (response.ok) logLines = await response.json();
+			logLines = await api.getContainerLogs(logContainerId, tail);
 		} catch (e) {
 			console.error('Failed to fetch logs:', e);
 		} finally {
@@ -377,11 +369,7 @@
 		if (!pullInput.trim()) return;
 		pulling = true;
 		try {
-			await fetch('/api/docker/images/pull', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ image: pullInput.trim() })
-			});
+			await api.pullImage(pullInput.trim());
 			pullInput = '';
 			await fetchImages();
 		} catch (e) {
@@ -529,7 +517,7 @@
 							<Icon icon="mdi:magnify" class="w-4 h-4" />
 							<input type="text" bind:value={searchContainer} placeholder={d.search || 'Search...'} />
 						</div>
-						<button class="btn-icon" on:click={fetchContainers} title="Refresh">
+						<button class="btn-icon" on:click={fetchContainers} title={$t.common.refresh}>
 							<Icon icon="mdi:refresh" class="w-4 h-4" />
 						</button>
 					</div>
@@ -603,7 +591,7 @@
 							<Icon icon="mdi:broom" class="w-4 h-4" />
 							<span>{dc.pruneImagesBtn || 'Prune'}</span>
 						</button>
-						<button class="btn-icon" on:click={fetchImages} title="Refresh">
+						<button class="btn-icon" on:click={fetchImages} title={$t.common.refresh}>
 							<Icon icon="mdi:refresh" class="w-4 h-4" />
 						</button>
 					</div>
@@ -678,7 +666,7 @@
 							<Icon icon="mdi:broom" class="w-4 h-4" />
 							<span>{dc.pruneVolumesBtn || 'Prune'}</span>
 						</button>
-						<button class="btn-icon" on:click={fetchVolumes} title="Refresh">
+						<button class="btn-icon" on:click={fetchVolumes} title={$t.common.refresh}>
 							<Icon icon="mdi:refresh" class="w-4 h-4" />
 						</button>
 					</div>
@@ -730,7 +718,7 @@
 							<Icon icon="mdi:magnify" class="w-4 h-4" />
 							<input type="text" bind:value={searchNetwork} placeholder={d.search || 'Search...'} />
 						</div>
-						<button class="btn-icon" on:click={fetchNetworks} title="Refresh">
+						<button class="btn-icon" on:click={fetchNetworks} title={$t.common.refresh}>
 							<Icon icon="mdi:refresh" class="w-4 h-4" />
 						</button>
 					</div>

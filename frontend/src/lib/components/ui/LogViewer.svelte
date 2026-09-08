@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { t } from '$lib/i18n';
 	import Icon from '@iconify/svelte';
 	import { createEventDispatcher, afterUpdate } from 'svelte';
 
@@ -74,7 +75,7 @@
 						<Icon icon="mdi:loading" class="w-6 h-6 spinning" />
 					</div>
 				{:else if logs.length === 0}
-					<div class="log-empty">No logs available</div>
+					<div class="log-empty">{$t.common.noLogs}</div>
 				{:else}
 					{#each logs as line}
 						<div class="log-line">{line}</div>

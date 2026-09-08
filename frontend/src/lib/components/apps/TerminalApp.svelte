@@ -2,7 +2,7 @@
 	import { onMount, tick } from 'svelte';
 	import { get } from 'svelte/store';
 	import { t } from '$lib/i18n';
-	import { auth } from '$stores/api';
+	import { auth, api } from '$stores/api';
 	import { systemInfo } from '$stores/system';
 
 	interface PromptLine {
@@ -186,14 +186,8 @@
 		// Execute via API (authenticated, admin-only)
 		isExecuting = true;
 		try {
-			const response = await fetch('/api/terminal/exec', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				credentials: 'include',
-				body: JSON.stringify({ command, cwd })
-			});
-
-			const data = await response.json();
+			const response = await api.terminalExec(command, cwd);
+			const data = (response.data ?? {}) as Partial<import('$stores/api').TerminalExecResponse>;
 
 			if (response.status === 401) {
 				lines = [...lines, { type: 'error', content: tErrors.authRequired || 'Authentication required. Please log in again.' }];
@@ -351,16 +345,10 @@
 
 		isCompleting = true;
 		try {
-			const response = await fetch('/api/terminal/complete', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				credentials: 'include',
-				body: JSON.stringify({ partial, cwd })
-			});
+			const response = await api.terminalComplete(partial, cwd);
+			if (!response.ok || !response.data) return;
 
-			if (!response.ok) return;
-
-			const data: { matches: { name: string; is_dir: boolean }[]; common_prefix: string } = await response.json();
+			const data = response.data;
 
 			if (data.matches.length === 0) {
 				// No matches - do nothing

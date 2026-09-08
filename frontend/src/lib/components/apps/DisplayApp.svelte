@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { toasts, errorMessage } from '$stores/toasts';
 	import Icon from '@iconify/svelte';
 	import { t } from '$lib/i18n';
 	import { onMount, onDestroy } from 'svelte';
@@ -214,13 +215,13 @@
 			newSource = { name: '', path: '', source_type: 'video' };
 			await loadSources();
 		} catch (e) {
-			alert(e instanceof Error ? e.message : $t.kodi.errors.addSourceFailed);
+			toasts.error(errorMessage(e, $t.kodi.errors.addSourceFailed));
 		}
 	}
 
 	async function removeSource(sourceId: string) {
 		if (!confirm($t.kodi.sources.deleteConfirm)) return;
-		try { await api.delete(`/kodi/sources/${sourceId}`); await loadSources(); } catch (e) { alert(e instanceof Error ? e.message : $t.kodi.errors.removeSourceFailed); }
+		try { await api.delete(`/kodi/sources/${sourceId}`); await loadSources(); } catch (e) { toasts.error(errorMessage(e, $t.kodi.errors.removeSourceFailed)); }
 	}
 
 	// Settings
@@ -230,19 +231,19 @@
 			const setting = settings.find((s) => s.id === settingId);
 			if (setting) setting.value = value;
 		} catch (e) {
-			alert(e instanceof Error ? e.message : $t.kodi.errors.updateSettingFailed);
+			toasts.error(errorMessage(e, $t.kodi.errors.updateSettingFailed));
 		}
 	}
 
 	// Addons
 	async function toggleAddon(addon: KodiAddon) {
 		const action = addon.enabled ? 'disable' : 'enable';
-		try { await api.post(`/kodi/addons/${addon.id}/${action}`); addon.enabled = !addon.enabled; addons = [...addons]; } catch (e) { alert(e instanceof Error ? e.message : $t.kodi.errors.toggleAddonFailed); }
+		try { await api.post(`/kodi/addons/${addon.id}/${action}`); addon.enabled = !addon.enabled; addons = [...addons]; } catch (e) { toasts.error(errorMessage(e, $t.kodi.errors.toggleAddonFailed)); }
 	}
 
 	// Library
 	async function scanLibrary(type: string) {
-		try { await api.post(`/kodi/library/${type}/scan`); alert($t.kodi.library.scanStarted); } catch (e) { alert(e instanceof Error ? e.message : $t.kodi.errors.scanFailed); }
+		try { await api.post(`/kodi/library/${type}/scan`); toasts.success($t.kodi.library.scanStarted); } catch (e) { toasts.error(errorMessage(e, $t.kodi.errors.scanFailed)); }
 	}
 
 	// Computed
