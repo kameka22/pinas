@@ -110,22 +110,19 @@ export default {
 			userManagement: 'User Management',
 			fileService: 'File Service',
 			deviceConnection: 'Device Connection',
-			domainLdap: 'Domain/LDAP',
 			terminal: 'Terminal',
 			printer: 'Printer',
 			hardwarePower: 'Hardware & Power',
 			timeLanguage: 'Time & Language',
 			network: 'Network',
 			security: 'Security',
-			indexingService: 'Indexing Service',
 			systemUpdate: 'System Update',
 			about: 'About'
 		},
 		tabs: {
 			general: 'General',
 			storage: 'Storage',
-			service: 'Service',
-			deviceAnalysis: 'Device analysis'
+			service: 'Service'
 		},
 		about: {
 			deviceName: 'Device Name',
@@ -141,6 +138,9 @@ export default {
 			memory: 'Memory',
 			network: 'Network',
 			macAddress: 'Mac Address/Subnet mask',
+			pools: 'Storage pools',
+			volumes: 'Volumes',
+			noVolumes: 'No volume',
 			cores: 'Cores',
 			threads: 'Threads'
 		},
@@ -167,7 +167,13 @@ export default {
 			ntpServer: 'NTP Server',
 			syncWithNtp: 'Synchronize with NTP server',
 			syncNow: 'Sync Now',
-			lastSync: 'Last synchronized'
+			lastSync: 'Last synchronized',
+			saved: 'Time settings saved',
+			syncRequested: 'Synchronization requested',
+			synced: 'Clock synchronized with NTP',
+			notSynced: 'Clock not synchronized',
+			serversHint: 'Space-separated servers',
+			devMode: 'Dev mode: changes are recorded, the system clock is not touched'
 		},
 		language: {
 			title: 'Display Language',
@@ -273,10 +279,10 @@ export default {
 			systemGroupNameReadonly: 'System group names cannot be changed'
 		},
 		advancedSettings: {
+			saved: 'Password policy saved',
 			passwordStrength: {
 				title: 'Password strength rules',
 				noUserNames: 'Do not use user names',
-				noCommonPasswords: 'Do not use common passwords',
 				requireUpperLower: 'Must contain both uppercase and lowercase letters',
 				requireNumber: 'At least 1 number',
 				requireSpecialChar: 'At least 1 special character',
@@ -287,8 +293,6 @@ export default {
 				title: 'Password expiry rules',
 				enabled: 'Enable password expiry rules',
 				validityPeriod: 'Password validity period',
-				reminderDays: 'Reminder days in advance (before password expires)',
-				forceChange: 'Password change required after expiry',
 				permanentUsers: 'Permanent password users',
 				days: 'days'
 			}

@@ -142,17 +142,51 @@
 
 	// Password settings state
 	let passwordSettings = {
-		noUserNames: false,
-		noCommonPasswords: false,
-		requireUpperLower: true,
+		noUserNames: true,
+		requireUpperLower: false,
 		requireNumber: false,
 		requireSpecialChar: false,
 		minLength: 8,
 		expiryEnabled: false,
-		validityDays: 90,
-		reminderDays: 7,
-		forceChangeAfterExpiry: false
+		validityDays: 90
 	};
+	let policySaving = false;
+
+	async function loadPasswordPolicy() {
+		try {
+			const p = await api.getPasswordPolicy();
+			passwordSettings = {
+				noUserNames: p.forbid_username,
+				requireUpperLower: p.require_upper_lower,
+				requireNumber: p.require_number,
+				requireSpecialChar: p.require_special,
+				minLength: p.min_length,
+				expiryEnabled: p.expiry_days > 0,
+				validityDays: p.expiry_days > 0 ? p.expiry_days : 90
+			};
+		} catch {
+			// defaults stay
+		}
+	}
+
+	async function savePasswordPolicy() {
+		policySaving = true;
+		try {
+			await api.updatePasswordPolicy({
+				min_length: Number(passwordSettings.minLength) || 8,
+				require_upper_lower: passwordSettings.requireUpperLower,
+				require_number: passwordSettings.requireNumber,
+				require_special: passwordSettings.requireSpecialChar,
+				forbid_username: passwordSettings.noUserNames,
+				expiry_days: passwordSettings.expiryEnabled ? Number(passwordSettings.validityDays) || 90 : 0
+			});
+			toasts.success($t.userManager.advancedSettings.saved);
+		} catch (e) {
+			toasts.error(errorMessage(e, $t.common.errors.saveFailed));
+		} finally {
+			policySaving = false;
+		}
+	}
 
 	// Computed - filtered display data
 	$: filteredUsers = displayUsers.filter(u =>
@@ -167,7 +201,7 @@
 
 	// Load data on mount
 	onMount(async () => {
-		await loadData();
+		await Promise.all([loadData(), loadPasswordPolicy()]);
 	});
 
 	async function loadData() {
@@ -776,10 +810,6 @@
 							<span>{$t.userManager.advancedSettings.passwordStrength.noUserNames}</span>
 						</label>
 						<label class="checkbox-row">
-							<input type="checkbox" bind:checked={passwordSettings.noCommonPasswords} />
-							<span>{$t.userManager.advancedSettings.passwordStrength.noCommonPasswords}</span>
-						</label>
-						<label class="checkbox-row">
 							<input type="checkbox" bind:checked={passwordSettings.requireUpperLower} />
 							<span>{$t.userManager.advancedSettings.passwordStrength.requireUpperLower}</span>
 						</label>
@@ -795,7 +825,7 @@
 							<input type="checkbox" checked disabled />
 							<span class="text-disabled">{$t.userManager.advancedSettings.passwordStrength.minLength}</span>
 							<div class="number-input">
-								<input type="number" bind:value={passwordSettings.minLength} min="4" max="32" />
+								<input type="number" bind:value={passwordSettings.minLength} min="4" max="128" />
 								<span class="suffix">{$t.userManager.advancedSettings.passwordStrength.digits}</span>
 							</div>
 						</label>
@@ -821,25 +851,13 @@
 									<span class="suffix">{$t.userManager.advancedSettings.passwordExpiry.days}</span>
 								</div>
 							</div>
-							<div class="input-row">
-								<span>{$t.userManager.advancedSettings.passwordExpiry.reminderDays}</span>
-								<div class="number-input">
-									<input type="number" bind:value={passwordSettings.reminderDays} min="1" max="30" />
-									<span class="suffix">{$t.userManager.advancedSettings.passwordExpiry.days}</span>
-								</div>
-							</div>
-							<div class="toggle-row">
-								<span>{$t.userManager.advancedSettings.passwordExpiry.forceChange}</span>
-								<label class="toggle">
-									<input type="checkbox" bind:checked={passwordSettings.forceChangeAfterExpiry} />
-									<span class="toggle-slider"></span>
-								</label>
-							</div>
 						{/if}
 					</div>
 				</section>
 
-				<!-- Password policy is persisted/enforced in REMEDIATION_PLAN P4.5 -->
+				<div class="settings-footer">
+					<button class="btn-primary" on:click={savePasswordPolicy} disabled={policySaving}>{$t.common.apply}</button>
+				</div>
 			</div>
 		{/if}
 	</div>

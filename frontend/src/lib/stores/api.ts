@@ -813,6 +813,14 @@ class ApiClient {
 	markAllNotificationsRead() { return this.post<{ updated: number }>('/notifications/read-all'); }
 	deleteNotification(id: string) { return this.delete<void>(`/notifications/${encodeURIComponent(id)}`); }
 	clearNotifications() { return this.delete<{ deleted: number }>('/notifications'); }
+	// Time & NTP
+	getTimeStatus() { return this.get<TimeStatus>('/system/time'); }
+	getTimezones() { return this.get<string[]>('/system/time/zones'); }
+	updateTime(update: TimeUpdate) { return this.put<TimeStatus>('/system/time', update); }
+	syncTime() { return this.post<TimeStatus>('/system/time/sync'); }
+	// Password policy (admin)
+	getPasswordPolicy() { return this.get<PasswordPolicy>('/security/password-policy'); }
+	updatePasswordPolicy(policy: PasswordPolicy) { return this.put<PasswordPolicy>('/security/password-policy', policy); }
 	// System services summary (samba/nfs/ssh) for dashboards
 	getSystemServices() { return this.get<SystemServiceSummary[]>('/system/services'); }
 	// Terminal (errors carry a body the UI wants to show, so no throw)
@@ -1405,6 +1413,13 @@ export interface Notification {
 	read: boolean;
 	created_at: string;
 }
+
+// ─── Time & NTP ────────────────────────────────────────────────────
+export interface TimeStatus { timezone: string; local_time: string; utc_time: string; ntp_enabled: boolean; ntp_synchronized: boolean; ntp_servers: string[]; dev_mode: boolean }
+export interface TimeUpdate { timezone?: string; ntp_enabled?: boolean; ntp_servers?: string[] }
+
+// ─── Password policy ───────────────────────────────────────────────
+export interface PasswordPolicy { min_length: number; require_upper_lower: boolean; require_number: boolean; require_special: boolean; forbid_username: boolean; expiry_days: number }
 
 // ─── System services summary (/system/services) ────────────────────
 export interface SystemServiceSummary { name: string; status: string; enabled: boolean }

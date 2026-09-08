@@ -89,13 +89,13 @@ Taille : **L (≈ 6 j)**. Dépend de P1, P2.
 
 | # | Item | Taille | Détail / critère de fin |
 |---|---|---|---|
-| 4.1 | **Time & Language** (actuellement 0 appel API) | M | Backend `api/time.rs` : `GET /api/system/time` (timezone, NTP actif, heure, serveurs), `PUT` (timezone via `timedatectl set-timezone`, NTP on/off via `timedatectl set-ntp`, serveurs dans `/storage/.config/timesyncd.conf.d/`), `POST /sync` (`systemctl restart systemd-timesyncd`). Liste des fuseaux via `timedatectl list-timezones`. Langue : persister dans `user_preferences` (endpoint `/api/preferences` existe) et appliquer au login. Critère : changer le fuseau dans l'UI → `date` sur le Pi change. |
+| 4.1 ✅ | **Time & Language** (actuellement 0 appel API) | M | Backend `api/time.rs` : `GET /api/system/time` (timezone, NTP actif, heure, serveurs), `PUT` (timezone via `timedatectl set-timezone`, NTP on/off via `timedatectl set-ntp`, serveurs dans `/storage/.config/timesyncd.conf.d/`), `POST /sync` (`systemctl restart systemd-timesyncd`). Liste des fuseaux via `timedatectl list-timezones`. Langue : persister dans `user_preferences` (endpoint `/api/preferences` existe) et appliquer au login. Critère : changer le fuseau dans l'UI → `date` sur le Pi change. |
 | 4.2 | **Hardware & Power** | M | Regrouper l'existant : reboot/shutdown (endpoints existants), gestion d'alimentation disques (`disk_power_settings` + `hdparm -S`, déjà en base), gouverneur CPU (`/sys/devices/system/cpu/cpufreq/…`), température/ventilateur (lecture `thermal_zone0`, déjà exposée), **arrêt/redémarrage planifié** (table `scheduled_tasks` + tâche Tokio cron minimaliste — pose la base pour les tâches planifiées du TODO §9.2). |
 | 4.3 | **Security** | M | Vue et réglages : durée de session JWT (`jwt_expiration_hours` → `settings`), HTTPS on/off (`PINAS_TLS_ENABLED` déplacé dans `settings`, redémarrage du listener), régénération du certificat auto-signé, journal des connexions (table `login_attempts` alimentée par P0.7), blocage auto d'IP après N échecs, accès SSH (déjà existant → déplacer ici depuis `TerminalSettings`). |
 | 4.4 | **Device Connection** | S | Hostname (endpoint `network` existant), mDNS/Avahi (`avahi-daemon` est dans LibreELEC : activer/désactiver, nom `pinas.local`), QR code d'accès LAN, et rappel des ports exposés. Pas de "QuickConnect" cloud. |
-| 4.5 | **Password policy** (onglet Settings de UserManager) | S | Persister dans `settings` (`password.min_length`, `password.require_mixed`, `password.expiry_days`) ; enforcer dans `create_user`/`change_user_password` ; bouton *Apply* branché. |
-| 4.6 | **Onglet About** | S | *Storage* = résumé pools/volumes (API storage), *Service* = liste services (API services). **Supprimer** *Device Analysis* (doublon de Process Manager). Retirer le placeholder `contentFor`. |
-| 4.7 | **Retraits** | S | Entrées *Domain/LDAP* et *Indexing Service* supprimées de `ControlPanel.svelte` + clés i18n + `README.md`. |
+| 4.5 ✅ | **Password policy** (onglet Settings de UserManager) | S | Persister dans `settings` (`password.min_length`, `password.require_mixed`, `password.expiry_days`) ; enforcer dans `create_user`/`change_user_password` ; bouton *Apply* branché. |
+| 4.6 ✅ | **Onglet About** | S | *Storage* = résumé pools/volumes (API storage), *Service* = liste services (API services). **Supprimer** *Device Analysis* (doublon de Process Manager). Retirer le placeholder `contentFor`. |
+| 4.7 ✅ | **Retraits** | S | Entrées *Domain/LDAP* et *Indexing Service* supprimées de `ControlPanel.svelte` + clés i18n + `README.md`. |
 
 ---
 

@@ -93,8 +93,9 @@ async fn complete_setup(
         return ApiError::bad_request("Username must be at least 3 characters".to_string()).with_code("VALIDATION_ERROR".to_string()).into_response();
     }
 
-    if payload.admin_password.len() < 8 {
-        return ApiError::bad_request("Password must be at least 8 characters".to_string()).with_code("VALIDATION_ERROR".to_string()).into_response();
+    let policy = crate::services::password_policy::PasswordPolicy::default();
+    if let Some(reason) = policy.violation(&payload.admin_password, Some(&payload.admin_username)) {
+        return ApiError::bad_request(reason).with_code("VALIDATION_ERROR").into_response();
     }
 
     if payload.machine_name.trim().is_empty() {

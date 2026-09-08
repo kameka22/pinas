@@ -110,22 +110,19 @@ export default {
 			userManagement: 'Gestion des utilisateurs',
 			fileService: 'Service de fichiers',
 			deviceConnection: 'Connexion appareil',
-			domainLdap: 'Domaine/LDAP',
 			terminal: 'Terminal',
 			printer: 'Imprimante',
 			hardwarePower: 'Matériel et alimentation',
 			timeLanguage: 'Heure et langue',
 			network: 'Réseau',
 			security: 'Sécurité',
-			indexingService: "Service d'indexation",
 			systemUpdate: 'Mise à jour système',
 			about: 'À propos'
 		},
 		tabs: {
 			general: 'Général',
 			storage: 'Stockage',
-			service: 'Service',
-			deviceAnalysis: 'Analyse appareil'
+			service: 'Service'
 		},
 		about: {
 			deviceName: "Nom de l'appareil",
@@ -141,6 +138,9 @@ export default {
 			memory: 'Mémoire',
 			network: 'Réseau',
 			macAddress: 'Adresse MAC/Masque sous-réseau',
+			pools: 'Pools de stockage',
+			volumes: 'Volumes',
+			noVolumes: 'Aucun volume',
 			cores: 'Cœurs',
 			threads: 'Threads'
 		},
@@ -167,7 +167,13 @@ export default {
 			ntpServer: 'Serveur NTP',
 			syncWithNtp: 'Synchroniser avec le serveur NTP',
 			syncNow: 'Synchroniser maintenant',
-			lastSync: 'Dernière synchronisation'
+			lastSync: 'Dernière synchronisation',
+			saved: 'Paramètres horaires enregistrés',
+			syncRequested: 'Synchronisation demandée',
+			synced: 'Horloge synchronisée par NTP',
+			notSynced: 'Horloge non synchronisée',
+			serversHint: 'Serveurs séparés par des espaces',
+			devMode: 'Mode dev : les changements sont enregistrés, l\'horloge système n\'est pas modifiée'
 		},
 		language: {
 			title: "Langue d'affichage",
@@ -273,10 +279,10 @@ export default {
 			systemGroupNameReadonly: 'Les noms des groupes système ne peuvent pas être modifiés'
 		},
 		advancedSettings: {
+			saved: 'Politique de mots de passe enregistrée',
 			passwordStrength: {
 				title: 'Règles de complexité du mot de passe',
 				noUserNames: "Ne pas utiliser le nom d'utilisateur",
-				noCommonPasswords: 'Ne pas utiliser de mots de passe courants',
 				requireUpperLower: 'Doit contenir des majuscules et des minuscules',
 				requireNumber: 'Au moins 1 chiffre',
 				requireSpecialChar: 'Au moins 1 caractère spécial',
@@ -287,8 +293,6 @@ export default {
 				title: "Règles d'expiration du mot de passe",
 				enabled: "Activer les règles d'expiration",
 				validityPeriod: 'Période de validité du mot de passe',
-				reminderDays: "Rappel (jours avant l'expiration)",
-				forceChange: "Changement obligatoire après expiration",
 				permanentUsers: 'Utilisateurs avec mot de passe permanent',
 				days: 'jours'
 			}

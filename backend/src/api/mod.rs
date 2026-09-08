@@ -17,6 +17,8 @@ pub mod permissions;
 pub mod preferences;
 pub mod service_access;
 pub mod services;
+pub mod security;
+pub mod time;
 pub mod setup;
 pub mod shares;
 pub mod ssh;

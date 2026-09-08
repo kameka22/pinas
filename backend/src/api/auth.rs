@@ -265,9 +265,10 @@ async fn change_password(
         }
     }
 
-    // Validate new password length
-    if payload.new_password.len() < 8 {
-        return ApiError::bad_request("Password must be at least 8 characters".to_string()).with_code("VALIDATION_ERROR".to_string()).into_response();
+    // Validate against the configured password policy
+    let policy = crate::services::password_policy::PasswordPolicy::load(&state.db).await.unwrap_or_default();
+    if let Some(reason) = policy.violation(&payload.new_password, Some(&user.username)) {
+        return ApiError::bad_request(reason).with_code("VALIDATION_ERROR").into_response();
     }
 
     // Change password

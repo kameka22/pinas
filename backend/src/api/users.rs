@@ -99,8 +99,9 @@ async fn create_user(
         return ApiError::bad_request("Username is required".to_string()).with_code("VALIDATION_ERROR".to_string()).into_response();
     }
 
-    if payload.password.len() < 8 {
-        return ApiError::bad_request("Password must be at least 8 characters".to_string()).with_code("VALIDATION_ERROR".to_string()).into_response();
+    let policy = crate::services::password_policy::PasswordPolicy::load(&state.db).await.unwrap_or_default();
+    if let Some(reason) = policy.violation(&payload.password, Some(&payload.username)) {
+        return ApiError::bad_request(reason).with_code("VALIDATION_ERROR").into_response();
     }
 
     // Create HomeService to manage user's home directory
@@ -243,8 +244,10 @@ async fn change_user_password(
     Path(id): Path<String>,
     Json(payload): Json<ChangePasswordRequest>,
 ) -> impl IntoResponse {
-    if payload.password.len() < 8 {
-        return ApiError::bad_request("Password must be at least 8 characters".to_string()).with_code("VALIDATION_ERROR".to_string()).into_response();
+    let target_username = get_user_by_id(&state.db, &id).await.ok().flatten().map(|u| u.username);
+    let policy = crate::services::password_policy::PasswordPolicy::load(&state.db).await.unwrap_or_default();
+    if let Some(reason) = policy.violation(&payload.password, target_username.as_deref()) {
+        return ApiError::bad_request(reason).with_code("VALIDATION_ERROR").into_response();
     }
 
     match change_password(&state.db, &id, &payload.password).await {

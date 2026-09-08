@@ -10,7 +10,23 @@
 	import { onMount } from 'svelte';
 	import { t } from '$lib/i18n';
 	import { systemInfo as systemInfoStore, formatBytes, formatUptime } from '$stores/system';
-	import { api, auth, type NetworkInterface } from '$stores/api';
+
+	let aboutPools: StoragePool[] = [];
+	let aboutVolumes: VolumeInfo[] = [];
+	let aboutServices: ServiceStatus[] = [];
+	let aboutLoadedFor: string | null = null;
+	async function loadAboutTab(tab: string) {
+		if (aboutLoadedFor === tab) return;
+		aboutLoadedFor = tab;
+		try {
+			if (tab === 'storage') [aboutPools, aboutVolumes] = await Promise.all([api.getPools(), api.getVolumes()]);
+			if (tab === 'service') aboutServices = await api.get<ServiceStatus[]>('/services');
+		} catch {
+			aboutLoadedFor = null;
+		}
+	}
+	$: if (selectedItem === 'about' && activeTab !== 'general') loadAboutTab(activeTab);
+	import { api, auth, type NetworkInterface, type StoragePool, type VolumeInfo, type ServiceStatus } from '$stores/api';
 	import { gradientStyle } from '$lib/utils/gradient';
 
 	export let config: { section?: string } | undefined = undefined;
@@ -40,7 +56,6 @@
 				{ id: 'users', icon: 'mdi:account-multiple', labelKey: 'controlPanel.items.userManagement', iconColor: 'text-blue-500', component: 'UserManager' },
 				{ id: 'files', icon: 'mdi:folder', labelKey: 'controlPanel.items.fileService', iconColor: 'text-orange-500', component: 'FileService' },
 				{ id: 'device', icon: 'mdi:monitor-screenshot', labelKey: 'controlPanel.items.deviceConnection', iconColor: 'text-slate-500' },
-				{ id: 'domain', icon: 'mdi:domain', labelKey: 'controlPanel.items.domainLdap', iconColor: 'text-blue-600' },
 				{ id: 'terminal', icon: 'mdi:console-line', labelKey: 'controlPanel.items.terminal', iconColor: 'text-purple-500', component: 'TerminalSettings' },
 				{ id: 'printer', icon: 'mdi:printer', labelKey: 'controlPanel.items.printer', iconColor: 'text-indigo-500', component: 'PrinterSettings' }
 			]
@@ -51,8 +66,7 @@
 				{ id: 'hardware', icon: 'mdi:chip', labelKey: 'controlPanel.items.hardwarePower', iconColor: 'text-emerald-500' },
 				{ id: 'time', icon: 'mdi:earth', labelKey: 'controlPanel.items.timeLanguage', iconColor: 'text-cyan-500', component: 'TimeLanguage' },
 				{ id: 'network', icon: 'mdi:wifi', labelKey: 'controlPanel.items.network', iconColor: 'text-blue-500', component: 'NetworkSettings' },
-				{ id: 'security', icon: 'mdi:shield-check', labelKey: 'controlPanel.items.security', iconColor: 'text-green-500' },
-				{ id: 'indexing', icon: 'mdi:database-search', labelKey: 'controlPanel.items.indexingService', iconColor: 'text-slate-500' }
+				{ id: 'security', icon: 'mdi:shield-check', labelKey: 'controlPanel.items.security', iconColor: 'text-green-500' }
 			]
 		},
 		{
@@ -85,7 +99,6 @@
 				{ id: 'users', icon: 'mdi:account-multiple', labelKey: 'controlPanel.items.userManagement', gradient: 'from-blue-400 to-blue-500' },
 				{ id: 'files', icon: 'mdi:folder', labelKey: 'controlPanel.items.fileService', gradient: 'from-orange-400 to-orange-500' },
 				{ id: 'device', icon: 'mdi:monitor-screenshot', labelKey: 'controlPanel.items.deviceConnection', gradient: 'from-slate-400 to-slate-500' },
-				{ id: 'domain', icon: 'mdi:domain', labelKey: 'controlPanel.items.domainLdap', gradient: 'from-blue-500 to-blue-600' },
 				{ id: 'terminal', icon: 'mdi:console-line', labelKey: 'controlPanel.items.terminal', gradient: 'from-purple-400 to-purple-500' },
 				{ id: 'printer', icon: 'mdi:printer', labelKey: 'controlPanel.items.printer', gradient: 'from-indigo-400 to-indigo-500' }
 			]
@@ -96,8 +109,7 @@
 				{ id: 'hardware', icon: 'mdi:chip', labelKey: 'controlPanel.items.hardwarePower', gradient: 'from-emerald-400 to-emerald-500' },
 				{ id: 'time', icon: 'mdi:earth', labelKey: 'controlPanel.items.timeLanguage', gradient: 'from-cyan-400 to-cyan-500' },
 				{ id: 'network', icon: 'mdi:wifi', labelKey: 'controlPanel.items.network', gradient: 'from-blue-400 to-blue-500' },
-				{ id: 'security', icon: 'mdi:shield-check', labelKey: 'controlPanel.items.security', gradient: 'from-green-400 to-green-500' },
-				{ id: 'indexing', icon: 'mdi:database-search', labelKey: 'controlPanel.items.indexingService', gradient: 'from-slate-400 to-slate-500' }
+				{ id: 'security', icon: 'mdi:shield-check', labelKey: 'controlPanel.items.security', gradient: 'from-green-400 to-green-500' }
 			]
 		},
 		{
@@ -200,8 +212,7 @@
 	$: tabs = [
 		{ key: 'general', label: $t.controlPanel.tabs.general },
 		{ key: 'storage', label: $t.controlPanel.tabs.storage },
-		{ key: 'service', label: $t.controlPanel.tabs.service },
-		{ key: 'deviceAnalysis', label: $t.controlPanel.tabs.deviceAnalysis }
+		{ key: 'service', label: $t.controlPanel.tabs.service }
 	];
 </script>
 
@@ -391,10 +402,61 @@
 							</div>
 						</div>
 					</div>
-				{:else}
-					<div class="empty-tab">
-						<Icon icon="mdi:cog" class="w-16 h-16 text-slate-200" />
-						<p>{$t.controlPanel.contentFor.replace('{tab}', tabs.find(t => t.key === activeTab)?.label || activeTab)}</p>
+				{:else if activeTab === 'storage'}
+					<div class="info-grid">
+						<div class="info-card col-span-full">
+							<div class="card-header">
+								<Icon icon="mdi:harddisk" class="w-5 h-5 text-slate-500" />
+								<span>{$t.controlPanel.about.pools}</span>
+							</div>
+							<div class="card-content">
+								{#if aboutPools.length === 0}
+									<p class="info-empty">{$t.dashboard.noPools}</p>
+								{/if}
+								{#each aboutPools as pool (pool.id)}
+									<div class="info-line">
+										<span class="info-label">{pool.name} · {pool.raid_type}</span>
+										<span class="info-value">{formatBytes(pool.used_size)} / {formatBytes(pool.total_size)} · {pool.status}</span>
+									</div>
+								{/each}
+							</div>
+						</div>
+						<div class="info-card col-span-full">
+							<div class="card-header">
+								<Icon icon="mdi:database" class="w-5 h-5 text-slate-500" />
+								<span>{$t.controlPanel.about.volumes}</span>
+							</div>
+							<div class="card-content">
+								{#if aboutVolumes.length === 0}
+									<p class="info-empty">{$t.controlPanel.about.noVolumes}</p>
+								{/if}
+								{#each aboutVolumes as vol (vol.id)}
+									<div class="info-line">
+										<span class="info-label">{vol.name} · {vol.fs_type}</span>
+										<span class="info-value">{vol.mount_point} · {vol.status}</span>
+									</div>
+								{/each}
+							</div>
+						</div>
+					</div>
+				{:else if activeTab === 'service'}
+					<div class="info-grid">
+						<div class="info-card col-span-full">
+							<div class="card-header">
+								<Icon icon="mdi:cog-outline" class="w-5 h-5 text-slate-500" />
+								<span>{$t.dashboard.services}</span>
+							</div>
+							<div class="card-content">
+								{#each aboutServices as svc (svc.name)}
+									<div class="info-line">
+										<span class="info-label">{svc.name}</span>
+										<span class="info-value" class:service-running={svc.running} class:service-stopped={!svc.running}>
+											{svc.running ? $t.dashboard.running : $t.dashboard.stopped}{svc.enabled ? '' : ` · ${$t.common.disabled.toLowerCase()}`}
+										</span>
+									</div>
+								{/each}
+							</div>
+						</div>
 					</div>
 				{/if}
 			{:else}
@@ -836,4 +898,9 @@
 	.empty-tab p {
 		font-size: 14px;
 	}
+
+	.info-card.col-span-full { grid-column: 1 / -1; }
+	.info-empty { font-size: 0.8125rem; color: #94a3b8; }
+	.service-running { color: #15803d; }
+	.service-stopped { color: #b45309; }
 </style>

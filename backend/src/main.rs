@@ -278,6 +278,8 @@ fn create_router(state: AppState) -> Router {
         .nest("/api/ssh", api::ssh::router())
         .nest("/api/cups", admin_only(api::cups::router()))
         .nest("/api/notifications", admin_only(api::notifications::router()))
+        .nest("/api/system/time", api::time::router())
+        .nest("/api/security", admin_only(api::security::router()))
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             api::middleware::require_auth,

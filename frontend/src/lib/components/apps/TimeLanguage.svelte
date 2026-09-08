@@ -1,63 +1,120 @@
 <script lang="ts">
 	import Icon from '@iconify/svelte';
+	import { onMount, onDestroy } from 'svelte';
 	import { t, locale, languages, type Locale } from '$lib/i18n';
+	import { api, auth, type TimeStatus } from '$stores/api';
+	import { toasts, errorMessage } from '$stores/toasts';
 
-	let activeTab: 'time' | 'language' = 'language';
+	let activeTab: 'time' | 'language' = 'time';
 
-	// Time settings
-	let timezone = 'Europe/Paris';
+	// Server state
+	let status: TimeStatus | null = null;
+	let zones: string[] = [];
+	let loading = true;
+	let saving = false;
+	let syncing = false;
+
+	// Editable copy
+	let timezone = 'UTC';
+	let ntpEnabled = true;
+	let ntpServers = '';
+	let zoneFilter = '';
+
+	// Display preferences (per user)
 	let dateFormat = 'DD/MM/YYYY';
 	let timeFormat = '24h';
-	let ntpEnabled = true;
-	let ntpServer = 'pool.ntp.org';
-
-	// Common timezones
-	const timezones = [
-		{ value: 'Europe/Paris', label: 'Europe/Paris (UTC+1)' },
-		{ value: 'Europe/London', label: 'Europe/London (UTC+0)' },
-		{ value: 'America/New_York', label: 'America/New_York (UTC-5)' },
-		{ value: 'America/Los_Angeles', label: 'America/Los_Angeles (UTC-8)' },
-		{ value: 'Asia/Tokyo', label: 'Asia/Tokyo (UTC+9)' },
-		{ value: 'Asia/Shanghai', label: 'Asia/Shanghai (UTC+8)' },
-		{ value: 'Australia/Sydney', label: 'Australia/Sydney (UTC+11)' }
-	];
-
 	const dateFormats = [
-		{ value: 'DD/MM/YYYY', label: 'DD/MM/YYYY (31/12/2025)' },
-		{ value: 'MM/DD/YYYY', label: 'MM/DD/YYYY (12/31/2025)' },
-		{ value: 'YYYY-MM-DD', label: 'YYYY-MM-DD (2025-12-31)' }
+		{ value: 'DD/MM/YYYY', label: 'DD/MM/YYYY (31/12/2026)' },
+		{ value: 'MM/DD/YYYY', label: 'MM/DD/YYYY (12/31/2026)' },
+		{ value: 'YYYY-MM-DD', label: 'YYYY-MM-DD (2026-12-31)' }
 	];
+
+	$: isAdmin = $auth.user?.role === 'admin';
+	$: dirty = status !== null && (timezone !== status.timezone || ntpEnabled !== status.ntp_enabled || ntpServers.trim() !== status.ntp_servers.join(' '));
+	$: filteredZones = zoneFilter ? zones.filter((z) => z.toLowerCase().includes(zoneFilter.toLowerCase())).slice(0, 200) : zones;
+
+	function applyStatus(s: TimeStatus) {
+		status = s;
+		timezone = s.timezone;
+		ntpEnabled = s.ntp_enabled;
+		ntpServers = s.ntp_servers.join(' ');
+	}
+
+	async function load() {
+		loading = true;
+		try {
+			const [s, z] = await Promise.all([api.getTimeStatus(), api.getTimezones()]);
+			applyStatus(s);
+			zones = z;
+		} catch (e) {
+			toasts.error(errorMessage(e, $t.common.errors.loadFailed));
+		}
+		try {
+			const [df, tf] = await Promise.allSettled([api.getPreference('ui.dateFormat'), api.getPreference('ui.timeFormat')]);
+			if (df.status === 'fulfilled' && df.value?.value) dateFormat = df.value.value;
+			if (tf.status === 'fulfilled' && tf.value?.value) timeFormat = tf.value.value;
+		} catch {
+			// no preferences yet
+		}
+		loading = false;
+	}
+
+	async function apply() {
+		saving = true;
+		try {
+			const servers = ntpServers.split(/[\s,]+/).filter(Boolean);
+			applyStatus(await api.updateTime({ timezone, ntp_enabled: ntpEnabled, ntp_servers: servers }));
+			toasts.success($t.timeLanguage.time.saved);
+		} catch (e) {
+			toasts.error(errorMessage(e, $t.common.errors.saveFailed));
+		} finally {
+			saving = false;
+		}
+	}
+
+	async function syncNow() {
+		syncing = true;
+		try {
+			applyStatus(await api.syncTime());
+			toasts.success($t.timeLanguage.time.syncRequested);
+		} catch (e) {
+			toasts.error(errorMessage(e, $t.common.errors.generic));
+		} finally {
+			syncing = false;
+		}
+	}
+
+	function savePreference(key: string, value: string) {
+		api.setPreference(key, value).catch(() => {});
+	}
 
 	function handleLanguageChange(lang: Locale) {
 		locale.setLocale(lang);
+		savePreference('ui.locale', lang);
 	}
 
 	function getCurrentTime() {
-		return new Date().toLocaleString($locale === 'fr' ? 'fr-FR' : 'en-US', {
-			timeZone: timezone,
-			hour12: timeFormat === '12h'
-		});
+		try {
+			return new Date().toLocaleString($locale === 'fr' ? 'fr-FR' : 'en-US', {
+				timeZone: timezone,
+				hour12: timeFormat === '12h'
+			});
+		} catch {
+			return new Date().toLocaleString();
+		}
 	}
 
 	$: currentTime = getCurrentTime();
-
-	// Update time every second
 	let interval: ReturnType<typeof setInterval>;
-	import { onMount, onDestroy } from 'svelte';
 
 	onMount(() => {
-		interval = setInterval(() => {
-			currentTime = getCurrentTime();
-		}, 1000);
+		load();
+		interval = setInterval(() => { currentTime = getCurrentTime(); }, 1000);
 	});
-
-	onDestroy(() => {
-		if (interval) clearInterval(interval);
-	});
+	onDestroy(() => { if (interval) clearInterval(interval); });
 </script>
 
 <div class="time-language">
-	<!-- Tabs -->
 	<div class="tabs-header">
 		<button class="tab" class:active={activeTab === 'time'} on:click={() => (activeTab = 'time')}>
 			<Icon icon="mdi:clock-outline" class="w-4 h-4" />
@@ -71,7 +128,6 @@
 
 	<div class="tab-content">
 		{#if activeTab === 'time'}
-			<!-- Time Tab -->
 			<div class="settings-section">
 				<h3 class="section-title">
 					<Icon icon="mdi:clock-outline" class="w-5 h-5" />
@@ -83,65 +139,81 @@
 						<span class="time-label">{$t.timeLanguage.time.currentTime}</span>
 						<span class="time-value">{currentTime}</span>
 					</div>
+					{#if status}
+						<div class="ntp-state" class:synced={status.ntp_synchronized}>
+							<Icon icon={status.ntp_synchronized ? 'mdi:check-circle' : 'mdi:clock-alert-outline'} class="w-4 h-4" />
+							{status.ntp_synchronized ? $t.timeLanguage.time.synced : $t.timeLanguage.time.notSynced}
+						</div>
+					{/if}
 				</div>
 
-				<div class="setting-row">
-					<label class="setting-label">{$t.timeLanguage.time.timezone}</label>
-					<select bind:value={timezone} class="setting-select">
-						{#each timezones as tz}
-							<option value={tz.value}>{tz.label}</option>
-						{/each}
-					</select>
-				</div>
-
-				<div class="setting-row">
-					<label class="setting-label">{$t.timeLanguage.time.dateFormat}</label>
-					<select bind:value={dateFormat} class="setting-select">
-						{#each dateFormats as df}
-							<option value={df.value}>{df.label}</option>
-						{/each}
-					</select>
-				</div>
-
-				<div class="setting-row">
-					<label class="setting-label">{$t.timeLanguage.time.timeFormat}</label>
-					<div class="radio-group">
-						<label class="radio-label">
-							<input type="radio" bind:group={timeFormat} value="24h" />
-							<span>{$t.timeLanguage.time.format24h}</span>
-						</label>
-						<label class="radio-label">
-							<input type="radio" bind:group={timeFormat} value="12h" />
-							<span>{$t.timeLanguage.time.format12h}</span>
-						</label>
-					</div>
-				</div>
-
-				<div class="setting-divider"></div>
-
-				<div class="setting-row">
-					<div class="setting-info">
-						<label class="setting-label">{$t.timeLanguage.time.syncWithNtp}</label>
-					</div>
-					<label class="toggle">
-						<input type="checkbox" bind:checked={ntpEnabled} />
-						<span class="toggle-slider"></span>
-					</label>
-				</div>
-
-				{#if ntpEnabled}
+				{#if loading}
+					<p class="section-description">{$t.common.loading}</p>
+				{:else}
 					<div class="setting-row">
-						<label class="setting-label">{$t.timeLanguage.time.ntpServer}</label>
-						<input type="text" bind:value={ntpServer} class="setting-input" />
+						<label class="setting-label" for="tz-filter">{$t.timeLanguage.time.timezone}</label>
+						<div class="tz-picker">
+							<input id="tz-filter" type="text" class="setting-input" placeholder={$t.timeLanguage.time.selectTimezone} bind:value={zoneFilter} disabled={!isAdmin} />
+							<select bind:value={timezone} class="setting-select" size="1" disabled={!isAdmin}>
+								{#if !filteredZones.includes(timezone)}<option value={timezone}>{timezone}</option>{/if}
+								{#each filteredZones as tz}
+									<option value={tz}>{tz}</option>
+								{/each}
+							</select>
+						</div>
 					</div>
 
 					<div class="setting-row">
-						<!-- "Sync now" is wired to timedatectl in REMEDIATION_PLAN P4.1 -->
+						<label class="setting-label" for="date-format">{$t.timeLanguage.time.dateFormat}</label>
+						<select id="date-format" bind:value={dateFormat} class="setting-select" on:change={() => savePreference('ui.dateFormat', dateFormat)}>
+							{#each dateFormats as df}
+								<option value={df.value}>{df.label}</option>
+							{/each}
+						</select>
 					</div>
+
+					<div class="setting-row">
+						<span class="setting-label">{$t.timeLanguage.time.timeFormat}</span>
+						<div class="radio-group">
+							<label class="radio-label">
+								<input type="radio" bind:group={timeFormat} value="24h" on:change={() => savePreference('ui.timeFormat', '24h')} />
+								<span>{$t.timeLanguage.time.format24h}</span>
+							</label>
+							<label class="radio-label">
+								<input type="radio" bind:group={timeFormat} value="12h" on:change={() => savePreference('ui.timeFormat', '12h')} />
+								<span>{$t.timeLanguage.time.format12h}</span>
+							</label>
+						</div>
+					</div>
+
+					<div class="setting-divider"></div>
+
+					<div class="setting-row">
+						<div class="setting-info">
+							<span class="setting-label">{$t.timeLanguage.time.syncWithNtp}</span>
+						</div>
+						<label class="toggle">
+							<input type="checkbox" bind:checked={ntpEnabled} disabled={!isAdmin} />
+							<span class="toggle-slider"></span>
+						</label>
+					</div>
+
+					{#if ntpEnabled}
+						<div class="setting-row">
+							<label class="setting-label" for="ntp-servers">{$t.timeLanguage.time.ntpServer}</label>
+							<input id="ntp-servers" type="text" bind:value={ntpServers} class="setting-input" placeholder="0.pool.ntp.org 1.pool.ntp.org" disabled={!isAdmin} />
+						</div>
+						<div class="setting-row">
+							<span class="setting-hint">{$t.timeLanguage.time.serversHint}</span>
+							<button class="btn-secondary" on:click={syncNow} disabled={!isAdmin || syncing || dirty}>
+								<Icon icon="mdi:sync" class="w-4 h-4 {syncing ? 'animate-spin' : ''}" />
+								{$t.timeLanguage.time.syncNow}
+							</button>
+						</div>
+					{/if}
 				{/if}
 			</div>
 		{:else}
-			<!-- Language Tab -->
 			<div class="settings-section">
 				<h3 class="section-title">
 					<Icon icon="mdi:translate" class="w-5 h-5" />
@@ -172,7 +244,14 @@
 		{/if}
 	</div>
 
-	<!-- Apply arrives with the backend time/NTP endpoints (REMEDIATION_PLAN P4.1) -->
+	{#if activeTab === 'time' && isAdmin}
+		<div class="actions-bar">
+			{#if status?.dev_mode}<span class="setting-hint">{$t.timeLanguage.time.devMode}</span>{/if}
+			<button class="btn-primary" on:click={apply} disabled={!dirty || saving}>
+				{saving ? $t.common.loading : $t.common.apply}
+			</button>
+		</div>
+	{/if}
 </div>
 
 <style>
@@ -482,4 +561,12 @@
 		justify-content: flex-end;
 		background: #fafafa;
 	}
+
+	.tz-picker { display: flex; gap: 0.5rem; flex: 1; min-width: 0; }
+	.tz-picker .setting-input { flex: 1; min-width: 8rem; }
+	.tz-picker .setting-select { flex: 1.4; min-width: 10rem; }
+	.ntp-state { display: inline-flex; align-items: center; gap: 0.375rem; margin-top: 0.5rem; font-size: 0.75rem; color: #b45309; }
+	.ntp-state.synced { color: #15803d; }
+	.setting-hint { font-size: 0.75rem; color: #64748b; }
+	.actions-bar { display: flex; justify-content: flex-end; align-items: center; gap: 1rem; padding: 0.75rem 1.5rem; border-top: 1px solid #e2e8f0; }
 </style>
