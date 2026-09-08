@@ -142,7 +142,7 @@ RUST_LOG=pinas=info,tower_http=info
 - **Version** : une seule source, le fichier `VERSION`. `scripts/sync-version.sh` la propage (Cargo.toml/lock, package.json/lock, package.mk) ; `--check` en CI refuse toute dérive ; `--set X.Y.Z` pour bumper. Release : `scripts/build-release.sh [--tag]` (notes générées depuis les commits conventionnels), validation Pi : `docs/RELEASE_CHECKLIST.md`.
 
 ### Dev local
-- Pas de cargo installé localement, builds via Docker
+- Pas de cargo installé localement, builds via Docker. Stack de dev complète : `./scripts/start.dev.sh` (Docker Compose : backend dev mode sur :3388 avec `cargo watch` + frontend hot reload sur :5173 ; `stop`, `logs`, `reset` pour repartir d'une base vide, `down` pour purger les caches)
 - `npm run check` / `npm run build` échouent en local si le binaire natif rollup manque (bug npm optionalDependencies) : `cd frontend && npm install --no-save @rollup/rollup-linux-arm64-gnu@$(node -p "require('./node_modules/rollup/package.json').version")` (adapter la plateforme), sans toucher au lock
 - Pas de lint configuré (ESLint retiré) ; `npm run check` = svelte-check (0 erreur attendu), `npm test` = Vitest
 - Docker n'est PAS une app built-in, il s'installe via App Center
