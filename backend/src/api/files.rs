@@ -1,4 +1,7 @@
 use axum::{
+    body::Body,
+    extract::Request,
+    http::{header, HeaderValue},
     extract::{DefaultBodyLimit, Multipart, Query, State},
     http::StatusCode,
     response::IntoResponse,
@@ -99,6 +102,7 @@ pub fn router() -> Router<AppState> {
         .route("/copy", post(copy_files))
         .route("/move", post(move_files))
         .route("/upload", post(upload_file).layer(DefaultBodyLimit::max(MAX_UPLOAD_SIZE)))
+        .route("/download", get(download_file))
 }
 
 /// Validate that a path stays within the base directory (prevent path traversal)
@@ -1175,6 +1179,143 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
+/// Query for downloading a file or a folder (folders are zipped on the fly)
+#[derive(Debug, Deserialize)]
+pub struct DownloadQuery {
+    pub path: String,
+    pub location_id: Option<String>,
+    /// `inline=true` lets the browser render the file (preview) instead of saving it
+    #[serde(default)]
+    pub inline: bool,
+}
+
+/// `Content-Disposition` with an ASCII fallback and an RFC 5987 UTF-8 filename
+fn content_disposition(kind: &str, filename: &str) -> HeaderValue {
+    let ascii: String = filename
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_' | ' ') { c } else { '_' })
+        .collect();
+    let mut encoded = String::new();
+    for b in filename.as_bytes() {
+        match *b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'.' | b'-' | b'_' | b'~' => encoded.push(*b as char),
+            other => encoded.push_str(&format!("%{:02X}", other)),
+        }
+    }
+    let value = format!("{}; filename=\"{}\"; filename*=UTF-8''{}", kind, ascii, encoded);
+    HeaderValue::from_str(&value).unwrap_or_else(|_| HeaderValue::from_static("attachment"))
+}
+
+/// Zip a directory tree into `dest` (synchronous; run under spawn_blocking)
+fn zip_directory(src: &Path, dest: &Path) -> std::io::Result<u64> {
+    use std::io::{Read, Write};
+    use zip::write::SimpleFileOptions;
+
+    let file = std::fs::File::create(dest)?;
+    let mut writer = zip::ZipWriter::new(file);
+    let options = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+    let root_name = src.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "archive".to_string());
+
+    let mut stack = vec![src.to_path_buf()];
+    let mut buf = vec![0u8; 1 << 16];
+    while let Some(dir) = stack.pop() {
+        let rel = dir.strip_prefix(src).unwrap_or(Path::new(""));
+        let dir_name = if rel.as_os_str().is_empty() { root_name.clone() } else { format!("{}/{}", root_name, rel.to_string_lossy()) };
+        writer.add_directory(format!("{}/", dir_name), options)?;
+        for entry in std::fs::read_dir(&dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            let file_type = entry.file_type()?;
+            if file_type.is_symlink() {
+                continue; // never follow links out of the share
+            }
+            if file_type.is_dir() {
+                stack.push(path);
+            } else if file_type.is_file() {
+                let rel_file = path.strip_prefix(src).unwrap_or(&path);
+                writer.start_file(format!("{}/{}", root_name, rel_file.to_string_lossy()), options)?;
+                let mut f = std::fs::File::open(&path)?;
+                loop {
+                    let n = f.read(&mut buf)?;
+                    if n == 0 { break; }
+                    writer.write_all(&buf[..n])?;
+                }
+            }
+        }
+    }
+    let file = writer.finish()?;
+    Ok(file.metadata()?.len())
+}
+
+/// Download a file (with Range support, for previews/streaming) or a folder as a zip
+async fn download_file(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Query(query): Query<DownloadQuery>,
+    req: Request,
+) -> impl IntoResponse {
+    let base_path = if let Some(ref loc_id) = query.location_id {
+        match resolve_location_path(&state, &user, loc_id, AccessMode::Read).await {
+            Ok(path) => path,
+            Err(e) => return ApiError::bad_request(e).into_response(),
+        }
+    } else {
+        let home_service = HomeService::new(&state.config);
+        home_service.get_home_path(&user.username)
+    };
+
+    let full_path = match validate_path(&base_path, &query.path) {
+        Ok(p) => p,
+        Err(e) => return ApiError::bad_request(e).into_response(),
+    };
+    if !full_path.exists() {
+        return ApiError::not_found("File or folder not found").into_response();
+    }
+    let name = full_path
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| "download".to_string());
+
+    if full_path.is_dir() {
+        // Zip into the data dir (PrivateTmp would hide /tmp), then unlink the file once opened:
+        // the open handle keeps streaming, nothing is left behind if the client disconnects.
+        let tmp_dir = std::path::PathBuf::from(state.config.data_dir()).join("tmp");
+        if let Err(e) = tokio::fs::create_dir_all(&tmp_dir).await {
+            return ApiError::internal(format!("Cannot prepare archive: {}", e)).into_response();
+        }
+        let zip_path = tmp_dir.join(format!("download-{}.zip", uuid::Uuid::new_v4()));
+        let (src, dst) = (full_path.clone(), zip_path.clone());
+        let size = match tokio::task::spawn_blocking(move || zip_directory(&src, &dst)).await {
+            Ok(Ok(size)) => size,
+            Ok(Err(e)) => return ApiError::internal(format!("Failed to create archive: {}", e)).into_response(),
+            Err(e) => return ApiError::internal(format!("Archive task failed: {}", e)).into_response(),
+        };
+        let file = match tokio::fs::File::open(&zip_path).await {
+            Ok(f) => f,
+            Err(e) => return ApiError::internal(format!("Failed to open archive: {}", e)).into_response(),
+        };
+        let _ = tokio::fs::remove_file(&zip_path).await;
+        let body = Body::from_stream(tokio_util::io::ReaderStream::new(file));
+        return axum::response::Response::builder()
+            .header(header::CONTENT_TYPE, "application/zip")
+            .header(header::CONTENT_LENGTH, size)
+            .header(header::CONTENT_DISPOSITION, content_disposition("attachment", &format!("{}.zip", name)))
+            .body(body)
+            .unwrap_or_else(|_| ApiError::internal("Failed to build response").into_response());
+    }
+
+    // Single file: tower-http handles Range / If-Modified-Since / content-type by extension
+    let mut serve = tower_http::services::ServeFile::new(&full_path);
+    match serve.try_call(req).await {
+        Ok(mut response) => {
+            let kind = if query.inline { "inline" } else { "attachment" };
+            response.headers_mut().insert(header::CONTENT_DISPOSITION, content_disposition(kind, &name));
+            response.into_response()
+        }
+        Err(e) => ApiError::internal(format!("Failed to read file: {}", e)).into_response(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1202,6 +1343,35 @@ mod tests {
         assert!(validate_path(base.path(), "docs/../../etc").is_err());
         // parent does not exist: must still be refused
         assert!(validate_path(base.path(), "nope/../../tmp/x").is_err());
+    }
+
+    #[test]
+    fn content_disposition_has_ascii_fallback_and_utf8_name() {
+        let v = content_disposition("attachment", "rapport été.pdf");
+        let v = v.to_str().unwrap();
+        assert!(v.starts_with("attachment; filename=\"rapport _t_.pdf\""), "{v}");
+        assert!(v.ends_with("filename*=UTF-8''rapport%20%C3%A9t%C3%A9.pdf"), "{v}");
+        assert!(content_disposition("inline", "a\"b\r\n.txt").to_str().unwrap().contains("filename=\"a_b__.txt\""));
+    }
+
+    #[test]
+    fn zip_directory_contains_every_file_and_skips_symlinks() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("photos");
+        std::fs::create_dir_all(root.join("2026/summer")).unwrap();
+        std::fs::write(root.join("a.txt"), b"hello").unwrap();
+        std::fs::write(root.join("2026/summer/b.txt"), b"world").unwrap();
+        #[cfg(unix)]
+        std::os::unix::fs::symlink("/etc/passwd", root.join("leak")).unwrap();
+
+        let out = dir.path().join("out.zip");
+        let size = zip_directory(&root, &out).unwrap();
+        assert!(size > 0);
+        let mut archive = zip::ZipArchive::new(std::fs::File::open(&out).unwrap()).unwrap();
+        let names: Vec<String> = (0..archive.len()).map(|i| archive.by_index(i).unwrap().name().to_string()).collect();
+        assert!(names.contains(&"photos/a.txt".to_string()), "{names:?}");
+        assert!(names.contains(&"photos/2026/summer/b.txt".to_string()), "{names:?}");
+        assert!(!names.iter().any(|n| n.contains("leak")), "{names:?}");
     }
 
     #[test]

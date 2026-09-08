@@ -82,3 +82,23 @@ describe('ApiClient', () => {
 		await expect(api.get('/x')).rejects.toMatchObject({ message: 'HTTP 502', status: 502 });
 	});
 });
+
+describe('file download URLs', () => {
+	it('builds the download endpoint with location and inline flags', () => {
+		expect(api.fileUrl('docs/a b.txt')).toBe('/api/files/download?path=docs%2Fa+b.txt');
+		expect(api.fileUrl('x', 'share-1', true)).toBe('/api/files/download?path=x&location_id=share-1&inline=true');
+	});
+
+	it('downloadFile navigates through a hidden anchor (folders get a .zip name)', () => {
+		const clicks: string[] = [];
+		const orig = HTMLAnchorElement.prototype.click;
+		HTMLAnchorElement.prototype.click = function () { clicks.push(`${this.download}|${this.getAttribute('href')}`); };
+		api.downloadFile('docs/readme.txt');
+		api.downloadFile('docs', 'share-1', true);
+		HTMLAnchorElement.prototype.click = orig;
+		expect(clicks).toEqual([
+			'readme.txt|/api/files/download?path=docs%2Freadme.txt',
+			'docs.zip|/api/files/download?path=docs&location_id=share-1'
+		]);
+	});
+});

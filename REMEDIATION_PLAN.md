@@ -114,18 +114,18 @@ Taille : **L–XL (≈ 8 j)**, dont une part de build d'image LibreELEC. Dépend
 
 ---
 
-## Phase 6 — File Manager complet
+## Phase 6 — File Manager complet ✅ (terminée le 2026-09-08)
 
 Taille : **M (≈ 3 j)**. Dépend de P1, P2. Indépendante de P3–P5.
 
 | # | Item | Taille | Détail / critère de fin |
 |---|---|---|---|
-| 6.1 | **Téléchargement** | S | `GET /api/files/download?path=&location_id=` (stream `tokio::fs::File` + `Content-Disposition`, `validate_path`, permission `can_read`) ; dossier → archive `zip` à la volée. Menu contextuel *Download*. **Aujourd'hui aucun moyen de récupérer un fichier depuis l'UI.** |
-| 6.2 | **Ouvrir / aperçu** | M | Double-clic (`console.log` aujourd'hui) → `FilePreview.svelte` : images, texte/code (< 1 Mo), PDF (iframe), audio/vidéo via `Range` sur l'endpoint download ; autres types → téléchargement. |
-| 6.3 | **Tri** | S | Bouton *Sort* → nom / taille / date / type, asc/desc, persisté dans `user_preferences`. |
-| 6.4 | **Drag & drop** | M | Déposer des fichiers du bureau → upload (endpoint existant, `fileTasks` déjà en place pour la progression) ; glisser un élément sur un dossier ou une location de la sidebar → `move` ; `Ctrl` → `copy`. |
-| 6.5 | **Renommer / propriétés** | S | Renommer inline (utilise `move`) ; panneau propriétés : taille, dates, permissions effectives (`folder_permissions`), partage SMB associé. |
-| 6.6 | Nettoyage | S | Retirer les `console.log` de `FolderPicker.svelte` et `FileManager.svelte`. |
+| 6.1 ✅ | **Téléchargement** | S | `GET /api/files/download?path=&location_id=` (stream `tokio::fs::File` + `Content-Disposition`, `validate_path`, permission `can_read`) ; dossier → archive `zip` à la volée. Menu contextuel *Download*. **Aujourd'hui aucun moyen de récupérer un fichier depuis l'UI.** |
+| 6.2 ✅ | **Ouvrir / aperçu** | M | Double-clic (`console.log` aujourd'hui) → `FilePreview.svelte` : images, texte/code (< 1 Mo), PDF (iframe), audio/vidéo via `Range` sur l'endpoint download ; autres types → téléchargement. |
+| 6.3 ✅ | **Tri** | S | Bouton *Sort* → nom / taille / date / type, asc/desc, persisté dans `user_preferences`. |
+| 6.4 ✅ | **Drag & drop** | M | Déposer des fichiers du bureau → upload (endpoint existant, `fileTasks` déjà en place pour la progression) ; glisser un élément sur un dossier ou une location de la sidebar → `move` ; `Ctrl` → `copy`. |
+| 6.5 ✅ | **Renommer / propriétés** | S | Renommer inline (utilise `move`) ; panneau propriétés : taille, dates, permissions effectives (`folder_permissions`), partage SMB associé. |
+| 6.6 ✅ | Nettoyage | S | Retirer les `console.log` de `FolderPicker.svelte` et `FileManager.svelte`. |
 
 ---
 

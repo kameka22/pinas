@@ -71,9 +71,7 @@
 
 		try {
 			const locationId = getLocationId();
-			console.log('FolderPicker: Loading folders', { path, locationId });
 			const files = await api.getFiles(path, locationId);
-			console.log('FolderPicker: API response', files);
 			folders = files
 				.filter((f) => f.type === 'folder')
 				.filter((f) => !f.name.startsWith('.'))
@@ -82,7 +80,6 @@
 					path: path ? `${path}/${f.name}` : f.name
 				}))
 				.sort((a, b) => a.name.localeCompare(b.name));
-			console.log('FolderPicker: Filtered folders', folders);
 
 			currentPath = path;
 			buildBreadcrumbs(path);

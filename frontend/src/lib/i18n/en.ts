@@ -515,6 +515,25 @@ export default {
 
 	// File Manager
 	fileManager: {
+		preview: {
+			noPreview: 'No preview available for this file type',
+			download: 'Download',
+			tooLarge: 'File too large to preview (1 MB max)'
+		},
+		properties: {
+			title: 'Properties',
+			name: 'Name',
+			path: 'Path',
+			type: 'Type',
+			size: 'Size',
+			modified: 'Modified',
+			mime: 'MIME type',
+			location: 'Location'
+		},
+		sortBy: 'Sort by',
+		dropToUpload: 'Drop files here to upload',
+		dropToMove: 'Drop to move here (hold Ctrl to copy)',
+		downloadZip: 'Download as ZIP',
 		title: 'Files',
 		sidebar: {
 			personalFolder: 'Personal folder',

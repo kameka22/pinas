@@ -515,6 +515,25 @@ export default {
 
 	// File Manager
 	fileManager: {
+		preview: {
+			noPreview: "Aucun aperçu disponible pour ce type de fichier",
+			download: 'Télécharger',
+			tooLarge: "Fichier trop volumineux pour l'aperçu (1 Mo max)"
+		},
+		properties: {
+			title: 'Propriétés',
+			name: 'Nom',
+			path: 'Chemin',
+			type: 'Type',
+			size: 'Taille',
+			modified: 'Modifié le',
+			mime: 'Type MIME',
+			location: 'Emplacement'
+		},
+		sortBy: 'Trier par',
+		dropToUpload: 'Déposez des fichiers ici pour les envoyer',
+		dropToMove: 'Déposer pour déplacer ici (Ctrl pour copier)',
+		downloadZip: 'Télécharger en ZIP',
 		title: 'Fichiers',
 		sidebar: {
 			personalFolder: 'Dossier personnel',

@@ -594,31 +594,24 @@ class ApiClient {
 		}
 	}
 
-	async downloadFile(path: string, locationId?: string): Promise<void> {
+	/** URL of the download/preview endpoint (same origin, cookie-authenticated). Folders come back as a zip. */
+	fileUrl(path: string, locationId?: string, inline = false): string {
 		const params = new URLSearchParams();
 		params.set('path', path);
-		if (locationId) {
-			params.set('location_id', locationId);
-		}
+		if (locationId) params.set('location_id', locationId);
+		if (inline) params.set('inline', 'true');
+		return `${this.baseUrl}/files/download?${params.toString()}`;
+	}
 
-		const response = await fetch(`${this.baseUrl}/files/download?${params.toString()}`, {
-			method: 'GET',
-			credentials: 'include'
-		});
-
-		if (!response.ok) {
-			throw new Error('Download failed');
-		}
-
-		const blob = await response.blob();
-		const url = URL.createObjectURL(blob);
+	/** Trigger a browser download by navigation: streamed by the server, no blob held in memory. */
+	downloadFile(path: string, locationId?: string, isFolder = false): void {
+		const base = path.split('/').pop() || 'download';
 		const a = document.createElement('a');
-		a.href = url;
-		a.download = path.split('/').pop() || 'download';
+		a.href = this.fileUrl(path, locationId);
+		a.download = isFolder ? `${base}.zip` : base;
 		document.body.appendChild(a);
 		a.click();
 		document.body.removeChild(a);
-		URL.revokeObjectURL(url);
 	}
 
 	// Permissions endpoints
