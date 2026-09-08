@@ -144,11 +144,56 @@ fn validate_path(base: &Path, requested: &str) -> Result<PathBuf, String> {
     Ok(full_path)
 }
 
-/// Resolve a location_id to its base path
+/// What a handler intends to do with the resolved location
+#[derive(Clone, Copy, PartialEq)]
+enum AccessMode {
+    Read,
+    Write,
+}
+
+/// Enforce folder permissions for non-admin users on shared locations.
+/// Permissive default: a user with no permission configured anywhere sees
+/// everything (same rule as `list_files`); as soon as permissions exist for the
+/// user, the effective level on `path` must allow the requested access.
+async fn check_folder_access(
+    state: &AppState,
+    user: &AuthUser,
+    path: &str,
+    mode: AccessMode,
+) -> Result<(), String> {
+    if user.is_admin {
+        return Ok(());
+    }
+    let permission_service = PermissionService::new(state.db.clone());
+    let has_any = permission_service
+        .list_by_user(&user.id)
+        .await
+        .map(|perms| !perms.is_empty())
+        .map_err(|e| format!("Permission check error: {}", e))?;
+    if !has_any {
+        return Ok(());
+    }
+    let level = permission_service
+        .get_effective_permission(&user.id, path)
+        .await
+        .map_err(|e| format!("Permission check error: {}", e))?;
+    let allowed = match mode {
+        AccessMode::Read => level.can_read(),
+        AccessMode::Write => level.can_write(),
+    };
+    if allowed {
+        Ok(())
+    } else {
+        Err("Access denied".to_string())
+    }
+}
+
+/// Resolve a location_id to its base path, enforcing access for `mode`
 async fn resolve_location_path(
     state: &AppState,
     user: &AuthUser,
     location_id: &str,
+    mode: AccessMode,
 ) -> Result<PathBuf, String> {
     if location_id.starts_with("home-") {
         // User home directory
@@ -181,7 +226,10 @@ async fn resolve_location_path(
         .map_err(|e| format!("Database error: {}", e))?;
 
         match share {
-            Some((path,)) => Ok(PathBuf::from(path)),
+            Some((path,)) => {
+                check_folder_access(state, user, &path, mode).await?;
+                Ok(PathBuf::from(path))
+            }
             None => Err("Share not found or disabled".to_string()),
         }
     } else if location_id.starts_with("volume-") {
@@ -223,16 +271,8 @@ async fn resolve_location_path(
             .map_err(|e| format!("Permission error: {}", e))?
             .ok_or_else(|| "Permission not found".to_string())?;
 
-        // Verify the user actually has read access to this path
-        if !user.is_admin {
-            let can_read = permission_service
-                .can_read(&user.id, &perm.path)
-                .await
-                .map_err(|e| format!("Permission check error: {}", e))?;
-            if !can_read {
-                return Err("Access denied".to_string());
-            }
-        }
+        // Verify the user actually has the requested access to this path
+        check_folder_access(state, user, &perm.path, mode).await?;
 
         Ok(PathBuf::from(&perm.path))
     } else if location_id.starts_with("media-") {
@@ -244,6 +284,7 @@ async fn resolve_location_path(
         if !Path::new(&mount_point).exists() {
             return Err("Media not mounted".to_string());
         }
+        check_folder_access(state, user, &mount_point, mode).await?;
 
         Ok(PathBuf::from(mount_point))
     } else {
@@ -319,7 +360,7 @@ async fn list_files(
 ) -> impl IntoResponse {
     // Determine base path based on location_id
     let base_path = if let Some(ref loc_id) = query.location_id {
-        match resolve_location_path(&state, &user, loc_id).await {
+        match resolve_location_path(&state, &user, loc_id, AccessMode::Read).await {
             Ok(path) => path,
             Err(e) => {
                 return (
@@ -489,7 +530,7 @@ async fn create_folder(
 ) -> impl IntoResponse {
     // Determine base path based on location_id
     let base_path = if let Some(ref loc_id) = payload.location_id {
-        match resolve_location_path(&state, &user, loc_id).await {
+        match resolve_location_path(&state, &user, loc_id, AccessMode::Write).await {
             Ok(path) => path,
             Err(e) => {
                 return (
@@ -570,7 +611,7 @@ async fn delete_file(
 ) -> impl IntoResponse {
     // Determine base path based on location_id
     let base_path = if let Some(ref loc_id) = query.location_id {
-        match resolve_location_path(&state, &user, loc_id).await {
+        match resolve_location_path(&state, &user, loc_id, AccessMode::Write).await {
             Ok(path) => path,
             Err(e) => {
                 return (
@@ -635,7 +676,7 @@ async fn rename_file(
 ) -> impl IntoResponse {
     // Determine base path based on location_id
     let base_path = if let Some(ref loc_id) = payload.location_id {
-        match resolve_location_path(&state, &user, loc_id).await {
+        match resolve_location_path(&state, &user, loc_id, AccessMode::Write).await {
             Ok(path) => path,
             Err(e) => {
                 return (
@@ -743,7 +784,7 @@ async fn create_file(
 ) -> impl IntoResponse {
     // Determine base path based on location_id
     let base_path = if let Some(ref loc_id) = payload.location_id {
-        match resolve_location_path(&state, &user, loc_id).await {
+        match resolve_location_path(&state, &user, loc_id, AccessMode::Write).await {
             Ok(path) => path,
             Err(e) => {
                 return (
@@ -870,7 +911,7 @@ async fn upload_file(
 
     // Determine base path based on location_id
     let base_path = if let Some(ref loc_id) = location_id {
-        match resolve_location_path(&state, &user, loc_id).await {
+        match resolve_location_path(&state, &user, loc_id, AccessMode::Write).await {
             Ok(path) => path,
             Err(e) => {
                 return (
@@ -992,7 +1033,7 @@ async fn copy_files(
 ) -> impl IntoResponse {
     // Determine base path based on location_id
     let base_path = if let Some(ref loc_id) = payload.location_id {
-        match resolve_location_path(&state, &user, loc_id).await {
+        match resolve_location_path(&state, &user, loc_id, AccessMode::Write).await {
             Ok(path) => path,
             Err(e) => {
                 return (
@@ -1114,7 +1155,7 @@ async fn move_files(
 ) -> impl IntoResponse {
     // Determine base path based on location_id
     let base_path = if let Some(ref loc_id) = payload.location_id {
-        match resolve_location_path(&state, &user, loc_id).await {
+        match resolve_location_path(&state, &user, loc_id, AccessMode::Write).await {
             Ok(path) => path,
             Err(e) => {
                 return (

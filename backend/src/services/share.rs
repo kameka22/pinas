@@ -6,7 +6,7 @@ use tokio::process::Command as AsyncCommand;
 use std::collections::HashSet;
 
 use crate::models::{
-    PermissionEntry, SambaStatus, Share, ShareInfo, SmbGlobalConfig, SmbShareConfig,
+    SambaStatus, Share, ShareInfo, SmbGlobalConfig, SmbShareConfig,
 };
 use crate::services::permission::PermissionService;
 use crate::services::service_access::ServiceAccessService;

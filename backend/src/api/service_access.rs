@@ -8,7 +8,6 @@ use axum::{
 use serde::{Deserialize, Serialize};
 
 use crate::api::middleware::AdminUser;
-use crate::models::service_access::UserServiceAccess;
 use crate::services::service_access::ServiceAccessService;
 use crate::services::share::ShareService;
 use crate::AppState;

@@ -30,6 +30,7 @@ pub enum WsEvent {
     #[serde(rename = "system.stats")]
     SystemStats(SystemStats),
     #[serde(rename = "notification")]
+    #[allow(dead_code)] // emitted by the notification service (REMEDIATION_PLAN P3)
     Notification(Notification),
     #[serde(rename = "task.progress")]
     TaskProgress(TaskProgressEvent),

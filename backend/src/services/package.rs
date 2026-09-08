@@ -14,6 +14,10 @@ use crate::models::manifest::{InstallStep, PackageManifest};
 use crate::models::package::{InstalledPackage, PackageTask};
 use crate::services::docker::DockerService;
 
+/// Default catalog when `PINAS_CATALOG_URL` is not set
+pub const DEFAULT_CATALOG_URL: &str =
+    "https://raw.githubusercontent.com/kameka22/pinas-app-catalog/master/catalog.json";
+
 /// Package service handles installation, updates, and removal of packages
 pub struct PackageService {
     db: SqlitePool,
@@ -28,6 +32,11 @@ pub struct PackageService {
 }
 
 impl PackageService {
+    /// Catalog index URL (`PINAS_CATALOG_URL` or the default GitHub raw URL)
+    pub fn catalog_url(&self) -> &str {
+        &self.catalog_url
+    }
+
     pub async fn new(db: SqlitePool, task_tx: broadcast::Sender<TaskProgressEvent>) -> Self {
         let data_dir = std::env::var("PINAS_DATA_DIR")
             .unwrap_or_else(|_| "/storage/.pinas".to_string());
@@ -43,7 +52,7 @@ impl PackageService {
         Self {
             db,
             catalog_url: std::env::var("PINAS_CATALOG_URL")
-                .unwrap_or_else(|_| "https://raw.githubusercontent.com/kameka22/pinas-app-catalog/master/catalog.json".to_string()),
+                .unwrap_or_else(|_| DEFAULT_CATALOG_URL.to_string()),
             data_dir: data_dir.clone(),
             packages_dir: std::env::var("PINAS_PACKAGES_DIR")
                 .unwrap_or_else(|_| format!("{}/apps", data_dir)),
@@ -243,18 +252,6 @@ impl PackageService {
         Ok(package)
     }
 
-    /// Check if a package is installed
-    pub async fn is_installed(&self, package_id: &str) -> Result<bool> {
-        let count: i32 = sqlx::query_scalar(
-            "SELECT COUNT(*) FROM installed_packages WHERE id = ? AND status = 'installed'"
-        )
-        .bind(package_id)
-        .fetch_one(&self.db)
-        .await?;
-
-        Ok(count > 0)
-    }
-
     /// Clean up any failed or incomplete installation
     async fn cleanup_failed_installation(&self, package_id: &str) -> Result<()> {
         // Check if there's a failed/installing record
@@ -305,6 +302,9 @@ impl PackageService {
     /// Start package installation: create DB records and return task_id immediately.
     /// The actual installation steps must be run separately via `install_execute`.
     pub async fn install_start(&self, manifest: &PackageManifest, manifest_url: Option<&str>) -> Result<String> {
+        // A previous attempt may have left an 'error'/'installing' record behind
+        self.cleanup_failed_installation(&manifest.id).await?;
+
         // Use a transaction to atomically check + insert (prevents race condition)
         let mut tx = self.db.begin().await?;
 

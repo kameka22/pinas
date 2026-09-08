@@ -1,25 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-/// App catalog index
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Catalog {
-    pub version: String,
-    pub updated: String,
-    pub apps: Vec<CatalogApp>,
-}
-
-/// App entry in catalog
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CatalogApp {
-    pub id: String,
-    pub name: String,
-    pub version: String,
-    pub category: String,
-    pub icon: Option<String>,
-    pub manifest: String, // URL to manifest.json
-}
-
 /// Full package manifest
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PackageManifest {

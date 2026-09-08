@@ -5,7 +5,7 @@ use axum::{
     routing::{delete, get, post, put},
     Json, Router,
 };
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 use crate::api::middleware::AuthUser;
 use crate::services::kodi::{KodiService, MediaSource};

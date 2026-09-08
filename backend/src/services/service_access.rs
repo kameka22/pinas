@@ -129,37 +129,6 @@ impl ServiceAccessService {
         Ok(())
     }
 
-    /// Set service access for a group (upsert)
-    pub async fn set_group_access(
-        &self,
-        group_id: &str,
-        service: &str,
-        enabled: bool,
-    ) -> Result<(), ServiceAccessError> {
-        self.validate_service(service)?;
-
-        let now = chrono::Utc::now().to_rfc3339();
-        let id = uuid::Uuid::new_v4().to_string();
-
-        sqlx::query(
-            r#"
-            INSERT INTO service_access (id, user_id, group_id, service, enabled, created_at, updated_at)
-            VALUES (?, NULL, ?, ?, ?, ?, ?)
-            ON CONFLICT(group_id, service) DO UPDATE SET enabled = excluded.enabled, updated_at = excluded.updated_at
-            "#,
-        )
-        .bind(&id)
-        .bind(group_id)
-        .bind(service)
-        .bind(enabled)
-        .bind(&now)
-        .bind(&now)
-        .execute(&self.db)
-        .await?;
-
-        Ok(())
-    }
-
     /// Get list of usernames that have SMB access enabled
     pub async fn get_smb_authorized_usernames(&self) -> Result<Vec<String>, ServiceAccessError> {
         let usernames: Vec<(String,)> = sqlx::query_as(

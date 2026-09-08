@@ -48,9 +48,9 @@ async fn list_packages(State(state): State<AppState>) -> impl IntoResponse {
 }
 
 /// Get package catalog from remote, with built-in fallback
-async fn get_catalog(State(_state): State<AppState>) -> impl IntoResponse {
-    let catalog_url = std::env::var("PINAS_CATALOG_URL")
-        .unwrap_or_else(|_| "https://raw.githubusercontent.com/kameka22/pinas-app-catalog/master/catalog.json".to_string());
+async fn get_catalog(State(state): State<AppState>) -> impl IntoResponse {
+    let service = PackageService::new(state.db.clone(), state.task_tx.clone()).await;
+    let catalog_url = service.catalog_url().to_string();
 
     tracing::debug!("Fetching catalog from: {}", catalog_url);
 
@@ -171,7 +171,7 @@ async fn install_package(
         }
     } else if let Some(package_id) = &request.package_id {
         // Package ID provided - resolve from catalog or use built-in
-        match resolve_package_manifest(package_id).await {
+        match resolve_package_manifest(service.catalog_url(), package_id).await {
             Ok((manifest, url)) => (manifest, url),
             Err(e) => {
                 tracing::error!("Failed to resolve package {}: {}", package_id, e);
@@ -217,10 +217,12 @@ async fn install_package(
 
 /// Resolve package manifest from package ID
 /// First tries catalog, then falls back to built-in manifests
-async fn resolve_package_manifest(package_id: &str) -> anyhow::Result<(PackageManifest, Option<String>)> {
+async fn resolve_package_manifest(
+    catalog_url: &str,
+    package_id: &str,
+) -> anyhow::Result<(PackageManifest, Option<String>)> {
     // Try to fetch from catalog first
-    let catalog_url = std::env::var("PINAS_CATALOG_URL")
-        .unwrap_or_else(|_| "https://raw.githubusercontent.com/kameka22/pinas-app-catalog/master/catalog.json".to_string());
+    let catalog_url = catalog_url.to_string();
 
     // Validate catalog URL
     match validate_fetch_url(&catalog_url) {

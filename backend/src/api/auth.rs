@@ -14,7 +14,7 @@ use std::time::Instant;
 
 use crate::api::cookies;
 use crate::api::middleware::{AuthErrorResponse, AuthUser};
-use crate::services::auth::{extract_bearer_token, generate_jwt, verify_password, AuthError};
+use crate::services::auth::{extract_bearer_token, generate_jwt, verify_password};
 use crate::services::session::{create_session, delete_session};
 use crate::services::share::ShareService;
 use crate::services::user::{change_password as change_user_password, get_user_by_id, get_user_by_username};

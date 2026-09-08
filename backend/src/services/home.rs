@@ -8,10 +8,6 @@ use crate::config::AppConfig;
 pub enum HomeError {
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
-    #[error("Home directory already exists")]
-    AlreadyExists,
-    #[error("Home directory not found")]
-    NotFound,
     #[error("Invalid username")]
     InvalidUsername,
 }
@@ -34,11 +30,6 @@ impl HomeService {
     /// Get the path to a user's home directory
     pub fn get_home_path(&self, username: &str) -> PathBuf {
         self.homes_root.join(username)
-    }
-
-    /// Check if a user's home directory exists
-    pub async fn home_exists(&self, username: &str) -> bool {
-        self.get_home_path(username).exists()
     }
 
     /// Create a home directory for a user with default subdirectories
@@ -134,10 +125,6 @@ impl HomeService {
         Ok(())
     }
 
-    /// Get the homes root directory
-    pub fn get_homes_root(&self) -> &PathBuf {
-        &self.homes_root
-    }
 }
 
 #[cfg(test)]

@@ -15,12 +15,6 @@ fn hash_token(token: &str) -> String {
 /// Session service errors
 #[derive(Debug, Error)]
 pub enum SessionError {
-    #[error("Session not found")]
-    NotFound,
-
-    #[error("Session expired")]
-    Expired,
-
     #[error("Database error: {0}")]
     DatabaseError(#[from] sqlx::Error),
 }

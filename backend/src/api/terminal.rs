@@ -69,12 +69,6 @@ pub struct CompleteResponse {
     common_prefix: String,
 }
 
-/// Error response
-#[derive(Serialize)]
-struct ErrorResponse {
-    error: String,
-}
-
 /// Rate limiter state (per user)
 static RATE_LIMITER: std::sync::LazyLock<Mutex<HashMap<String, Vec<Instant>>>> =
     std::sync::LazyLock::new(|| Mutex::new(HashMap::new()));

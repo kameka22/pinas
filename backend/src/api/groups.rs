@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::api::middleware::AdminUser;
 use crate::services::group::{
-    self, add_member, count_group_members, create_group as create_group_service,
+    add_member, count_group_members, create_group as create_group_service,
     delete_group as delete_group_service, get_group_by_id, get_group_members,
     list_groups as list_groups_service, remove_member, update_group as update_group_service,
     GroupError,

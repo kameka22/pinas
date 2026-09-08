@@ -33,7 +33,6 @@ pub enum UserError {
 #[derive(Debug, Default)]
 pub struct UserUpdate {
     pub email: Option<Option<String>>,
-    pub description: Option<Option<String>>,
     pub is_admin: Option<bool>,
 }
 

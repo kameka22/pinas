@@ -7,12 +7,12 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::api::middleware::{AdminUser, AuthErrorResponse, AuthUser};
+use crate::api::middleware::{AdminUser, AuthUser};
 use crate::services::session::delete_user_sessions;
 use crate::services::home::HomeService;
 use crate::services::share::ShareService;
 use crate::services::user::{
-    self, change_password, create_user_with_home, delete_user_with_home,
+    change_password, create_user_with_home, delete_user_with_home,
     get_user_by_id, list_users as list_users_service, update_user as update_user_service,
     UserError, UserUpdate,
 };

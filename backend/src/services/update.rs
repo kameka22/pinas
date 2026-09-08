@@ -654,20 +654,6 @@ impl UpdateService {
         Ok(())
     }
 
-    /// Get update status from DB
-    pub async fn get_update_status(&self, task_id: &str) -> Result<Option<UpdateHistoryEntry>> {
-        let entry = sqlx::query_as::<_, UpdateHistoryEntry>(
-            r#"SELECT id, version, previous_version, update_type, status, changelog,
-                      error_message, started_at, completed_at, created_at
-               FROM system_updates WHERE id = ?"#,
-        )
-        .bind(task_id)
-        .fetch_optional(&self.db)
-        .await?;
-
-        Ok(entry)
-    }
-
     /// Get update history
     pub async fn get_update_history(&self) -> Result<Vec<UpdateHistoryEntry>> {
         let entries = sqlx::query_as::<_, UpdateHistoryEntry>(

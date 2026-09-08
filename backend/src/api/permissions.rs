@@ -8,7 +8,7 @@ use axum::{
 use serde::{Deserialize, Serialize};
 
 use crate::api::middleware::AuthUser;
-use crate::models::permission::{FolderPermissions, PermissionEntry, PermissionLevel};
+use crate::models::permission::{FolderPermissions, PermissionLevel};
 use crate::services::permission::PermissionService;
 use crate::AppState;
 

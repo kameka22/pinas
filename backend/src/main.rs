@@ -2,8 +2,6 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use axum::{
-    extract::State,
-    http::StatusCode,
     response::IntoResponse,
     routing::get,
     Json, Router,

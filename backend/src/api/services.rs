@@ -5,10 +5,10 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 use crate::api::middleware::AdminUser;
-use crate::services::service::{ServiceManager, ServiceStatus, LogEntry};
+use crate::services::service::ServiceManager;
 use crate::AppState;
 
 pub fn router() -> Router<AppState> {

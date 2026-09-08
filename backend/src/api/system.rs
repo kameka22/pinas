@@ -5,7 +5,7 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use sysinfo::{System, Signal, Pid};
 
 use crate::AppState;
@@ -122,11 +122,6 @@ pub struct ProcessListResponse {
     pub memory_usage: f32,
     pub total_memory: u64,
     pub used_memory: u64,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct KillProcessRequest {
-    pub signal: Option<String>,
 }
 
 /// Get system information

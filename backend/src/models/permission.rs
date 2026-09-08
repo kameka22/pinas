@@ -81,18 +81,6 @@ impl FolderPermission {
     }
 }
 
-/// Permission with user/group details for API responses
-#[derive(Debug, Clone, Serialize)]
-pub struct FolderPermissionWithDetails {
-    pub id: String,
-    pub path: String,
-    pub user_id: Option<String>,
-    pub username: Option<String>,
-    pub group_id: Option<String>,
-    pub group_name: Option<String>,
-    pub permission: String,
-}
-
 /// Grouped permissions by folder for API responses
 #[derive(Debug, Clone, Serialize)]
 pub struct FolderPermissions {

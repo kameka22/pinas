@@ -187,22 +187,6 @@ impl FromRequestParts<AppState> for AdminUser {
     }
 }
 
-/// Optional authenticated user extractor
-/// Returns None if no valid auth header is present
-#[derive(Debug, Clone)]
-pub struct OptionalAuthUser(pub Option<AuthUser>);
-
-impl FromRequestParts<AppState> for OptionalAuthUser {
-    type Rejection = Response;
-
-    async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, Self::Rejection> {
-        match AuthUser::from_request_parts(parts, state).await {
-            Ok(user) => Ok(OptionalAuthUser(Some(user))),
-            Err(_) => Ok(OptionalAuthUser(None)),
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

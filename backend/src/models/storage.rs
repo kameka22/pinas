@@ -272,6 +272,7 @@ pub struct UpdatePoolRequest {
 pub struct CreateVolumeRequest {
     pub name: String,
     pub fs_type: String,       // ext4, btrfs, xfs
+    #[allow(dead_code)] // TODO: not honoured by create_volume yet (volume = whole pool / btrfs subvolume)
     pub size: Option<u64>,     // None = use all available space
     pub mount_options: Option<String>,
 }

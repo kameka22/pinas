@@ -3,7 +3,6 @@ use serde::Deserialize;
 use sqlx::SqlitePool;
 use std::collections::HashMap;
 use std::path::Path;
-use std::sync::Arc;
 use tokio::process::Command;
 use tokio::sync::broadcast;
 use uuid::Uuid;
@@ -1102,7 +1101,7 @@ impl StorageService {
     // ============ FILESYSTEM CHECK (FSCK) ============
 
     /// Start a filesystem check (returns task_id immediately)
-    pub async fn fsck_volume_start(&self, volume_id: &str, repair: bool) -> Result<FsckStatus> {
+    pub async fn fsck_volume_start(&self, volume_id: &str, _repair: bool) -> Result<FsckStatus> {
         let volume: StorageVolume = sqlx::query_as(
             "SELECT * FROM storage_volumes WHERE id = ?"
         )
@@ -1284,12 +1283,6 @@ impl StorageService {
     }
 
     // ============ SECURE WIPE ============
-
-    /// Quick wipe (synchronous, existing logic)
-    pub async fn wipe_disk_quick(&self, device_name: &str) -> Result<()> {
-        // This is the existing wipe_disk logic
-        self.wipe_disk(device_name).await
-    }
 
     /// Start a background wipe (Zeros or Secure mode)
     pub fn wipe_disk_start(&self, device_name: &str) -> Result<WipeStatus> {
@@ -1498,7 +1491,7 @@ impl StorageService {
     }
 
     /// Parse partitions from lsblk children
-    fn parse_partitions(&self, disk_name: &str, children: &Option<Vec<LsblkDevice>>) -> Vec<Partition> {
+    fn parse_partitions(&self, _disk_name: &str, children: &Option<Vec<LsblkDevice>>) -> Vec<Partition> {
         let mut partitions = Vec::new();
 
         if let Some(parts) = children {
@@ -1775,7 +1768,7 @@ impl StorageService {
     }
 
     /// Create a btrfs subvolume
-    async fn create_btrfs_subvolume(&self, pool: &StoragePoolInfo, name: &str, mount_point: &str) -> Result<()> {
+    async fn create_btrfs_subvolume(&self, pool: &StoragePoolInfo, name: &str, _mount_point: &str) -> Result<()> {
         // First mount the pool root if not mounted
         let pool_mount = format!("{}/{}", self.pools_base_path, pool.name);
 
@@ -2052,7 +2045,7 @@ impl StorageService {
     pub fn start_health_monitor(
         db: SqlitePool,
         storage_tx: broadcast::Sender<StorageAlertEvent>,
-        dev_mode: bool,
+        _dev_mode: bool,
     ) {
         tokio::spawn(async move {
             let mut previous_statuses: HashMap<String, String> = HashMap::new();
@@ -2121,7 +2114,7 @@ impl StorageService {
 
     /// Start a scrub operation (returns task_id immediately)
     pub async fn scrub_pool_start(&self, pool_id: &str) -> Result<ScrubStatus> {
-        let pool: StoragePool = sqlx::query_as(
+        let _pool: StoragePool = sqlx::query_as(
             "SELECT * FROM storage_pools WHERE id = ?"
         )
         .bind(pool_id)
@@ -3163,7 +3156,7 @@ impl StorageService {
         pool_id: &str,
         task_tx: &broadcast::Sender<crate::api::ws::TaskProgressEvent>,
     ) -> Result<()> {
-        let existing_devices: Vec<String> = serde_json::from_str(&pool.devices).unwrap_or_default();
+        let _existing_devices: Vec<String> = serde_json::from_str(&pool.devices).unwrap_or_default();
         let mount_point = format!("/storage/pools/{}", pool.name);
 
         // Add each new device

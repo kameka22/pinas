@@ -205,23 +205,6 @@ pub async fn remove_member(
     Ok(())
 }
 
-/// Get all groups a user belongs to
-pub async fn get_user_groups(db: &SqlitePool, user_id: &str) -> Result<Vec<UserGroup>, GroupError> {
-    let groups = sqlx::query_as::<_, UserGroup>(
-        r#"
-        SELECT g.* FROM user_groups g
-        INNER JOIN user_group_members m ON g.id = m.group_id
-        WHERE m.user_id = ?
-        ORDER BY g.name
-        "#,
-    )
-    .bind(user_id)
-    .fetch_all(db)
-    .await?;
-
-    Ok(groups)
-}
-
 /// Get all members of a group
 pub async fn get_group_members(db: &SqlitePool, group_id: &str) -> Result<Vec<User>, GroupError> {
     let users = sqlx::query_as::<_, User>(

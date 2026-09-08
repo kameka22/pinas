@@ -333,12 +333,6 @@ impl PermissionService {
         Ok(perm.can_read())
     }
 
-    /// Check if user can write to a path
-    pub async fn can_write(&self, user_id: &str, path: &str) -> Result<bool, PermissionError> {
-        let perm = self.get_effective_permission(user_id, path).await?;
-        Ok(perm.can_write())
-    }
-
     /// Get list of all folders with permissions configured
     pub async fn list_configured_folders(&self) -> Result<Vec<String>, PermissionError> {
         let rows: Vec<(String,)> = sqlx::query_as(
