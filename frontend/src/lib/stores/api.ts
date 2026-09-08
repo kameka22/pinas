@@ -606,6 +606,13 @@ class ApiClient {
 		}
 	}
 
+	/** Recursive name search inside a location (bounded server-side) */
+	searchFiles(q: string, locationId?: string, limit = 50): Promise<FileItem[]> {
+		const params = new URLSearchParams({ q, limit: String(limit) });
+		if (locationId) params.set('location_id', locationId);
+		return this.get<FileItem[]>(`/files/search?${params.toString()}`);
+	}
+
 	/** URL of the download/preview endpoint (same origin, cookie-authenticated). Folders come back as a zip. */
 	fileUrl(path: string, locationId?: string, inline = false): string {
 		const params = new URLSearchParams();

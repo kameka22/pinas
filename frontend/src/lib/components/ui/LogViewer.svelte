@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { t } from '$lib/i18n';
 	import Icon from '@iconify/svelte';
-	import { createEventDispatcher, afterUpdate } from 'svelte';
+	import { createEventDispatcher, afterUpdate, onDestroy } from 'svelte';
 
 	export let visible = false;
 	export let title = 'Logs';
@@ -13,6 +13,19 @@
 	let logContainer: HTMLDivElement;
 	let tail = 100;
 	const tailOptions = [100, 500, 1000];
+
+	// Follow mode: poll the same tail every 2s while the viewer is open
+	let follow = false;
+	let followTimer: ReturnType<typeof setInterval> | null = null;
+	$: {
+		if (follow && visible && !followTimer) {
+			followTimer = setInterval(() => dispatch('refresh', { tail }), 2000);
+		} else if ((!follow || !visible) && followTimer) {
+			clearInterval(followTimer);
+			followTimer = null;
+		}
+	}
+	onDestroy(() => { if (followTimer) clearInterval(followTimer); });
 
 	afterUpdate(() => {
 		if (logContainer) {
@@ -63,6 +76,10 @@
 							<Icon icon="mdi:refresh" class="w-4 h-4" />
 						</span>
 					</button>
+					<label class="follow-toggle" title={$t.common.refresh}>
+						<input type="checkbox" bind:checked={follow} />
+						<span>{$t.docker.logs.follow}</span>
+					</label>
 					<button class="close-btn" on:click={handleClose}>
 						<Icon icon="mdi:close" class="w-5 h-5" />
 					</button>
@@ -246,4 +263,6 @@
 		from { transform: rotate(0deg); }
 		to { transform: rotate(360deg); }
 	}
+
+	.follow-toggle { display: inline-flex; align-items: center; gap: 0.375rem; font-size: 0.75rem; color: #cbd5e1; cursor: pointer; }
 </style>

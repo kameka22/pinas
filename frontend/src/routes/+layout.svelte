@@ -15,6 +15,9 @@
 	import PowerScreen from '$components/desktop/PowerScreen.svelte';
 	import TaskManager from '$components/desktop/TaskManager.svelte';
 	import ToastHost from '$components/ui/ToastHost.svelte';
+	import WidgetsPanel from '$components/desktop/WidgetsPanel.svelte';
+	import CommandPalette from '$components/desktop/CommandPalette.svelte';
+	import { wallpaper, wallpaperCss, loadWallpaper } from '$stores/wallpaper';
 	import { connectWebSocket } from '$stores/websocket';
 	import { isSetupComplete, isLoading, initOnboarding } from '$stores/onboarding';
 	import { auth, api } from '$stores/api';
@@ -80,6 +83,7 @@
 		wsDisconnect = connectWebSocket();
 		// Check if system was just updated
 		checkJustUpdated();
+		loadWallpaper();
 	} else if (!isAuthenticated && wsDisconnect) {
 		wsDisconnect();
 		wsDisconnect = null;
@@ -115,7 +119,7 @@
 {:else}
 <div class="desktop">
 	<!-- Wallpaper Background -->
-	<div class="wallpaper"></div>
+	<div class="wallpaper" style="background: {wallpaperCss($wallpaper)}"></div>
 
 	<!-- Top Bar -->
 	<TopBar
@@ -144,6 +148,8 @@
 
 	<!-- Global toasts (errors, confirmations) -->
 	<ToastHost />
+	<WidgetsPanel />
+	<CommandPalette />
 
 	<!-- Notification Center -->
 	<NotificationCenter bind:visible={showNotifications} />
@@ -185,10 +191,7 @@
 	.wallpaper {
 		position: absolute;
 		inset: 0;
-		background: linear-gradient(135deg, #1a365d 0%, #2d3748 50%, #1a202c 100%);
-		background-image: url('https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=1920&q=80');
-		background-size: cover;
-		background-position: center;
+		transition: background 0.6s ease;
 		z-index: 0;
 	}
 

@@ -5,6 +5,9 @@ export interface SystemStats {
 	memoryUsage: number;
 	memoryUsed: number;
 	memoryTotal: number;
+	/** bytes per second, all interfaces except loopback */
+	networkRx: number;
+	networkTx: number;
 }
 
 export interface SystemInfo {
@@ -43,7 +46,9 @@ export const systemStats = writable<SystemStats>({
 	cpuUsage: 0,
 	memoryUsage: 0,
 	memoryUsed: 0,
-	memoryTotal: 0
+	memoryTotal: 0,
+	networkRx: 0,
+	networkTx: 0
 });
 
 // Full system info from API
@@ -63,6 +68,11 @@ function formatBytes(bytes: number): string {
 	const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
 	const i = Math.floor(Math.log(bytes) / Math.log(k));
 	return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+}
+
+/** "1.2 MB/s" style label */
+export function formatRate(bytesPerSec: number): string {
+	return `${formatBytes(Math.max(0, Math.round(bytesPerSec)))}/s`;
 }
 
 export function formatUptime(seconds: number): string {

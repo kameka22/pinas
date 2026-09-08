@@ -281,6 +281,19 @@ async fn update_smb_config(
 
 // ─── NFS service handlers ──────────────────────────────────────────
 
+/// Called by pinas-nfs-server.service (ExecStartPost) so the exports stored in the
+/// database are pushed into the fresh kernel export table. Loopback only.
+pub async fn internal_nfs_reexport(
+    State(state): State<AppState>,
+    axum::extract::ConnectInfo(addr): axum::extract::ConnectInfo<std::net::SocketAddr>,
+) -> impl IntoResponse {
+    if !addr.ip().is_loopback() {
+        return ApiError::forbidden("Internal endpoint").into_response();
+    }
+    ShareService::new(state.db.clone()).apply_nfs_exports().await;
+    StatusCode::NO_CONTENT.into_response()
+}
+
 async fn get_nfs_status(State(state): State<AppState>, _admin: AdminUser) -> Result<impl IntoResponse, ApiError> {
     Ok(Json(ShareService::new(state.db.clone()).get_nfs_status().await?))
 }

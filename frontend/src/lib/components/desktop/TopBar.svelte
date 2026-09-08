@@ -1,6 +1,8 @@
 <script lang="ts">
 	import Icon from '@iconify/svelte';
-	import { systemStats, systemInfo } from '$stores/system';
+	import { systemStats, systemInfo, formatRate } from '$stores/system';
+	import { widgetsVisible } from '$stores/widgets';
+	import { paletteVisible } from '$stores/palette';
 	import { unreadCount, loadNotifications } from '$stores/notifications';
 	import { hasActiveTask, activeTaskCount } from '$stores/taskManager';
 	import { auth, api } from '$stores/api';
@@ -218,17 +220,24 @@
 		<div class="stats-group">
 			<div class="stat-item text-xs" title={$t.widgets.upload}>
 				<Icon icon="mdi:arrow-up" class="w-3 h-3 text-green-500" />
-				<span>432.2 KB/s</span>
+				<span>{formatRate($systemStats.networkTx)}</span>
 			</div>
 			<div class="stat-item text-xs" title={$t.widgets.download}>
 				<Icon icon="mdi:arrow-down" class="w-3 h-3 text-blue-500" />
-				<span>323.4 KB/s</span>
+				<span>{formatRate($systemStats.networkRx)}</span>
 			</div>
 		</div>
 
 		<div class="divider"></div>
 
-		<!-- Quick actions (widgets panel and global search arrive with REMEDIATION_PLAN P7) -->
+		<!-- Quick actions -->
+		<button class="topbar-btn" class:active={$widgetsVisible} title={$t.topBar.widgets} on:click={() => widgetsVisible.update((v) => !v)}>
+			<Icon icon="mdi:widgets-outline" class="w-5 h-5" />
+		</button>
+		<button class="topbar-btn" title="{$t.common.search} (Ctrl+K)" on:click={() => paletteVisible.set(true)}>
+			<Icon icon="mdi:magnify" class="w-5 h-5" />
+		</button>
+
 		{#if updateAvailable}
 			<button class="topbar-btn update-btn" title="Update available: v{updateVersion}" on:click={openSettingsUpdates}>
 				<Icon icon="mdi:arrow-up-circle" class="w-5 h-5" />

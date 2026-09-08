@@ -10,6 +10,7 @@
 	import HardwarePower from './HardwarePower.svelte';
 	import SecuritySettings from './SecuritySettings.svelte';
 	import DeviceConnection from './DeviceConnection.svelte';
+	import Personalization from './Personalization.svelte';
 	import { onMount } from 'svelte';
 	import { t } from '$lib/i18n';
 	import { systemInfo as systemInfoStore, formatBytes, formatUptime } from '$stores/system';
@@ -69,7 +70,8 @@
 				{ id: 'hardware', icon: 'mdi:chip', labelKey: 'controlPanel.items.hardwarePower', iconColor: 'text-emerald-500', component: 'HardwarePower' },
 				{ id: 'time', icon: 'mdi:earth', labelKey: 'controlPanel.items.timeLanguage', iconColor: 'text-cyan-500', component: 'TimeLanguage' },
 				{ id: 'network', icon: 'mdi:wifi', labelKey: 'controlPanel.items.network', iconColor: 'text-blue-500', component: 'NetworkSettings' },
-				{ id: 'security', icon: 'mdi:shield-check', labelKey: 'controlPanel.items.security', iconColor: 'text-green-500', component: 'SecuritySettings' }
+				{ id: 'security', icon: 'mdi:shield-check', labelKey: 'controlPanel.items.security', iconColor: 'text-green-500', component: 'SecuritySettings' },
+				{ id: 'personalization', icon: 'mdi:palette', labelKey: 'controlPanel.items.personalization', iconColor: 'text-pink-500', component: 'Personalization' }
 			]
 		},
 		{
@@ -112,7 +114,8 @@
 				{ id: 'hardware', icon: 'mdi:chip', labelKey: 'controlPanel.items.hardwarePower', gradient: 'from-emerald-400 to-emerald-500' },
 				{ id: 'time', icon: 'mdi:earth', labelKey: 'controlPanel.items.timeLanguage', gradient: 'from-cyan-400 to-cyan-500' },
 				{ id: 'network', icon: 'mdi:wifi', labelKey: 'controlPanel.items.network', gradient: 'from-blue-400 to-blue-500' },
-				{ id: 'security', icon: 'mdi:shield-check', labelKey: 'controlPanel.items.security', gradient: 'from-green-400 to-green-500' }
+				{ id: 'security', icon: 'mdi:shield-check', labelKey: 'controlPanel.items.security', gradient: 'from-green-400 to-green-500' },
+				{ id: 'personalization', icon: 'mdi:palette', labelKey: 'controlPanel.items.personalization', gradient: 'from-pink-400 to-pink-500' }
 			]
 		},
 		{
@@ -280,6 +283,8 @@
 				<SecuritySettings />
 			{:else if selectedItem === 'device'}
 				<DeviceConnection />
+			{:else if selectedItem === 'personalization'}
+				<Personalization />
 			{:else if selectedItem === 'time'}
 				<!-- Time & Language -->
 				<TimeLanguage />

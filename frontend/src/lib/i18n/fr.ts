@@ -117,7 +117,8 @@ export default {
 			network: 'Réseau',
 			security: 'Sécurité',
 			systemUpdate: 'Mise à jour système',
-			about: 'À propos'
+			about: 'À propos',
+			personalization: 'Personnalisation'
 		},
 		tabs: {
 			general: 'Général',
@@ -353,12 +354,33 @@ export default {
 
 	// System Widgets
 	widgets: {
+		title: 'Widgets',
+		system: 'Système',
+		containers: 'Conteneurs',
+		images: 'Images',
+		dockerOff: "Docker n'est pas démarré",
+		configureHint: 'Choisissez les widgets dans Panneau de configuration › Personnalisation',
 		cpu: 'CPU',
 		memory: 'Mémoire',
 		network: 'Réseau',
 		storage: 'Stockage',
 		upload: 'Envoi',
 		download: 'Téléchargement'
+	},
+	palette: {
+		placeholder: 'Rechercher apps, réglages, fichiers, utilisateurs…',
+		hint: 'Saisissez au moins 2 caractères — apps et réglages répondent instantanément, fichiers et utilisateurs sont cherchés sur le NAS',
+		noResults: 'Aucun résultat',
+		openApp: "Ouvrir l'application",
+		action: 'Action',
+		user: 'Utilisateur',
+		kinds: { app: 'App', settings: 'Réglage', action: 'Action', user: 'Utilisateur', share: 'Partage', file: 'Fichier' }
+	},
+	personalization: {
+		wallpaper: "Fond d'écran",
+		wallpaperHint: 'Choisissez un arrière-plan du bureau. Enregistré dans vos préférences.',
+		widgetsHint: 'Choisissez les widgets affichés dans le panneau latéral (barre supérieure › Widgets).',
+		widgets: { system: 'Système (CPU, mémoire, réseau)', storage: 'Pools de stockage', services: 'Services', notifications: 'Notifications récentes', docker: 'Docker' }
 	},
 
 	// Window Controls
@@ -1557,6 +1579,7 @@ export default {
 		},
 		logs: {
 			title: 'Journaux',
+			follow: 'Suivre',
 			noLogs: 'Aucun journal disponible',
 			refresh: 'Actualiser',
 			lines: 'lignes'
@@ -1568,7 +1591,8 @@ export default {
 		networks: {
 			title: 'Réseaux',
 			noNetworks: 'Aucun réseau trouvé',
-			builtIn: 'intégré'
+			builtIn: 'intégré',
+			containers: 'Conteneurs'
 		},
 		pull: {
 			placeholder: 'Nom de l\'image (ex: nginx:latest)',

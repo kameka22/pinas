@@ -9,7 +9,7 @@ use axum::{
 };
 use serde::Serialize;
 use tokio::sync::{broadcast, Mutex, RwLock};
-use sysinfo::{ProcessesToUpdate, System};
+use sysinfo::{Networks, ProcessesToUpdate, System};
 use axum::http::{header, Method};
 use tower_http::cors::CorsLayer;
 use tower_http::set_header::SetResponseHeaderLayer;
@@ -43,6 +43,14 @@ pub struct AppState {
     /// Single sysinfo snapshot, refreshed every 2s by a background task
     /// (CPU usage needs two samples, and `System::new_all()` per request is expensive on a Pi).
     pub system: Arc<RwLock<System>>,
+    /// Aggregate network throughput (all interfaces but loopback), bytes per second
+    pub net_rates: Arc<RwLock<NetRates>>,
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize)]
+pub struct NetRates {
+    pub rx_bytes_per_sec: u64,
+    pub tx_bytes_per_sec: u64,
 }
 
 #[tokio::main]
@@ -109,18 +117,34 @@ async fn main() -> anyhow::Result<()> {
         .map(|v| v.to_lowercase() == "true" || v == "1")
         .unwrap_or(false);
 
-    // Shared system snapshot + refresher
+    // Shared system snapshot + refresher (CPU, memory, processes, network throughput)
     let system = Arc::new(RwLock::new(System::new_all()));
+    let net_rates = Arc::new(RwLock::new(NetRates::default()));
     {
         let system = system.clone();
+        let net_rates = net_rates.clone();
         tokio::spawn(async move {
-            let mut ticker = tokio::time::interval(std::time::Duration::from_secs(2));
+            const PERIOD_SECS: u64 = 2;
+            let mut networks = Networks::new_with_refreshed_list();
+            let mut ticker = tokio::time::interval(std::time::Duration::from_secs(PERIOD_SECS));
+            ticker.tick().await; // first tick fires immediately; the delta below needs a full period
             loop {
                 ticker.tick().await;
-                let mut sys = system.write().await;
-                sys.refresh_cpu_usage();
-                sys.refresh_memory();
-                sys.refresh_processes(ProcessesToUpdate::All, true);
+                {
+                    let mut sys = system.write().await;
+                    sys.refresh_cpu_usage();
+                    sys.refresh_memory();
+                    sys.refresh_processes(ProcessesToUpdate::All, true);
+                }
+                networks.refresh(true);
+                let (rx, tx) = networks
+                    .iter()
+                    .filter(|(name, _)| *name != "lo")
+                    .fold((0u64, 0u64), |(rx, tx), (_, data)| (rx + data.received(), tx + data.transmitted()));
+                *net_rates.write().await = NetRates {
+                    rx_bytes_per_sec: rx / PERIOD_SECS,
+                    tx_bytes_per_sec: tx / PERIOD_SECS,
+                };
             }
         });
     }
@@ -135,6 +159,7 @@ async fn main() -> anyhow::Result<()> {
         just_updated: Arc::new(Mutex::new(just_updated)),
         tls_enabled,
         system,
+        net_rates,
     };
 
     // Start storage health monitor (background task every 60s)
@@ -192,6 +217,9 @@ async fn main() -> anyhow::Result<()> {
             }
         });
     }
+
+    // NFS: the kernel export table is empty after a reboot; re-publish what the DB knows
+    services::share::ShareService::new(state.db.clone()).apply_nfs_exports().await;
 
     // Hardware & power: re-apply the chosen CPU governor, start the reboot/shutdown scheduler
     services::power::PowerService::new(state.db.clone()).apply_saved_governor().await;
@@ -311,6 +339,8 @@ fn create_router(state: AppState) -> Router {
         .nest("/api/auth", api::auth::router())
         .nest("/api/setup", api::setup::router())
         .route("/api/ws", get(api::ws::ws_handler))
+        // Loopback-only hook used by pinas-nfs-server.service after (re)start
+        .route("/api/internal/nfs/reexport", axum::routing::post(api::shares::internal_nfs_reexport))
         .merge(protected)
         // State
         .with_state(state);

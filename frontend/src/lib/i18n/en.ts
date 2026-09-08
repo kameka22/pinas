@@ -117,7 +117,8 @@ export default {
 			network: 'Network',
 			security: 'Security',
 			systemUpdate: 'System Update',
-			about: 'About'
+			about: 'About',
+			personalization: 'Personalization'
 		},
 		tabs: {
 			general: 'General',
@@ -353,12 +354,33 @@ export default {
 
 	// System Widgets
 	widgets: {
+		title: 'Widgets',
+		system: 'System',
+		containers: 'Containers',
+		images: 'Images',
+		dockerOff: 'Docker is not running',
+		configureHint: 'Choose widgets in Control Panel › Personalization',
 		cpu: 'CPU',
 		memory: 'Memory',
 		network: 'Network',
 		storage: 'Storage',
 		upload: 'Upload',
 		download: 'Download'
+	},
+	palette: {
+		placeholder: 'Search apps, settings, files, users…',
+		hint: 'Type at least 2 characters — apps and settings match instantly, files and users are searched on the NAS',
+		noResults: 'No results',
+		openApp: 'Open application',
+		action: 'Action',
+		user: 'User',
+		kinds: { app: 'App', settings: 'Settings', action: 'Action', user: 'User', share: 'Share', file: 'File' }
+	},
+	personalization: {
+		wallpaper: 'Wallpaper',
+		wallpaperHint: 'Pick a desktop background. Saved in your preferences.',
+		widgetsHint: 'Choose which widgets appear in the side panel (top bar › Widgets).',
+		widgets: { system: 'System (CPU, memory, network)', storage: 'Storage pools', services: 'Services', notifications: 'Recent notifications', docker: 'Docker' }
 	},
 
 	// Window Controls
@@ -1557,6 +1579,7 @@ export default {
 		},
 		logs: {
 			title: 'Logs',
+			follow: 'Follow',
 			noLogs: 'No logs available',
 			refresh: 'Refresh',
 			lines: 'lines'
@@ -1568,7 +1591,8 @@ export default {
 		networks: {
 			title: 'Networks',
 			noNetworks: 'No networks found',
-			builtIn: 'built-in'
+			builtIn: 'built-in',
+			containers: 'Containers'
 		},
 		pull: {
 			placeholder: 'Image name (e.g. nginx:latest)',

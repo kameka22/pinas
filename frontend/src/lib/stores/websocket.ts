@@ -131,7 +131,9 @@ export function connectWebSocket(): () => void {
 						cpuUsage: data.data.cpu_usage,
 						memoryUsage: data.data.memory_usage,
 						memoryUsed: data.data.memory_used,
-						memoryTotal: data.data.memory_total
+						memoryTotal: data.data.memory_total,
+						networkRx: data.data.network_rx_bytes_per_sec ?? 0,
+						networkTx: data.data.network_tx_bytes_per_sec ?? 0
 					});
 				}
 				break;
@@ -141,7 +143,9 @@ export function connectWebSocket(): () => void {
 					cpuUsage: data.cpu_usage,
 					memoryUsage: data.memory_usage,
 					memoryUsed: data.memory_used,
-					memoryTotal: data.memory_total
+					memoryTotal: data.memory_total,
+					networkRx: data.network_rx_bytes_per_sec ?? 0,
+					networkTx: data.network_tx_bytes_per_sec ?? 0
 				});
 				break;
 			case 'task.progress':

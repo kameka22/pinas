@@ -20,6 +20,9 @@
 		path: string;
 	}
 
+	/** Optional start location/path (used by the global search) */
+	export let config: { locationId?: string; path?: string } | undefined = undefined;
+
 	// State
 	let previewFile: FileItem | null = null;
 	let propertiesFile: FileItem | null = null;
@@ -180,7 +183,13 @@
 		locationsError = null;
 		try {
 			locations = await api.getLocations();
-			if (!selectedLocationId && homeLocations.length > 0) {
+			if (config?.locationId && locations.some((l) => l.id === config?.locationId)) {
+				selectedLocationId = config.locationId;
+				currentPath = config.path || '';
+				history = [currentPath];
+				historyIndex = 0;
+				await loadFiles(currentPath);
+			} else if (!selectedLocationId && homeLocations.length > 0) {
 				selectLocation(homeLocations[0]);
 			} else if (!selectedLocationId && locations.length > 0) {
 				selectLocation(locations[0]);

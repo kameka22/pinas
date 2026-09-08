@@ -753,6 +753,10 @@
 									<span class="meta-label">{dt.scope || 'Scope'}</span>
 									<span class="meta-value">{net.scope}</span>
 								</div>
+								<div class="item-meta" title={net.containers.join(', ')}>
+									<span class="meta-label">{dn.containers || 'Containers'}</span>
+									<span class="meta-value">{net.containers.length}</span>
+								</div>
 								<div class="item-actions">
 									<button
 										class="btn-action btn-action-danger"
@@ -1004,7 +1008,7 @@
 	.grid-container { grid-template-columns: 1fr auto auto; }
 	.grid-image { grid-template-columns: 1fr 80px 90px auto; }
 	.grid-volume { grid-template-columns: 1fr 80px 90px auto; }
-	.grid-network { grid-template-columns: 1fr 80px 80px auto; }
+	.grid-network { grid-template-columns: 1fr 80px 80px 90px auto; }
 
 	.item-info {
 		display: flex;

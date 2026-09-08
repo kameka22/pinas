@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatBytes, formatUptime } from './system';
+import { formatBytes, formatUptime, formatRate } from './system';
 
 describe('formatBytes', () => {
 	it('formats with one decimal and the right unit', () => {
@@ -21,5 +21,13 @@ describe('formatUptime', () => {
 		expect(formatUptime(0)).toBe('00h 00m');
 		expect(formatUptime(3600 + 15 * 60)).toBe('01h 15m');
 		expect(formatUptime(3 * 86400 + 2 * 3600 + 5 * 60 + 59)).toBe('3d 02h 05m');
+	});
+});
+
+describe('formatRate', () => {
+	it('formats throughput per second with the right unit', () => {
+		expect(formatRate(0)).toBe('0 B/s');
+		expect(formatRate(1536)).toBe('1.5 KB/s');
+		expect(formatRate(12 * 1024 ** 2)).toBe('12 MB/s');
 	});
 });

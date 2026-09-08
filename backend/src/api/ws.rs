@@ -45,6 +45,8 @@ pub struct SystemStats {
     pub memory_usage: f32,
     pub memory_used: u64,
     pub memory_total: u64,
+    pub network_rx_bytes_per_sec: u64,
+    pub network_tx_bytes_per_sec: u64,
 }
 
 /// Task progress event sent via WebSocket broadcast
@@ -99,8 +101,9 @@ pub async fn ws_handler(
     let file_task_rx = state.file_task_tx.subscribe();
     let storage_rx = state.storage_tx.subscribe();
     let system = state.system.clone();
+    let net_rates = state.net_rates.clone();
     let notif_rx = crate::services::notification::NotificationService::subscribe();
-    ws.on_upgrade(move |socket| handle_socket(socket, system, task_rx, file_task_rx, storage_rx, notif_rx))
+    ws.on_upgrade(move |socket| handle_socket(socket, system, net_rates, task_rx, file_task_rx, storage_rx, notif_rx))
         .into_response()
 }
 
@@ -108,6 +111,7 @@ pub async fn ws_handler(
 async fn handle_socket(
     socket: WebSocket,
     system: std::sync::Arc<tokio::sync::RwLock<System>>,
+    net_rates: std::sync::Arc<tokio::sync::RwLock<crate::NetRates>>,
     mut task_rx: broadcast::Receiver<TaskProgressEvent>,
     mut file_task_rx: broadcast::Receiver<FileTaskEvent>,
     mut storage_rx: broadcast::Receiver<StorageAlertEvent>,
@@ -129,12 +133,15 @@ async fn handle_socket(
                         (sys.global_cpu_usage(), sys.total_memory(), sys.used_memory())
                     };
                     let memory_usage = (memory_used as f32 / memory_total as f32) * 100.0;
+                    let rates = *net_rates.read().await;
 
                     let event = WsEvent::SystemStats(SystemStats {
                         cpu_usage,
                         memory_usage,
                         memory_used,
                         memory_total,
+                        network_rx_bytes_per_sec: rates.rx_bytes_per_sec,
+                        network_tx_bytes_per_sec: rates.tx_bytes_per_sec,
                     });
 
                     let msg = serde_json::to_string(&event).unwrap();

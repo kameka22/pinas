@@ -103,6 +103,7 @@ pub fn router() -> Router<AppState> {
         .route("/move", post(move_files))
         .route("/upload", post(upload_file).layer(DefaultBodyLimit::max(MAX_UPLOAD_SIZE)))
         .route("/download", get(download_file))
+        .route("/search", get(search_files))
 }
 
 /// Validate that a path stays within the base directory (prevent path traversal)
@@ -1316,6 +1317,100 @@ async fn download_file(
     }
 }
 
+/// Query for a recursive name search inside a location
+#[derive(Debug, Deserialize)]
+pub struct SearchQuery {
+    pub q: String,
+    pub location_id: Option<String>,
+    #[serde(default = "default_search_limit")]
+    pub limit: usize,
+}
+
+fn default_search_limit() -> usize {
+    50
+}
+
+/// Walk `base` (breadth-first, no symlinks, hidden entries skipped) and return entries whose
+/// name contains `needle` (case-insensitive). Bounded by `limit` results, `max_visited`
+/// entries and a wall-clock budget so a huge share cannot pin a worker.
+fn search_tree(base: &Path, needle: &str, limit: usize, max_visited: usize, budget: std::time::Duration) -> Vec<FileItem> {
+    use std::collections::VecDeque;
+    let needle = needle.to_lowercase();
+    let started = std::time::Instant::now();
+    let mut results = Vec::new();
+    let mut visited = 0usize;
+    let mut queue: VecDeque<PathBuf> = VecDeque::from([base.to_path_buf()]);
+
+    while let Some(dir) = queue.pop_front() {
+        if results.len() >= limit || visited >= max_visited || started.elapsed() > budget {
+            break;
+        }
+        let Ok(entries) = fs::read_dir(&dir) else { continue };
+        for entry in entries.flatten() {
+            visited += 1;
+            if results.len() >= limit || visited >= max_visited || started.elapsed() > budget {
+                break;
+            }
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name.starts_with('.') {
+                continue;
+            }
+            let Ok(file_type) = entry.file_type() else { continue };
+            if file_type.is_symlink() {
+                continue;
+            }
+            let path = entry.path();
+            if file_type.is_dir() {
+                queue.push_back(path.clone());
+            }
+            if name.to_lowercase().contains(&needle) {
+                let Ok(metadata) = entry.metadata() else { continue };
+                let is_dir = metadata.is_dir();
+                let rel = path.strip_prefix(base).unwrap_or(&path).to_string_lossy().to_string();
+                results.push(FileItem {
+                    name,
+                    path: rel,
+                    file_type: if is_dir { "folder".to_string() } else { "file".to_string() },
+                    size: if is_dir { None } else { Some(metadata.len()) },
+                    modified: metadata.modified().map(format_time).unwrap_or_default(),
+                    mime_type: if is_dir { None } else { get_mime_type(&path) },
+                });
+            }
+        }
+    }
+    results
+}
+
+/// Search files by name inside a location (used by the global search palette)
+async fn search_files(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Query(query): Query<SearchQuery>,
+) -> impl IntoResponse {
+    let needle = query.q.trim().to_string();
+    if needle.chars().count() < 2 {
+        return ApiError::bad_request("Search needs at least 2 characters").into_response();
+    }
+    let base_path = if let Some(ref loc_id) = query.location_id {
+        match resolve_location_path(&state, &user, loc_id, AccessMode::Read).await {
+            Ok(path) => path,
+            Err(e) => return ApiError::bad_request(e).into_response(),
+        }
+    } else {
+        let home_service = HomeService::new(&state.config);
+        home_service.get_home_path(&user.username)
+    };
+    if !base_path.exists() {
+        return Json(Vec::<FileItem>::new()).into_response();
+    }
+    let limit = query.limit.clamp(1, 200);
+    let base = base_path.clone();
+    match tokio::task::spawn_blocking(move || search_tree(&base, &needle, limit, 50_000, std::time::Duration::from_secs(3))).await {
+        Ok(items) => Json(items).into_response(),
+        Err(e) => ApiError::internal(format!("Search failed: {}", e)).into_response(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1372,6 +1467,25 @@ mod tests {
         assert!(names.contains(&"photos/a.txt".to_string()), "{names:?}");
         assert!(names.contains(&"photos/2026/summer/b.txt".to_string()), "{names:?}");
         assert!(!names.iter().any(|n| n.contains("leak")), "{names:?}");
+    }
+
+    #[test]
+    fn search_tree_matches_names_recursively_within_limits() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        std::fs::create_dir_all(root.join("Photos/2026")).unwrap();
+        std::fs::write(root.join("Photos/2026/holiday.jpg"), b"x").unwrap();
+        std::fs::write(root.join("Photos/Holiday-list.txt"), b"x").unwrap();
+        std::fs::write(root.join(".hidden-holiday"), b"x").unwrap();
+        std::fs::write(root.join("notes.md"), b"x").unwrap();
+
+        let hits = search_tree(root, "HOLIDAY", 50, 10_000, std::time::Duration::from_secs(5));
+        let mut names: Vec<&str> = hits.iter().map(|h| h.name.as_str()).collect();
+        names.sort();
+        assert_eq!(names, vec!["Holiday-list.txt", "holiday.jpg"]);
+        assert!(hits.iter().any(|h| h.path == "Photos/2026/holiday.jpg"));
+        assert_eq!(search_tree(root, "holiday", 1, 10_000, std::time::Duration::from_secs(5)).len(), 1);
+        assert!(search_tree(root, "holiday", 50, 1, std::time::Duration::from_secs(5)).len() <= 1);
     }
 
     #[test]

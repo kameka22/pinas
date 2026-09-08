@@ -135,10 +135,10 @@ Taille : **M (≈ 3 j)**. Dépend de P2, P3.
 
 | # | Item | Taille | Détail / critère de fin |
 |---|---|---|---|
-| 7.1 | **Panneau Widgets** | M | Bouton TopBar *Widgets* (mort aujourd'hui) → panneau latéral : CPU/RAM/réseau (WS), stockage (pools, % utilisé), notifications récentes, services, conteneurs Docker. Disposition persistée dans `user_preferences`. |
-| 7.2 | **Recherche globale** | M | Bouton *Search* → palette (`Ctrl+K`) : apps, entrées du Control Panel, utilisateurs, partages, et fichiers (endpoint `GET /api/files/search?q=` limité aux locations autorisées, `walkdir` borné + timeout). |
-| 7.3 | **Sessions & préférences** | S | Fond d'écran, thème clair/sombre (le CSS a `darkMode: 'class'` sans toggle), langue, disposition des icônes — tout via `/api/preferences` (existe, utilisé 1 fois). |
-| 7.4 | **Docker UI** | S | Afficher le compteur de conteneurs par réseau rétabli en 1.8 ; logs en flux (`follow=true`) plutôt que snapshot. |
+| 7.1 ✅ | **Panneau Widgets** — *livré le 2026-09-08 : `WidgetsPanel.svelte` (système via WS, pools, services, notifications, Docker), widgets activables persistés dans `user_preferences` (`widgets.enabled`)* | M | Bouton TopBar *Widgets* (mort aujourd'hui) → panneau latéral : CPU/RAM/réseau (WS), stockage (pools, % utilisé), notifications récentes, services, conteneurs Docker. Disposition persistée dans `user_preferences`. |
+| 7.2 ✅ | **Recherche globale** — *livré le 2026-09-08 : `CommandPalette.svelte` (`Ctrl+K`), `GET /api/files/search` (BFS borné 50 000 entrées / 3 s, symlinks et fichiers cachés ignorés, `AccessMode::Read`)* | M | Bouton *Search* → palette (`Ctrl+K`) : apps, entrées du Control Panel, utilisateurs, partages, et fichiers (endpoint `GET /api/files/search?q=` limité aux locations autorisées, `walkdir` borné + timeout). |
+| 7.3 ✅ | **Sessions & préférences** — *livré le 2026-09-08 : section Control Panel › Personnalisation (fond d'écran en dégradés locaux → `ui.wallpaper`, widgets). Langue déjà couverte par 4.1. Thème sombre non fait : toute la palette est codée en clair, à traiter comme un chantier de restyle à part* | S | Fond d'écran, thème clair/sombre (le CSS a `darkMode: 'class'` sans toggle), langue, disposition des icônes — tout via `/api/preferences` (existe, utilisé 1 fois). |
+| 7.4 ✅ | **Docker UI** — *livré le 2026-09-08 : compteur de conteneurs par réseau, logs en mode suivi (rafraîchissement 2 s dans `LogViewer`), débits réseau réels dans la TopBar (WS `network_rx/tx_bytes_per_sec`)* | S | Afficher le compteur de conteneurs par réseau rétabli en 1.8 ; logs en flux (`follow=true`) plutôt que snapshot. |
 
 ---
 
