@@ -44,7 +44,7 @@ jobs:
           ls -lh backend/target/${{ matrix.target }}/release/pinas
 
       - name: Upload backend artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: pinas-binary-${{ matrix.arch }}
           path: backend/target/${{ matrix.target }}/release/pinas
@@ -69,7 +69,7 @@ jobs:
           npm run build
 
       - name: Upload frontend artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: frontend-build
           path: frontend/build/
@@ -191,7 +191,7 @@ jobs:
           ls -lh
 
       - name: Upload image
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: libreelec-pinas-image-${{ matrix.name }}
           path: |
