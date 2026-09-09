@@ -218,7 +218,7 @@ jobs:
           merge-multiple: true
 
       - name: Create draft release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           # The tag is only created when the draft is published.
           tag_name: v${{ env.PINAS_VERSION }}
