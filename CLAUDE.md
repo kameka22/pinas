@@ -134,6 +134,7 @@ RUST_LOG=pinas=info,tower_http=info
 - Stores dans `src/lib/stores/`, composants apps dans `src/lib/components/apps/`
 - **Imports (SvelteKit 3)** : alias natif `#lib/*` déclaré dans `imports` de `package.json` (il n'y a plus de `$lib`, `$stores` ni `$components`), toujours avec l'extension : `#lib/stores/api.js`, `#lib/i18n/index.js`, `#lib/components/ui/X.svelte`. `$app/environment` s'appelle désormais `$app/env`.
 - Config SvelteKit (adapter static, preprocess) dans `vite.config.ts` : `svelte.config.js` n'existe plus ; `tsconfig.json` étend `$app/tsconfig`
+- **Tailwind 4** : plus de `tailwind.config.js` ni de PostCSS ; thème (`primary-*`, `surface-*`, `shadow-window`/`shadow-dock`) dans le bloc `@theme` de `src/app.css`, classes partagées (`btn-*`, `card`, `badge-*`…) en `@utility`, plugin `@tailwindcss/vite`. Une balise `<style>` de composant qui utilise `@apply` doit commencer par `@reference "../../app.css";` (chemin relatif)
 - Types partagés dans les stores
 - Adapter static pour SSG
 - i18n via `#lib/i18n/index.js`
