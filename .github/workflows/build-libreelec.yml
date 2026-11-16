@@ -172,13 +172,41 @@ jobs:
           sudo docker image prune --all --force
           df -h
 
+      # Source tarballs are cached between runs: a run that fails still saves what it
+      # downloaded, so upstream mirror outages hurt at most once.
+      - name: Restore LibreELEC source tarballs
+        uses: actions/cache/restore@v4
+        with:
+          path: LibreELEC.tv/sources
+          key: le-sources-${{ env.LIBREELEC_BRANCH }}-${{ matrix.name }}-${{ github.run_id }}
+          restore-keys: le-sources-${{ env.LIBREELEC_BRANCH }}-${{ matrix.name }}-
+
+      # LibreELEC fetches ~300 tarballs from upstream mirrors (ftpmirror.gnu.org redirects to
+      # random mirrors, some of which 404) and a single failed download aborts `make image`.
+      # The build is incremental, so a re-run resumes where it stopped: retry a few times.
       - name: Build LibreELEC image
+        env:
+          PROJECT: ${{ matrix.project }}
+          DEVICE: ${{ matrix.device }}
+          ARCH: ${{ matrix.arch }}
         run: |
           cd LibreELEC.tv
-          PROJECT=${{ matrix.project }} \
-          DEVICE=${{ matrix.device }} \
-          ARCH=${{ matrix.arch }} \
-          make image
+          for attempt in 1 2 3; do
+            if make image; then
+              exit 0
+            fi
+            echo "::warning::make image failed (attempt ${attempt}/3), retrying in 60 s"
+            sleep 60
+          done
+          echo "::error::make image failed after 3 attempts"
+          exit 1
+
+      - name: Save LibreELEC source tarballs
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: LibreELEC.tv/sources
+          key: le-sources-${{ env.LIBREELEC_BRANCH }}-${{ matrix.name }}-${{ github.run_id }}
 
       - name: Name the virtual appliance after PiNAS
         if: matrix.arch == 'x86_64'
