@@ -69,7 +69,7 @@ hex = "0.4"
 getrandom = "0.4"
 
 # TLS (HTTPS)
-axum-server = { version = "0.8", features = ["tls-rustls"] }
+axum-server = { version = "0.9", features = ["tls-rustls"] }
 rcgen = "0.14"
 rustls = "0.23"
 
