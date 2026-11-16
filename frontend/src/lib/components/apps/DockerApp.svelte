@@ -1,10 +1,10 @@
 <script lang="ts">
-	import { api } from '$stores/api';
+	import { api } from '#lib/stores/api.js';
 	import Icon from '@iconify/svelte';
 	import { onMount, onDestroy } from 'svelte';
-	import { t } from '$lib/i18n';
-	import ConfirmModal from '$lib/components/ui/ConfirmModal.svelte';
-	import LogViewer from '$lib/components/ui/LogViewer.svelte';
+	import { t } from '#lib/i18n/index.js';
+	import ConfirmModal from '#lib/components/ui/ConfirmModal.svelte';
+	import LogViewer from '#lib/components/ui/LogViewer.svelte';
 
 	// Types
 	interface DockerStats {

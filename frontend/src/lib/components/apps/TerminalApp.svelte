@@ -1,9 +1,9 @@
 <script lang="ts">
 	import { onMount, tick } from 'svelte';
 	import { get } from 'svelte/store';
-	import { t } from '$lib/i18n';
-	import { auth, api } from '$stores/api';
-	import { systemInfo } from '$stores/system';
+	import { t } from '#lib/i18n/index.js';
+	import { auth, api } from '#lib/stores/api.js';
+	import { systemInfo } from '#lib/stores/system.js';
 
 	interface PromptLine {
 		type: 'prompt';
@@ -187,7 +187,7 @@
 		isExecuting = true;
 		try {
 			const response = await api.terminalExec(command, cwd);
-			const data = (response.data ?? {}) as Partial<import('$stores/api').TerminalExecResponse>;
+			const data = (response.data ?? {}) as Partial<import('#lib/stores/api.js').TerminalExecResponse>;
 
 			if (response.status === 401) {
 				lines = [...lines, { type: 'error', content: tErrors.authRequired || 'Authentication required. Please log in again.' }];

@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import Icon from '@iconify/svelte';
-	import { t } from '$lib/i18n';
-	import { api, type NetworkStatus, type NetworkInterface, type DnsConfig } from '$lib/stores/api';
+	import { t } from '#lib/i18n/index.js';
+	import { api, type NetworkStatus, type NetworkInterface, type DnsConfig } from '#lib/stores/api.js';
 
 	// State
 	let networkStatus: NetworkStatus | null = null;

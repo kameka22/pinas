@@ -1,10 +1,10 @@
 <script lang="ts">
 	import Icon from '@iconify/svelte';
-	import { windows, openWindow, focusWindow, restoreWindow } from '$stores/windows';
-	import { allApps, dockPinnedIds, addToDock, removeFromDock } from '$stores/desktop';
-	import { t } from '$lib/i18n';
-	import { gradientStyle } from '$lib/utils/gradient';
-	import ContextMenu from '$lib/components/ui/ContextMenu.svelte';
+	import { windows, openWindow, focusWindow, restoreWindow } from '#lib/stores/windows.js';
+	import { allApps, dockPinnedIds, addToDock, removeFromDock } from '#lib/stores/desktop.js';
+	import { t } from '#lib/i18n/index.js';
+	import { gradientStyle } from '#lib/utils/gradient.js';
+	import ContextMenu from '#lib/components/ui/ContextMenu.svelte';
 
 	// Resolve pinned dock apps from IDs
 	$: pinnedDockApps = $dockPinnedIds

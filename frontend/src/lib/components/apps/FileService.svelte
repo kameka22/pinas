@@ -1,13 +1,13 @@
 <script lang="ts">
 	import Icon from '@iconify/svelte';
 	import { onMount } from 'svelte';
-	import { t } from '$lib/i18n';
-	import { api } from '$lib/stores/api';
-	import type { SambaStatus, SmbGlobalConfig, ShareInfo, NfsStatus, NfsShareConfig } from '$lib/stores/api';
-	import { toasts, errorMessage } from '$stores/toasts';
-	import FolderPicker from '$lib/components/ui/FolderPicker.svelte';
-	import { openWindow } from '$lib/stores/windows';
-	import { getAppById } from '$lib/stores/desktop';
+	import { t } from '#lib/i18n/index.js';
+	import { api } from '#lib/stores/api.js';
+	import type { SambaStatus, SmbGlobalConfig, ShareInfo, NfsStatus, NfsShareConfig } from '#lib/stores/api.js';
+	import { toasts, errorMessage } from '#lib/stores/toasts.js';
+	import FolderPicker from '#lib/components/ui/FolderPicker.svelte';
+	import { openWindow } from '#lib/stores/windows.js';
+	import { getAppById } from '#lib/stores/desktop.js';
 
 	// Tabs
 	type TabId = 'smb' | 'nfs';

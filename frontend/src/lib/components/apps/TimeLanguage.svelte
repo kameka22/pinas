@@ -1,9 +1,9 @@
 <script lang="ts">
 	import Icon from '@iconify/svelte';
 	import { onMount, onDestroy } from 'svelte';
-	import { t, locale, languages, type Locale } from '$lib/i18n';
-	import { api, auth, type TimeStatus } from '$stores/api';
-	import { toasts, errorMessage } from '$stores/toasts';
+	import { t, locale, languages, type Locale } from '#lib/i18n/index.js';
+	import { api, auth, type TimeStatus } from '#lib/stores/api.js';
+	import { toasts, errorMessage } from '#lib/stores/toasts.js';
 
 	let activeTab: 'time' | 'language' = 'time';
 

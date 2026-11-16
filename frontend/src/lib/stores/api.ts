@@ -1,6 +1,6 @@
 import { writable, get } from 'svelte/store';
 import { toasts } from './toasts';
-import { t } from '$lib/i18n';
+import { t } from '#lib/i18n/index.js';
 
 const API_BASE = '/api';
 

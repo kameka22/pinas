@@ -1,10 +1,10 @@
 <script lang="ts">
-	import { api } from '$stores/api';
-	import { errorMessage } from '$stores/toasts';
+	import { api } from '#lib/stores/api.js';
+	import { errorMessage } from '#lib/stores/toasts.js';
 	import { onMount, onDestroy } from 'svelte';
 	import Icon from '@iconify/svelte';
-	import { t } from '$lib/i18n';
-	import { gradientStyle } from '$lib/utils/gradient';
+	import { t } from '#lib/i18n/index.js';
+	import { gradientStyle } from '#lib/utils/gradient.js';
 
 	// Config passed from manifest
 	export let config: {

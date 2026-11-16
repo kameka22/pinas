@@ -1,11 +1,11 @@
 <script lang="ts">
 	import Icon from '@iconify/svelte';
-	import { t, locale } from '$lib/i18n';
-	import { auth, api, type StoragePool, type SystemServiceSummary, type DockerStats } from '$stores/api';
-	import { systemStats, formatBytes, formatRate } from '$stores/system';
-	import { notifications, loadNotifications, timeAgo, notificationVisual } from '$stores/notifications';
-	import { widgetsVisible, enabledWidgets, loadWidgetPreferences } from '$stores/widgets';
-	import { gradientStyle } from '$lib/utils/gradient';
+	import { t, locale } from '#lib/i18n/index.js';
+	import { auth, api, type StoragePool, type SystemServiceSummary, type DockerStats } from '#lib/stores/api.js';
+	import { systemStats, formatBytes, formatRate } from '#lib/stores/system.js';
+	import { notifications, loadNotifications, timeAgo, notificationVisual } from '#lib/stores/notifications.js';
+	import { widgetsVisible, enabledWidgets, loadWidgetPreferences } from '#lib/stores/widgets.js';
+	import { gradientStyle } from '#lib/utils/gradient.js';
 
 	let pools: StoragePool[] = [];
 	let services: SystemServiceSummary[] = [];

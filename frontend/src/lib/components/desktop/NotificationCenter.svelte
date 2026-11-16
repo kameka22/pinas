@@ -1,8 +1,8 @@
 <script lang="ts">
 	import Icon from '@iconify/svelte';
-	import { t, locale } from '$lib/i18n';
-	import { auth } from '$stores/api';
-	import { gradientStyle } from '$lib/utils/gradient';
+	import { t, locale } from '#lib/i18n/index.js';
+	import { auth } from '#lib/stores/api.js';
+	import { gradientStyle } from '#lib/utils/gradient.js';
 	import {
 		notifications,
 		unreadCount,
@@ -13,7 +13,7 @@
 		clearNotifications,
 		timeAgo,
 		notificationVisual
-	} from '$stores/notifications';
+	} from '#lib/stores/notifications.js';
 
 	export let visible = false;
 

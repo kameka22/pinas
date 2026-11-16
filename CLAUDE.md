@@ -125,16 +125,18 @@ RUST_LOG=pinas=info,tower_http=info
 - Frontend servi depuis `/storage/.pinas/www/` via tower-http
 
 ### Svelte
-- **Un seul client HTTP** : `$stores/api` (`api.getX()` typés, `api.requestRaw()` quand le corps d'erreur doit être lu). Jamais de `fetch('/api/…')` dans un composant. Le client gère 401 → déconnexion, 403 → toast.
-- **Erreurs utilisateur** : `toasts.error(errorMessage(e, $t.common.errors.<clé>))` (`$stores/toasts`), jamais `alert()`. Aucune chaîne anglaise en dur : tout passe par `$t` (`en.ts`/`fr.ts` doivent rester strictement parallèles — un test l'impose).
+- **Un seul client HTTP** : `#lib/stores/api.js` (`api.getX()` typés, `api.requestRaw()` quand le corps d'erreur doit être lu). Jamais de `fetch('/api/…')` dans un composant. Le client gère 401 → déconnexion, 403 → toast.
+- **Erreurs utilisateur** : `toasts.error(errorMessage(e, $t.common.errors.<clé>))` (`#lib/stores/toasts.js`), jamais `alert()`. Aucune chaîne anglaise en dur : tout passe par `$t` (`en.ts`/`fr.ts` doivent rester strictement parallèles — un test l'impose).
 - Une app réservée aux admins porte `adminOnly: true` dans `stores/desktop.ts` (le backend l'impose aussi).
 - Pas de bouton sans handler : on retire ce qui n'est pas branché plutôt que d'afficher un placeholder.
 - Tests : Vitest (`npm test`), fichiers `*.test.ts` à côté des stores.
 - Composants en PascalCase : `DiskManager.svelte`
-- Stores dans `$lib/stores/`, composants apps dans `$lib/components/apps/`
+- Stores dans `src/lib/stores/`, composants apps dans `src/lib/components/apps/`
+- **Imports (SvelteKit 3)** : alias natif `#lib/*` déclaré dans `imports` de `package.json` (il n'y a plus de `$lib`, `$stores` ni `$components`), toujours avec l'extension : `#lib/stores/api.js`, `#lib/i18n/index.js`, `#lib/components/ui/X.svelte`. `$app/environment` s'appelle désormais `$app/env`.
+- Config SvelteKit (adapter static, preprocess) dans `vite.config.ts` : `svelte.config.js` n'existe plus ; `tsconfig.json` étend `$app/tsconfig`
 - Types partagés dans les stores
 - Adapter static pour SSG
-- i18n via `$lib/i18n/`
+- i18n via `#lib/i18n/index.js`
 
 ### Git
 - Commits conventionnels : `feat:`, `fix:`, `docs:`, `refactor:`

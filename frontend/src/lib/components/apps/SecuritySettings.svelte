@@ -1,10 +1,10 @@
 <script lang="ts">
 	import Icon from '@iconify/svelte';
 	import { onMount } from 'svelte';
-	import { t, locale } from '$lib/i18n';
-	import { api, type SecurityStatus, type LoginAttempt } from '$stores/api';
-	import { toasts, errorMessage } from '$stores/toasts';
-	import { timeAgo } from '$stores/notifications';
+	import { t, locale } from '#lib/i18n/index.js';
+	import { api, type SecurityStatus, type LoginAttempt } from '#lib/stores/api.js';
+	import { toasts, errorMessage } from '#lib/stores/toasts.js';
+	import { timeAgo } from '#lib/stores/notifications.js';
 
 	let status: SecurityStatus | null = null;
 	let attempts: LoginAttempt[] = [];
