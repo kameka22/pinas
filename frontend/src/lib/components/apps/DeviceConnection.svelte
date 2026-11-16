@@ -1,9 +1,9 @@
 <script lang="ts">
 	import Icon from '@iconify/svelte';
 	import { onMount } from 'svelte';
-	import { t } from '$lib/i18n';
-	import { api, type NetworkStatus, type ServiceStatus } from '$stores/api';
-	import { toasts, errorMessage } from '$stores/toasts';
+	import { t } from '#lib/i18n/index.js';
+	import { api, type NetworkStatus, type ServiceStatus } from '#lib/stores/api.js';
+	import { toasts, errorMessage } from '#lib/stores/toasts.js';
 
 	let network: NetworkStatus | null = null;
 	let avahi: ServiceStatus | null = null;

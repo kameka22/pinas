@@ -1,9 +1,9 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import Icon from '@iconify/svelte';
-	import { t } from '$lib/i18n';
-	import { api, type SshStatus } from '$lib/stores/api';
-	import PasswordRules from '$lib/components/ui/PasswordRules.svelte';
+	import { t } from '#lib/i18n/index.js';
+	import { api, type SshStatus } from '#lib/stores/api.js';
+	import PasswordRules from '#lib/components/ui/PasswordRules.svelte';
 
 	// SSH state
 	let sshStatus: SshStatus | null = null;

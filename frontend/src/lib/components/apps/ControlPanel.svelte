@@ -12,8 +12,8 @@
 	import DeviceConnection from './DeviceConnection.svelte';
 	import Personalization from './Personalization.svelte';
 	import { onMount } from 'svelte';
-	import { t } from '$lib/i18n';
-	import { systemInfo as systemInfoStore, formatBytes, formatUptime } from '$stores/system';
+	import { t } from '#lib/i18n/index.js';
+	import { systemInfo as systemInfoStore, formatBytes, formatUptime } from '#lib/stores/system.js';
 
 	let aboutPools: StoragePool[] = [];
 	let aboutVolumes: VolumeInfo[] = [];
@@ -30,8 +30,8 @@
 		}
 	}
 	$: if (selectedItem === 'about' && activeTab !== 'general') loadAboutTab(activeTab);
-	import { api, auth, type NetworkInterface, type StoragePool, type VolumeInfo, type ServiceStatus } from '$stores/api';
-	import { gradientStyle } from '$lib/utils/gradient';
+	import { api, auth, type NetworkInterface, type StoragePool, type VolumeInfo, type ServiceStatus } from '#lib/stores/api.js';
+	import { gradientStyle } from '#lib/utils/gradient.js';
 
 	export let config: { section?: string } | undefined = undefined;
 

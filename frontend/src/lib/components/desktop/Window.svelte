@@ -7,8 +7,8 @@
 		maximizeWindow,
 		focusWindow,
 		updateWindowPosition
-	} from '$stores/windows';
-	import { t } from '$lib/i18n';
+	} from '#lib/stores/windows.js';
+	import { t } from '#lib/i18n/index.js';
 
 	export let window: WindowState;
 

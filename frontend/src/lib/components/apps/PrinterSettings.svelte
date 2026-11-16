@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import Icon from '@iconify/svelte';
-	import { t } from '$lib/i18n';
-	import { api, type CupsStatus, type CupsPrinter, type DetectedPrinter, type PrinterDriver, type PrintJob } from '$lib/stores/api';
+	import { t } from '#lib/i18n/index.js';
+	import { api, type CupsStatus, type CupsPrinter, type DetectedPrinter, type PrinterDriver, type PrintJob } from '#lib/stores/api.js';
 
 	// Service state
 	let cupsStatus: CupsStatus | null = null;

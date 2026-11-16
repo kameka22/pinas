@@ -1,7 +1,7 @@
 <script lang="ts">
 	import Icon from '@iconify/svelte';
-	import { auth, api } from '$stores/api';
-	import { t } from '$lib/i18n';
+	import { auth, api } from '#lib/stores/api.js';
+	import { t } from '#lib/i18n/index.js';
 
 	export let show = false;
 

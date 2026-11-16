@@ -119,7 +119,7 @@ function createOnboardingStore() {
 
 				// Auto-login: token is set as httpOnly cookie by the server.
 				// Also keep in memory for WebSocket auth.
-				const { setWsToken } = await import('$stores/api');
+				const { setWsToken } = await import('#lib/stores/api.js');
 				setWsToken(response.token);
 				const user = {
 					id: response.user.id,

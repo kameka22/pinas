@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 	import Icon from '@iconify/svelte';
-	import { t } from '$lib/i18n';
-	import { api, type ProcessInfo } from '$lib/stores/api';
+	import { t } from '#lib/i18n/index.js';
+	import { api, type ProcessInfo } from '#lib/stores/api.js';
 
 	let processes: ProcessInfo[] = [];
 	let sortColumn: keyof ProcessInfo = 'cpu';

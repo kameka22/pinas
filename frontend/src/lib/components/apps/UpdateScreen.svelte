@@ -2,10 +2,10 @@
 	import Icon from '@iconify/svelte';
 	import { get } from 'svelte/store';
 	import { onMount, onDestroy } from 'svelte';
-	import { updateScreen } from '$stores/update';
-	import { taskProgress } from '$stores/websocket';
-	import { api } from '$stores/api';
-	import { t } from '$lib/i18n';
+	import { updateScreen } from '#lib/stores/update.js';
+	import { taskProgress } from '#lib/stores/websocket.js';
+	import { api } from '#lib/stores/api.js';
+	import { t } from '#lib/i18n/index.js';
 
 	type Phase = 'starting' | 'progress' | 'completed' | 'error';
 

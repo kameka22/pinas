@@ -1,9 +1,9 @@
 <script lang="ts">
 	import Icon from '@iconify/svelte';
 	import { onMount } from 'svelte';
-	import { api, type Disk, type StoragePool, type VolumeInfo, type DiskCandidate, type SmartInfo, type RaidType, type PoolHealthInfo, type ScrubStatus, type WipeMode, type FsckStatus, type SmartTestHistoryEntry, type SmartTestScheduleInfo, type SmartTestStatus, type DiskPowerSettings, type BtrfsSnapshotInfo, type GrowPoolStatus } from '$lib/stores/api';
-	import { taskProgress } from '$lib/stores/websocket';
-	import { t } from '$lib/i18n';
+	import { api, type Disk, type StoragePool, type VolumeInfo, type DiskCandidate, type SmartInfo, type RaidType, type PoolHealthInfo, type ScrubStatus, type WipeMode, type FsckStatus, type SmartTestHistoryEntry, type SmartTestScheduleInfo, type SmartTestStatus, type DiskPowerSettings, type BtrfsSnapshotInfo, type GrowPoolStatus } from '#lib/stores/api.js';
+	import { taskProgress } from '#lib/stores/websocket.js';
+	import { t } from '#lib/i18n/index.js';
 
 	// State
 	let loading = true;

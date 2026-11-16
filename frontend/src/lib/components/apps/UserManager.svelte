@@ -1,12 +1,12 @@
 <script lang="ts">
-	import { toasts, errorMessage } from '$stores/toasts';
+	import { toasts, errorMessage } from '#lib/stores/toasts.js';
 	import { onMount } from 'svelte';
 	import Icon from '@iconify/svelte';
-	import { t } from '$lib/i18n';
-	import { api, auth } from '$lib/stores/api';
-	import type { FolderPermissions, PermissionLevel, PermissionEntry, UserServiceAccess } from '$lib/stores/api';
-	import FolderPicker from '$lib/components/ui/FolderPicker.svelte';
-	import PasswordRules from '$lib/components/ui/PasswordRules.svelte';
+	import { t } from '#lib/i18n/index.js';
+	import { api, auth } from '#lib/stores/api.js';
+	import type { FolderPermissions, PermissionLevel, PermissionEntry, UserServiceAccess } from '#lib/stores/api.js';
+	import FolderPicker from '#lib/components/ui/FolderPicker.svelte';
+	import PasswordRules from '#lib/components/ui/PasswordRules.svelte';
 
 	// Types - matches API response from /users
 	interface User {

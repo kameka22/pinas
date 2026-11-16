@@ -1,11 +1,11 @@
 <script lang="ts">
-	import { api } from '$stores/api';
+	import { api } from '#lib/stores/api.js';
 	import { onMount } from 'svelte';
 	import Icon from '@iconify/svelte';
-	import { t, locale, loadAppTranslations } from '$lib/i18n';
-	import { loadInstalledApps } from '$stores/desktop';
-	import { openWindow } from '$stores/windows';
-	import { taskProgress, type TaskProgress } from '$stores/websocket';
+	import { t, locale, loadAppTranslations } from '#lib/i18n/index.js';
+	import { loadInstalledApps } from '#lib/stores/desktop.js';
+	import { openWindow } from '#lib/stores/windows.js';
+	import { taskProgress, type TaskProgress } from '#lib/stores/websocket.js';
 
 	interface AppPackage {
 		id: string;

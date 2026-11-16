@@ -2,11 +2,11 @@
 	import Icon from '@iconify/svelte';
 	import { get } from 'svelte/store';
 	import { onMount } from 'svelte';
-	import { api } from '$stores/api';
-	import type { UpdateCheckResult, UpdateHistoryEntry } from '$stores/api';
-	import { updateScreen } from '$stores/update';
-	import { systemInfo } from '$stores/system';
-	import { t, locale } from '$lib/i18n';
+	import { api } from '#lib/stores/api.js';
+	import type { UpdateCheckResult, UpdateHistoryEntry } from '#lib/stores/api.js';
+	import { updateScreen } from '#lib/stores/update.js';
+	import { systemInfo } from '#lib/stores/system.js';
+	import { t, locale } from '#lib/i18n/index.js';
 
 	// Update state
 	let updateCheck: UpdateCheckResult | null = null;

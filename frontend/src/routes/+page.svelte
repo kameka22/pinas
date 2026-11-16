@@ -1,11 +1,11 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { openWindow } from '$stores/windows';
-	import { desktopApps, removeFromDesktop, initDesktop, initDock, loadInstalledApps, installedApps, type DesktopApp } from '$stores/desktop';
-	import { loadAllAppTranslations, t } from '$lib/i18n';
+	import { openWindow } from '#lib/stores/windows.js';
+	import { desktopApps, removeFromDesktop, initDesktop, initDock, loadInstalledApps, installedApps, type DesktopApp } from '#lib/stores/desktop.js';
+	import { loadAllAppTranslations, t } from '#lib/i18n/index.js';
 	import Icon from '@iconify/svelte';
-	import { gradientStyle } from '$lib/utils/gradient';
-	import ContextMenu from '$lib/components/ui/ContextMenu.svelte';
+	import { gradientStyle } from '#lib/utils/gradient.js';
+	import ContextMenu from '#lib/components/ui/ContextMenu.svelte';
 
 	let contextMenu = {
 		visible: false,

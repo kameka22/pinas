@@ -1,7 +1,7 @@
 <script lang="ts">
 	import Icon from '@iconify/svelte';
 	import { onMount, createEventDispatcher } from 'svelte';
-	import { browser } from '$app/environment';
+	import { browser } from '$app/env';
 
 	export let x: number;
 	export let y: number;
