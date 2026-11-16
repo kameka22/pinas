@@ -121,7 +121,7 @@ RUST_LOG=pinas=info,tower_http=info
 - `thiserror` pour les erreurs custom
 - Async/await partout (Tokio runtime)
 - Structs avec `#[derive(Debug, Serialize, Deserialize)]`
-- Tests dans le même fichier avec `#[cfg(test)]` ; les tests qui touchent la base utilisent `test_util::migrated_pool()` (SQLite mémoire + vraies migrations). CI : `cargo test --locked` et `cargo check` avec `-D warnings`.
+- Tests dans le même fichier avec `#[cfg(test)]` ; les tests qui touchent la base utilisent `test_util::migrated_pool()` (SQLite mémoire + vraies migrations). CI : `cargo test --locked`, `cargo check` avec `-D warnings` et `cargo clippy --all-targets -- -D warnings` (clippy doit rester propre).
 - Frontend servi depuis `/storage/.pinas/www/` via tower-http
 
 ### Svelte

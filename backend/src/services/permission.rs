@@ -23,6 +23,11 @@ pub enum PermissionError {
 }
 
 /// Permission Service for managing folder access permissions
+/// Row of `list_all_grouped`: id, path, user_id, username, group_id, group_name, permission
+type GroupedPermissionRow = (String, String, Option<String>, Option<String>, Option<String>, Option<String>, String);
+/// Row of `list_by_folder`: id, user_id, username, group_id, group_name, permission
+type FolderPermissionRow = (String, Option<String>, Option<String>, Option<String>, Option<String>, String);
+
 pub struct PermissionService {
     db: SqlitePool,
 }
@@ -170,7 +175,7 @@ impl PermissionService {
 
     /// List all permissions grouped by folder
     pub async fn list_all_grouped(&self) -> Result<Vec<FolderPermissions>, PermissionError> {
-        let rows: Vec<(String, String, Option<String>, Option<String>, Option<String>, Option<String>, String)> = sqlx::query_as(
+        let rows: Vec<GroupedPermissionRow> = sqlx::query_as(
             r#"
             SELECT
                 fp.id,
@@ -213,7 +218,7 @@ impl PermissionService {
 
     /// List permissions for a specific folder
     pub async fn list_by_folder(&self, path: &str) -> Result<Vec<PermissionEntry>, PermissionError> {
-        let rows: Vec<(String, Option<String>, Option<String>, Option<String>, Option<String>, String)> = sqlx::query_as(
+        let rows: Vec<FolderPermissionRow> = sqlx::query_as(
             r#"
             SELECT
                 fp.id,

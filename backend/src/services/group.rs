@@ -105,11 +105,10 @@ pub async fn update_group(
     let new_description = description.unwrap_or(existing.description.clone());
 
     // Check for duplicate name if changing
-    if new_name != existing.name {
-        if get_group_by_name(db, &new_name).await?.is_some() {
+    if new_name != existing.name
+        && get_group_by_name(db, &new_name).await?.is_some() {
             return Err(GroupError::DuplicateName);
         }
-    }
 
     sqlx::query(
         r#"

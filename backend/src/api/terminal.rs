@@ -199,15 +199,15 @@ fn normalize_command(command: &str) -> String {
     let cmd: String = cmd.split_whitespace().collect::<Vec<_>>().join(" ");
 
     // Strip common path prefixes from binary names
-    let cmd = cmd
+    
+
+    cmd
         .replace("/usr/local/sbin/", "")
         .replace("/usr/local/bin/", "")
         .replace("/usr/sbin/", "")
         .replace("/usr/bin/", "")
         .replace("/sbin/", "")
-        .replace("/bin/", "");
-
-    cmd
+        .replace("/bin/", "")
 }
 
 /// Check if a command contains blocked patterns or dangerous constructs
@@ -329,9 +329,9 @@ fn get_real_root(dev_mode: bool) -> PathBuf {
 }
 
 /// Convert virtual path (/storage/...) to real path
-fn virtual_to_real(virtual_path: &str, real_root: &PathBuf) -> PathBuf {
+fn virtual_to_real(virtual_path: &str, real_root: &Path) -> PathBuf {
     if virtual_path == VIRTUAL_ROOT {
-        real_root.clone()
+        real_root.to_path_buf()
     } else if let Some(suffix) = virtual_path.strip_prefix(&format!("{}/", VIRTUAL_ROOT)) {
         real_root.join(suffix)
     } else {
@@ -341,9 +341,9 @@ fn virtual_to_real(virtual_path: &str, real_root: &PathBuf) -> PathBuf {
 }
 
 /// Convert real path to virtual path (/storage/...)
-fn real_to_virtual(real_path: &PathBuf, real_root: &PathBuf) -> String {
-    if let Ok(canonical_real) = real_path.canonicalize() {
-        if let Ok(canonical_root) = real_root.canonicalize() {
+fn real_to_virtual(real_path: &Path, real_root: &Path) -> String {
+    if let Ok(canonical_real) = real_path.canonicalize()
+        && let Ok(canonical_root) = real_root.canonicalize() {
             if canonical_real == canonical_root {
                 return VIRTUAL_ROOT.to_string();
             }
@@ -351,13 +351,12 @@ fn real_to_virtual(real_path: &PathBuf, real_root: &PathBuf) -> String {
                 return format!("{}/{}", VIRTUAL_ROOT, suffix.to_string_lossy());
             }
         }
-    }
     // Fallback to virtual root if path is outside
     VIRTUAL_ROOT.to_string()
 }
 
 /// Check if a path is within the allowed root
-fn is_path_within_root(path: &PathBuf, root: &PathBuf) -> bool {
+fn is_path_within_root(path: &Path, root: &Path) -> bool {
     if let (Ok(canonical_path), Ok(canonical_root)) = (path.canonicalize(), root.canonicalize()) {
         canonical_path.starts_with(&canonical_root)
     } else {
@@ -498,7 +497,7 @@ pub async fn execute(
 }
 
 /// Handle cd command and return new virtual working directory
-fn handle_cd_command(command: &str, current_virtual_cwd: &str, real_root: &PathBuf) -> String {
+fn handle_cd_command(command: &str, current_virtual_cwd: &str, real_root: &Path) -> String {
     let target = if command == "cd" {
         // cd without argument goes to root
         String::new()

@@ -84,11 +84,10 @@ impl SshService {
                 .output()
                 .await;
 
-            if let Ok(o) = output {
-                if String::from_utf8_lossy(&o.stdout).trim() == "active" {
+            if let Ok(o) = output
+                && String::from_utf8_lossy(&o.stdout).trim() == "active" {
                     return true;
                 }
-            }
         }
 
         // Method 2: check if sshd process exists (fallback)
@@ -97,11 +96,10 @@ impl SshService {
             .output()
             .await;
 
-        if let Ok(o) = output {
-            if o.status.success() {
+        if let Ok(o) = output
+            && o.status.success() {
                 return true;
             }
-        }
 
         false
     }
@@ -156,11 +154,10 @@ impl SshService {
                 .output()
                 .await;
 
-            if let Ok(o) = output {
-                if o.status.success() {
+            if let Ok(o) = output
+                && o.status.success() {
                     return Some(name);
                 }
-            }
         }
         None
     }
@@ -181,13 +178,11 @@ impl SshService {
                         continue;
                     }
                     // Handle both "Port 22" and "SSHD_PORT=22"
-                    if line.to_lowercase().starts_with("port ") {
-                        if let Some(port_str) = line.split_whitespace().nth(1) {
-                            if let Ok(port) = port_str.parse::<u16>() {
+                    if line.to_lowercase().starts_with("port ")
+                        && let Some(port_str) = line.split_whitespace().nth(1)
+                            && let Ok(port) = port_str.parse::<u16>() {
                                 return Ok(port);
                             }
-                        }
-                    }
                     if line.starts_with("SSHD_PORT=") {
                         let val = line
                             .trim_start_matches("SSHD_PORT=")

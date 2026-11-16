@@ -39,8 +39,8 @@ async fn get_registry(
     let mut entries = Vec::new();
 
     for (id, name, frontend_config_json) in packages {
-        if let Some(config_str) = frontend_config_json {
-            if let Ok(config) = serde_json::from_str::<FrontendConfig>(&config_str) {
+        if let Some(config_str) = frontend_config_json
+            && let Ok(config) = serde_json::from_str::<FrontendConfig>(&config_str) {
                 entries.push(AppRegistryEntry {
                     id,
                     name,
@@ -56,7 +56,6 @@ async fn get_registry(
                     config: config.config,
                 });
             }
-        }
     }
 
     Ok(Json(entries))
@@ -105,19 +104,17 @@ async fn get_app_translations(
         ApiError::internal(format!("Database error: {}", e))
     })?;
 
-    if let Some(config_str) = frontend_config {
-        if let Ok(config) = serde_json::from_str::<FrontendConfig>(&config_str) {
+    if let Some(config_str) = frontend_config
+        && let Ok(config) = serde_json::from_str::<FrontendConfig>(&config_str) {
             if let Some(translations) = config.i18n.get(&locale) {
                 return Ok(Json(translations.clone()));
             }
             // Try fallback to English
-            if locale != "en" {
-                if let Some(translations) = config.i18n.get("en") {
+            if locale != "en"
+                && let Some(translations) = config.i18n.get("en") {
                     return Ok(Json(translations.clone()));
                 }
-            }
         }
-    }
 
     // Return empty object if no translations found
     Ok(Json(json!({})))

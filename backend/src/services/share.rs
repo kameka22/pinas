@@ -188,8 +188,8 @@ impl ShareService {
         .ok_or(ShareError::NotFound)?;
 
         // Check for duplicate name if changing
-        if let Some(new_name) = name {
-            if new_name != existing.name {
+        if let Some(new_name) = name
+            && new_name != existing.name {
                 let dup = sqlx::query_as::<_, Share>(
                     "SELECT * FROM shares WHERE name = ? AND id != ?",
                 )
@@ -202,7 +202,6 @@ impl ShareService {
                     return Err(ShareError::DuplicateName);
                 }
             }
-        }
 
         let now = chrono::Utc::now().to_rfc3339();
         let final_name = name.unwrap_or(&existing.name);
@@ -930,26 +929,23 @@ impl ShareService {
                 conf.push_str("   full_audit:priority = NOTICE\n");
             }
 
-            if let Some(ref encrypt) = smb_cfg.smb_encrypt {
-                if encrypt != "off" && !encrypt.is_empty() {
+            if let Some(ref encrypt) = smb_cfg.smb_encrypt
+                && encrypt != "off" && !encrypt.is_empty() {
                     conf.push_str(&format!("   smb encrypt = {}\n", encrypt));
                 }
-            }
 
-            if let Some(ref hosts) = smb_cfg.hosts_allow {
-                if !hosts.is_empty() {
+            if let Some(ref hosts) = smb_cfg.hosts_allow
+                && !hosts.is_empty() {
                     conf.push_str(&format!("   hosts allow = {}\n", hosts));
                 }
-            }
 
-            if let Some(ref hosts) = smb_cfg.hosts_deny {
-                if !hosts.is_empty() {
+            if let Some(ref hosts) = smb_cfg.hosts_deny
+                && !hosts.is_empty() {
                     conf.push_str(&format!("   hosts deny = {}\n", hosts));
                 }
-            }
 
-            if let Some(ref extra) = smb_cfg.extra_options {
-                if !extra.is_empty() {
+            if let Some(ref extra) = smb_cfg.extra_options
+                && !extra.is_empty() {
                     for line in extra.lines() {
                         let trimmed = line.trim();
                         if !trimmed.is_empty() {
@@ -957,7 +953,6 @@ impl ShareService {
                         }
                     }
                 }
-            }
 
             // Resolve permissions: build valid users, read list, write list
             let mut valid_users = Vec::new();

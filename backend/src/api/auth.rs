@@ -205,11 +205,10 @@ async fn logout(
                 .map(|s| s.to_string())
         });
 
-    if let Some(token) = token {
-        if let Err(e) = delete_session(&state.db, &token).await {
+    if let Some(token) = token
+        && let Err(e) = delete_session(&state.db, &token).await {
             tracing::error!("Session deletion error: {}", e);
         }
-    }
 
     // Clear the auth cookie
     let clear_cookie = cookies::build_clear_cookie(state.tls_enabled);

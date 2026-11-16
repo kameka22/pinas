@@ -124,12 +124,11 @@ async fn complete_setup(
     };
 
     // Add admin user to administrators group
-    if let Ok(Some(admin_group)) = get_group_by_name(&state.db, "administrators").await {
-        if let Err(e) = add_member(&state.db, &admin_group.id, &user.id).await {
+    if let Ok(Some(admin_group)) = get_group_by_name(&state.db, "administrators").await
+        && let Err(e) = add_member(&state.db, &admin_group.id, &user.id).await {
             tracing::warn!("Failed to add admin to administrators group: {}", e);
             // Continue anyway - user is still admin
         }
-    }
 
     // Sync admin user to Samba
     let share_svc = ShareService::new(state.db.clone());

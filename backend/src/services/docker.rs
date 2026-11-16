@@ -551,8 +551,8 @@ impl DockerService {
                         .map(|d| {
                             let parts: Vec<&str> = d.split(':').collect();
                             bollard::models::DeviceMapping {
-                                path_on_host: Some(parts.get(0).unwrap_or(&"").to_string()),
-                                path_in_container: Some(parts.get(1).unwrap_or(parts.get(0).unwrap_or(&"")).to_string()),
+                                path_on_host: Some(parts.first().unwrap_or(&"").to_string()),
+                                path_in_container: Some(parts.get(1).unwrap_or(parts.first().unwrap_or(&"")).to_string()),
                                 cgroup_permissions: Some("rwm".to_string()),
                             }
                         })

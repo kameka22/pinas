@@ -4,20 +4,17 @@ use sqlx::FromRow;
 /// Type de disque physique
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum DiskType {
     Hdd,
     Ssd,
     Nvme,
     Sd,
     Usb,
+    #[default]
     Unknown,
 }
 
-impl Default for DiskType {
-    fn default() -> Self {
-        DiskType::Unknown
-    }
-}
 
 /// Partition d'un disque
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -141,7 +138,9 @@ impl std::str::FromStr for RaidType {
 /// Status d'un pool de stockage
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum PoolStatus {
+    #[default]
     Normal,
     Degraded,
     Rebuilding,
@@ -150,11 +149,6 @@ pub enum PoolStatus {
     Creating,
 }
 
-impl Default for PoolStatus {
-    fn default() -> Self {
-        PoolStatus::Normal
-    }
-}
 
 impl std::fmt::Display for PoolStatus {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -203,18 +197,15 @@ pub struct StoragePoolInfo {
 /// Status d'un volume
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum VolumeStatus {
     Mounted,
+    #[default]
     Unmounted,
     Error,
     Creating,
 }
 
-impl Default for VolumeStatus {
-    fn default() -> Self {
-        VolumeStatus::Unmounted
-    }
-}
 
 /// Volume (depuis la DB)
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
@@ -308,17 +299,14 @@ pub struct FsckStatus {
 /// Mode de wipe
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum WipeMode {
+    #[default]
     Quick,     // sgdisk --zap-all (existing, instant)
     Zeros,     // dd if=/dev/zero (1 pass, ~minutes per GB)
     Secure,    // shred -vfz -n 3 (3 passes + zeros, slow)
 }
 
-impl Default for WipeMode {
-    fn default() -> Self {
-        WipeMode::Quick
-    }
-}
 
 /// Requête de wipe disque (optionnel, default = Quick)
 #[derive(Debug, Clone, Deserialize)]

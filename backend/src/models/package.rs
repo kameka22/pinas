@@ -66,7 +66,7 @@ impl Serialize for PackageTask {
         s.serialize_field("started_at", &self.started_at)?;
         s.serialize_field("completed_at", &self.completed_at)?;
         s.serialize_field("created_at", &self.created_at)?;
-        Ok(s.end()?)
+        s.end()
     }
 }
 

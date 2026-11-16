@@ -124,8 +124,8 @@ impl NetworkService {
             }
 
             // Set DNS if provided
-            if let Some(dns) = &req.dns {
-                if !dns.is_empty() {
+            if let Some(dns) = &req.dns
+                && !dns.is_empty() {
                     let dns_servers: Vec<&str> = dns.split(',').map(|s| s.trim()).collect();
                     let mut args = vec!["config", &service_id, "--nameservers"];
                     args.extend(dns_servers);
@@ -140,7 +140,6 @@ impl NetworkService {
                         tracing::warn!("Failed to set DNS for interface: {}", stderr);
                     }
                 }
-            }
         }
 
         tracing::info!("Interface {} configured as {}", req.name, req.method);
@@ -457,11 +456,10 @@ impl NetworkService {
         if let Ok(output) = output {
             let stdout = String::from_utf8_lossy(&output.stdout);
             for line in stdout.lines() {
-                if line.starts_with("default via ") {
-                    if let Some(gw) = line.split_whitespace().nth(2) {
+                if line.starts_with("default via ")
+                    && let Some(gw) = line.split_whitespace().nth(2) {
                         return gw.to_string();
                     }
-                }
             }
         }
 
@@ -522,8 +520,8 @@ impl NetworkService {
         if let Ok(output) = output {
             let stdout = String::from_utf8_lossy(&output.stdout);
             for line in stdout.lines() {
-                if let Some(service_id) = line.split_whitespace().last() {
-                    if service_id.starts_with("ethernet_") || service_id.starts_with("wifi_") {
+                if let Some(service_id) = line.split_whitespace().last()
+                    && (service_id.starts_with("ethernet_") || service_id.starts_with("wifi_")) {
                         let detail = AsyncCommand::new("connmanctl")
                             .args(["services", service_id])
                             .output()
@@ -541,7 +539,6 @@ impl NetworkService {
                             }
                         }
                     }
-                }
             }
         }
 
@@ -556,11 +553,10 @@ impl NetworkService {
 
         let stdout = String::from_utf8_lossy(&output.stdout);
         for line in stdout.lines() {
-            if line.starts_with("default via ") {
-                if let Some(gw) = line.split_whitespace().nth(2) {
+            if line.starts_with("default via ")
+                && let Some(gw) = line.split_whitespace().nth(2) {
                     return Ok(gw.to_string());
                 }
-            }
         }
 
         Ok(String::new())
@@ -582,11 +578,10 @@ impl NetworkService {
         };
 
         for line in stdout.lines() {
-            if let Some(service_id) = line.split_whitespace().last() {
-                if service_id.contains(iface_type) {
+            if let Some(service_id) = line.split_whitespace().last()
+                && service_id.contains(iface_type) {
                     return Ok(service_id.to_string());
                 }
-            }
         }
 
         anyhow::bail!("No connman service found for interface {}", interface_name)
@@ -602,23 +597,21 @@ impl NetworkService {
 
         // Return first connected service (marked with * or first ethernet/wifi)
         for line in stdout.lines() {
-            if let Some(service_id) = line.split_whitespace().last() {
-                if service_id.starts_with("ethernet_") || service_id.starts_with("wifi_") {
+            if let Some(service_id) = line.split_whitespace().last()
+                && (service_id.starts_with("ethernet_") || service_id.starts_with("wifi_")) {
                     // Check if this service is connected
                     if line.contains("*A") || line.contains("*O") {
                         return Ok(service_id.to_string());
                     }
                 }
-            }
         }
 
         // Fallback: return first ethernet or wifi service
         for line in stdout.lines() {
-            if let Some(service_id) = line.split_whitespace().last() {
-                if service_id.starts_with("ethernet_") || service_id.starts_with("wifi_") {
+            if let Some(service_id) = line.split_whitespace().last()
+                && (service_id.starts_with("ethernet_") || service_id.starts_with("wifi_")) {
                     return Ok(service_id.to_string());
                 }
-            }
         }
 
         anyhow::bail!("No active connman service found")

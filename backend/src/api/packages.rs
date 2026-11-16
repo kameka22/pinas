@@ -222,22 +222,18 @@ async fn resolve_package_manifest(
             // Fall through to built-in manifests
         }
         Ok(()) => {
-            if let Ok(response) = reqwest::get(&catalog_url).await {
-                if response.status().is_success() {
-                    if let Ok(catalog) = response.json::<serde_json::Value>().await {
-                        if let Some(apps) = catalog.get("apps").and_then(|a| a.as_array()) {
+            if let Ok(response) = reqwest::get(&catalog_url).await
+                && response.status().is_success()
+                    && let Ok(catalog) = response.json::<serde_json::Value>().await
+                        && let Some(apps) = catalog.get("apps").and_then(|a| a.as_array()) {
                             for app in apps {
-                                if app.get("id").and_then(|i| i.as_str()) == Some(package_id) {
-                                    if let Some(manifest_url) = app.get("manifest").and_then(|m| m.as_str()) {
+                                if app.get("id").and_then(|i| i.as_str()) == Some(package_id)
+                                    && let Some(manifest_url) = app.get("manifest").and_then(|m| m.as_str()) {
                                         let manifest = fetch_manifest(manifest_url).await?;
                                         return Ok((manifest, Some(manifest_url.to_string())));
                                     }
-                                }
                             }
                         }
-                    }
-                }
-            }
         }
     }
 

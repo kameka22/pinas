@@ -546,7 +546,7 @@ impl UpdateService {
         if manifest.contents.backend {
             let bin_src = format!("{}/pinas", extract_dir);
             let bin_dest = format!("{}/bin/pinas", self.data_dir);
-            script_lines.push(format!("log \"Copying backend binary...\""));
+            script_lines.push("log \"Copying backend binary...\"".to_string());
             script_lines.push(format!("cp '{}' '{}'", bin_src, bin_dest));
             script_lines.push(format!("chmod 755 '{}'", bin_dest));
             script_lines.push("log \"Backend binary installed\"".to_string());

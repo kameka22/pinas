@@ -406,7 +406,7 @@ impl CupsService {
             let model = Self::uri_to_model(uri);
             return Ok(vec![
                 PrinterDriver {
-                    id: format!("drv:///sample.drv/generic.ppd"),
+                    id: "drv:///sample.drv/generic.ppd".to_string(),
                     name: format!("{} - Generic PostScript", model),
                 },
                 PrinterDriver {

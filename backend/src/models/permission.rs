@@ -4,7 +4,9 @@ use sqlx::FromRow;
 /// Permission level for folder access
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum PermissionLevel {
+    #[default]
     None,
     Read,
     Write,
@@ -39,11 +41,6 @@ impl PermissionLevel {
     }
 }
 
-impl Default for PermissionLevel {
-    fn default() -> Self {
-        PermissionLevel::None
-    }
-}
 
 /// Folder permission record from database
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]

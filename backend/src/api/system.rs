@@ -140,7 +140,7 @@ async fn get_info(State(state): State<AppState>) -> impl IntoResponse {
     let used_memory = sys.used_memory();
     let available_memory = sys.available_memory();
 
-    let load_avg = System::load_average();
+    let load_avg = System::load_average().unwrap_or(sysinfo::LoadAvg { one: 0.0, five: 0.0, fifteen: 0.0 });
 
     let (model, serial, temperature) = if state.config.dev_mode {
         (
@@ -154,14 +154,14 @@ async fn get_info(State(state): State<AppState>) -> impl IntoResponse {
 
     let info = SystemInfo {
         version: env!("CARGO_PKG_VERSION").to_string(),
-        hostname: System::host_name().unwrap_or_else(|| "unknown".to_string()),
+        hostname: System::host_name().unwrap_or_else(|_| "unknown".to_string()),
         model,
         serial,
-        os_name: System::name().unwrap_or_else(|| "unknown".to_string()),
-        os_version: System::os_version().unwrap_or_else(|| "unknown".to_string()),
-        kernel_version: System::kernel_version().unwrap_or_else(|| "unknown".to_string()),
-        uptime: System::uptime(),
-        boot_time: System::boot_time(),
+        os_name: System::name().unwrap_or_else(|_| "unknown".to_string()),
+        os_version: System::os_version().unwrap_or_else(|_| "unknown".to_string()),
+        kernel_version: System::kernel_version().unwrap_or_else(|_| "unknown".to_string()),
+        uptime: System::uptime().unwrap_or(0),
+        boot_time: System::boot_time().unwrap_or(0),
         cpu: CpuInfo {
             model: sys.cpus().first().map(|c| c.brand().to_string()).unwrap_or_default(),
             cores: sys.cpus().len(),
@@ -265,6 +265,8 @@ async fn get_processes(State(state): State<AppState>, _admin: AdminUser) -> impl
     let used_memory = sys.used_memory();
     let cpu_usage = sys.global_cpu_usage();
     let memory_usage = (used_memory as f32 / total_memory as f32) * 100.0;
+    // Resolved once per request (it used to be re-read for every process)
+    let users = sysinfo::Users::new_with_refreshed_list().ok();
 
     let mut processes: Vec<ProcessInfo> = sys
         .processes()
@@ -283,9 +285,9 @@ async fn get_processes(State(state): State<AppState>, _admin: AdminUser) -> impl
             let user = process
                 .user_id()
                 .map(|uid| {
-                    sysinfo::Users::new_with_refreshed_list()
-                        .iter()
-                        .find(|u| u.id() == uid)
+                    users
+                        .as_ref()
+                        .and_then(|users| users.get_user_by_id(uid))
                         .map(|u| u.name().to_string())
                         .unwrap_or_else(|| format!("{}", **uid))
                 })

@@ -179,7 +179,6 @@ async fn update_user(
         UserUpdate {
             email: payload.email.map(Some),
             is_admin: payload.is_admin,
-            ..Default::default()
         }
     } else {
         UserUpdate {

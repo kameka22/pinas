@@ -402,14 +402,13 @@ impl AppConfig {
         let key_path = &config.tls_key_path;
 
         // Check if both files exist and are non-empty
-        if cert_path.exists() && key_path.exists() {
-            if std::fs::metadata(cert_path)?.len() > 0
+        if cert_path.exists() && key_path.exists()
+            && std::fs::metadata(cert_path)?.len() > 0
                 && std::fs::metadata(key_path)?.len() > 0
             {
                 tracing::info!("TLS certificate loaded from {}", cert_path.display());
                 return Ok(());
             }
-        }
 
         tracing::info!("Generating self-signed TLS certificate...");
 
