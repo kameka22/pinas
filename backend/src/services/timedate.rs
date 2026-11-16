@@ -71,11 +71,10 @@ impl TimeDateService {
                 return tz.to_string();
             }
         }
-        if let Ok(tz) = Self::run("timedatectl", &["show", "-p", "Timezone", "--value"]).await {
-            if Self::is_valid_timezone(&tz) {
+        if let Ok(tz) = Self::run("timedatectl", &["show", "-p", "Timezone", "--value"]).await
+            && Self::is_valid_timezone(&tz) {
                 return tz;
             }
-        }
         settings.get_or("time.timezone", "UTC").await.unwrap_or_else(|_| "UTC".into())
     }
 

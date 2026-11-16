@@ -1466,11 +1466,10 @@ impl StorageService {
         // Check if any partition is mounted on protected paths
         if let Some(parts) = children {
             for part in parts {
-                if let Some(mount) = &part.mountpoint {
-                    if PROTECTED_MOUNTS.contains(&mount.as_str()) {
+                if let Some(mount) = &part.mountpoint
+                    && PROTECTED_MOUNTS.contains(&mount.as_str()) {
                         return true;
                     }
-                }
             }
         }
 
@@ -1838,13 +1837,12 @@ impl StorageService {
         }
         // We need to own the string for mount_options
         let opts_string;
-        if let Some(opts) = mount_options {
-            if !opts.is_empty() {
+        if let Some(opts) = mount_options
+            && !opts.is_empty() {
                 opts_string = opts.to_string();
                 args.push("-o");
                 args.push(&opts_string);
             }
-        }
         args.push(device);
         args.push(mount_point);
 
@@ -2037,11 +2035,10 @@ impl StorageService {
                 }
             } else if in_section && line.contains("recovery") {
                 // Parse: [==>..................] recovery = 12.6% ...
-                if let Some(pct_str) = line.split('=').nth(1) {
-                    if let Some(pct) = pct_str.trim().split('%').next() {
+                if let Some(pct_str) = line.split('=').nth(1)
+                    && let Some(pct) = pct_str.trim().split('%').next() {
                         rebuild_progress = pct.trim().parse().ok();
                     }
-                }
             } else if in_section && line.trim().is_empty() {
                 in_section = false;
             }
@@ -2750,16 +2747,14 @@ impl StorageService {
         }
 
         // Validate values
-        if let Some(apm) = request.apm_level {
-            if !(1..=254).contains(&apm) {
+        if let Some(apm) = request.apm_level
+            && !(1..=254).contains(&apm) {
                 return Err(anyhow!("APM level must be between 1 and 254"));
             }
-        }
-        if let Some(spindown) = request.spindown_minutes {
-            if spindown != 0 && !(5..=240).contains(&spindown) {
+        if let Some(spindown) = request.spindown_minutes
+            && spindown != 0 && !(5..=240).contains(&spindown) {
                 return Err(anyhow!("Spindown minutes must be 0 (disabled) or between 5 and 240"));
             }
-        }
 
         // Apply settings
         if !self.dev_mode {
@@ -2992,7 +2987,7 @@ impl StorageService {
         if raid_type == RaidType::Basic {
             return Err(anyhow!("Cannot grow a basic (single disk) pool"));
         }
-        if raid_type == RaidType::Raid10 && request.devices.len() % 2 != 0 {
+        if raid_type == RaidType::Raid10 && !request.devices.len().is_multiple_of(2) {
             return Err(anyhow!("RAID 10 requires an even number of new disks"));
         }
 

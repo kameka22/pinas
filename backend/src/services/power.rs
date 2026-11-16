@@ -119,11 +119,10 @@ impl PowerService {
         if self.dev_mode {
             return;
         }
-        if let Ok(Some(g)) = crate::services::settings::SettingsService::new(self.db.clone()).get("power.governor").await {
-            if let Err(e) = self.set_governor(&g).await {
+        if let Ok(Some(g)) = crate::services::settings::SettingsService::new(self.db.clone()).get("power.governor").await
+            && let Err(e) = self.set_governor(&g).await {
                 tracing::warn!("Could not re-apply CPU governor {}: {}", g, e);
             }
-        }
     }
 
     // ─── scheduled tasks ───────────────────────────────────────────
@@ -194,7 +193,7 @@ impl PowerService {
     }
 
     /// Tasks whose time matches `now` (local time, HH:MM) and that did not already run this minute
-    pub fn due<'a>(tasks: &'a [ScheduledTask], now_local: chrono::DateTime<chrono_tz::Tz>) -> Vec<&'a ScheduledTask> {
+    pub fn due(tasks: &[ScheduledTask], now_local: chrono::DateTime<chrono_tz::Tz>) -> Vec<&ScheduledTask> {
         let hhmm = now_local.format("%H:%M").to_string();
         let day = DAYS[now_local.format("%u").to_string().parse::<usize>().unwrap_or(1) - 1];
         let minute_key = now_local.format("%Y-%m-%dT%H:%M").to_string();

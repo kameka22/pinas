@@ -381,21 +381,19 @@ async fn list_files(
         let home_path = home_service.get_home_path(&user.username);
 
         // Create home if it doesn't exist
-        if !home_path.exists() {
-            if let Err(e) = home_service.create_home(&user.username).await {
+        if !home_path.exists()
+            && let Err(e) = home_service.create_home(&user.username).await {
                 tracing::warn!("Failed to create home directory: {}", e);
             }
-        }
 
         home_path
     };
 
     // Ensure base directory exists
-    if !base_path.exists() {
-        if let Err(e) = tokio::fs::create_dir_all(&base_path).await {
+    if !base_path.exists()
+        && let Err(e) = tokio::fs::create_dir_all(&base_path).await {
             return ApiError::internal(format!("Failed to create files directory: {}", e)).into_response();
         }
-    }
 
     let rel_path = query.path.unwrap_or_default();
 
@@ -1463,7 +1461,7 @@ mod tests {
         let size = zip_directory(&root, &out).unwrap();
         assert!(size > 0);
         let mut archive = zip::ZipArchive::new(std::fs::File::open(&out).unwrap()).unwrap();
-        let names: Vec<String> = (0..archive.len()).map(|i| archive.by_index(i).unwrap().name().to_string()).collect();
+        let names: Vec<String> = (0..archive.len()).map(|i| archive.by_index(i).unwrap().name().unwrap().to_string()).collect();
         assert!(names.contains(&"photos/a.txt".to_string()), "{names:?}");
         assert!(names.contains(&"photos/2026/summer/b.txt".to_string()), "{names:?}");
         assert!(!names.iter().any(|n| n.contains("leak")), "{names:?}");

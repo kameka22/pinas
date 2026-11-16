@@ -19,6 +19,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: backend
@@ -30,6 +32,9 @@ jobs:
         working-directory: backend
         env:
           RUSTFLAGS: -D warnings
+      - name: Clippy
+        run: cargo clippy --locked --all-targets -- -D warnings
+        working-directory: backend
 
   frontend:
     name: Frontend (build)

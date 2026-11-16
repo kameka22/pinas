@@ -58,11 +58,7 @@ impl PackageService {
     /// Get variable substitutions for manifest paths
     fn get_substitutions(&self, app_id: Option<&str>) -> HashMap<String, String> {
         let arch = std::env::consts::ARCH;
-        let docker_arch = match arch {
-            "aarch64" => "aarch64",
-            "x86_64" => "x86_64",
-            _ => arch,
-        };
+        let docker_arch = arch;
 
         let mut vars = HashMap::new();
         vars.insert("DATA_DIR".to_string(), self.data_dir.clone());
@@ -251,8 +247,8 @@ impl PackageService {
         .fetch_optional(&self.db)
         .await?;
 
-        if let Some(status) = status {
-            if status == "error" || status == "installing" {
+        if let Some(status) = status
+            && (status == "error" || status == "installing") {
                 tracing::info!("Cleaning up failed installation for package: {} (status: {})", package_id, status);
 
                 // Delete related records
@@ -283,7 +279,6 @@ impl PackageService {
 
                 tracing::info!("Cleanup completed for package: {}", package_id);
             }
-        }
 
         Ok(())
     }
@@ -364,7 +359,7 @@ impl PackageService {
 
         // Prepare frontend config
         let frontend_config_json = manifest.frontend.as_ref()
-            .map(|fc| serde_json::to_string(fc))
+            .map(serde_json::to_string)
             .transpose()?;
         let has_window = manifest.frontend.is_some();
 
@@ -707,11 +702,10 @@ impl PackageService {
                 }
 
                 // Validate service name (alphanumeric, hyphens, dots, underscores, @ only)
-                if let Some(svc) = service {
-                    if !svc.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '.' || c == '_' || c == '@') {
+                if let Some(svc) = service
+                    && !svc.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '.' || c == '_' || c == '@') {
                         return Err(anyhow!("Invalid service name: {}", svc));
                     }
-                }
 
                 let mut cmd = Command::new("systemctl");
                 cmd.arg(operation);
@@ -760,22 +754,20 @@ impl PackageService {
             InstallStep::DockerStop { container } => {
                 tracing::info!("Stopping Docker container: {}", container);
                 let docker = self.get_docker_service().await;
-                if let Ok(docker) = docker {
-                    if let Err(e) = docker.stop_container(container).await {
+                if let Ok(docker) = docker
+                    && let Err(e) = docker.stop_container(container).await {
                         tracing::warn!("Failed to stop container {}: {}", container, e);
                     }
-                }
                 // Update container status
                 let _ = self.update_container_status(container, "stopped").await;
             }
             InstallStep::DockerRm { container } => {
                 tracing::info!("Removing Docker container: {}", container);
                 let docker = self.get_docker_service().await;
-                if let Ok(docker) = docker {
-                    if let Err(e) = docker.remove_container(container, true).await {
+                if let Ok(docker) = docker
+                    && let Err(e) = docker.remove_container(container, true).await {
                         tracing::warn!("Failed to remove container {}: {}", container, e);
                     }
-                }
                 // Remove container from tracking
                 let _ = self.untrack_container(container).await;
             }
@@ -837,11 +829,10 @@ impl PackageService {
                     return Err(anyhow!("Disallowed systemctl operation: {}", operation));
                 }
 
-                if let Some(svc) = service {
-                    if !svc.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '.' || c == '_' || c == '@') {
+                if let Some(svc) = service
+                    && !svc.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '.' || c == '_' || c == '@') {
                         return Err(anyhow!("Invalid service name: {}", svc));
                     }
-                }
 
                 let mut cmd = Command::new("systemctl");
                 cmd.arg(operation);
@@ -867,19 +858,17 @@ impl PackageService {
             }
             InstallStep::DockerStop { container } => {
                 tracing::info!("Stopping Docker container: {}", container);
-                if let Ok(docker) = self.get_docker_service().await {
-                    if let Err(e) = docker.stop_container(container).await {
+                if let Ok(docker) = self.get_docker_service().await
+                    && let Err(e) = docker.stop_container(container).await {
                         tracing::warn!("Failed to stop container {}: {}", container, e);
                     }
-                }
             }
             InstallStep::DockerRm { container } => {
                 tracing::info!("Removing Docker container: {}", container);
-                if let Ok(docker) = self.get_docker_service().await {
-                    if let Err(e) = docker.remove_container(container, true).await {
+                if let Ok(docker) = self.get_docker_service().await
+                    && let Err(e) = docker.remove_container(container, true).await {
                         tracing::warn!("Failed to remove container {}: {}", container, e);
                     }
-                }
                 // Also remove from tracking
                 let _ = self.untrack_container(container).await;
             }

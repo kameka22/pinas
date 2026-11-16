@@ -88,6 +88,8 @@ pub fn extract_token(headers: &HeaderMap) -> Option<String> {
 
 /// Validate a token end-to-end: JWT signature/expiry, then the session must
 /// still exist in the database (logout / user deletion revoke it).
+// The ready-to-send `Response` error keeps every caller a one-liner.
+#[allow(clippy::result_large_err)]
 pub async fn authenticate(token: &str, state: &AppState) -> Result<AuthUser, Response> {
     let claims = validate_jwt(token, &state.config).map_err(|e| e.into_response())?;
 
