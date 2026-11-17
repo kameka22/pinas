@@ -8,6 +8,10 @@
 	import { setFolderPermission, type PermissionChoice } from '#lib/utils/permissions.js';
 	import FolderPicker from '#lib/components/ui/FolderPicker.svelte';
 	import PasswordRules from '#lib/components/ui/PasswordRules.svelte';
+	import SettingsHeader from '#lib/components/ui/settings/SettingsHeader.svelte';
+	import SettingsTabs from '#lib/components/ui/settings/SettingsTabs.svelte';
+	import SettingsState from '#lib/components/ui/settings/SettingsState.svelte';
+	import '#lib/components/ui/settings/settings.css';
 
 	// Types - matches API response from /users
 	interface User {
@@ -48,6 +52,11 @@
 
 	// State
 	let activeTab: 'user' | 'group' | 'settings' = 'user';
+	$: tabItems = [
+		{ value: 'user', label: $t.userManager.tabs.user },
+		{ value: 'group', label: $t.userManager.tabs.userGroup },
+		{ value: 'settings', label: $t.userManager.tabs.advancedSettings }
+	];
 	let filterQuery = '';
 	let showAddDropdown = false;
 	let showActionMenu: string | null = null;
@@ -218,8 +227,7 @@
 			groups = groupsData;
 			serviceAccess = accessData;
 		} catch (e) {
-			error = e instanceof Error ? e.message : $t.common.errors.loadFailed;
-			console.error('Failed to load user manager data:', e);
+			error = errorMessage(e, $t.common.errors.loadFailed);
 		} finally {
 			loading = false;
 		}
@@ -241,7 +249,6 @@
 			}
 			serviceAccess = serviceAccess; // trigger reactivity
 		} catch (e) {
-			console.error('Failed to update service access:', e);
 			toasts.error(errorMessage(e, $t.common.errors.updateServiceAccess));
 		}
 	}
@@ -311,15 +318,15 @@
 
 	async function submitCreateUser() {
 		if (!newUser.username || !newUser.password) {
-			actionError = 'Username and password are required';
+			actionError = $t.userManager.messages.credentialsRequired;
 			return;
 		}
 		if (newUser.password !== newUser.confirmPassword) {
-			actionError = 'Passwords do not match';
+			actionError = $t.userManager.messages.passwordMismatch;
 			return;
 		}
 		if (newUser.password.length < 8) {
-			actionError = 'Password must be at least 8 characters';
+			actionError = $t.userManager.messages.passwordTooShort;
 			return;
 		}
 
@@ -380,7 +387,7 @@
 
 	async function submitCreateGroup() {
 		if (!newGroup.name) {
-			actionError = 'Group name is required';
+			actionError = $t.userManager.messages.groupNameRequired;
 			return;
 		}
 
@@ -455,7 +462,7 @@
 				),
 			];
 		} catch (e) {
-			console.error('Failed to load permissions:', e);
+			toasts.error(errorMessage(e, $t.common.errors.loadFailed));
 		} finally {
 			permissionsLoading = false;
 		}
@@ -477,7 +484,6 @@
 			);
 			await loadPermissions();
 		} catch (e) {
-			console.error('Failed to update permission:', e);
 			toasts.error(errorMessage(e, $t.common.errors.updatePermission));
 		}
 	}
@@ -495,8 +501,7 @@
 	async function removeFolderPermissions(path: string) {
 		if (
 			!confirm(
-				$t.userManager.permissions.confirmRemoveFolder?.replace('{path}', path) ||
-					`Remove all permissions for ${path}?`,
+				$t.userManager.permissions.confirmRemoveFolder.replace('{path}', path),
 			)
 		)
 			return;
@@ -513,7 +518,7 @@
 			);
 			await loadPermissions();
 		} catch (e) {
-			console.error('Failed to remove folder permissions:', e);
+			toasts.error(errorMessage(e, $t.common.errors.updatePermission));
 		}
 	}
 
@@ -534,44 +539,17 @@
 <svelte:window on:click={closeAllMenus} />
 
 <div class="user-manager">
-	<!-- Tabs -->
-	<nav class="tabs">
-		<button
-			class="tab"
-			class:active={activeTab === 'user'}
-			on:click={() => activeTab = 'user'}
-		>
-			{$t.userManager.tabs.user}
-		</button>
-		<button
-			class="tab"
-			class:active={activeTab === 'group'}
-			on:click={() => activeTab = 'group'}
-		>
-			{$t.userManager.tabs.userGroup}
-		</button>
-		<button
-			class="tab"
-			class:active={activeTab === 'settings'}
-			on:click={() => activeTab = 'settings'}
-		>
-			{$t.userManager.tabs.advancedSettings}
-		</button>
-	</nav>
+	<div class="settings-page um-head">
+		<SettingsHeader title={$t.controlPanel.items.userManagement} description={$t.settingsUi.descriptions.users} icon="mdi:account-group-outline" />
+		<SettingsTabs label={$t.controlPanel.items.userManagement} items={tabItems} value={activeTab} onchange={(value) => (activeTab = value === 'group' || value === 'settings' ? value : 'user')} />
+	</div>
 
 	<!-- Content -->
 	<div class="content">
 		{#if loading}
-			<div class="loading-state">
-				<Icon icon="mdi:loading" class="w-8 h-8 animate-spin" />
-				<p>Loading...</p>
-			</div>
+			<div class="settings-page um-state"><SettingsState kind="loading" message={$t.common.loading} /></div>
 		{:else if error}
-			<div class="error-state">
-				<Icon icon="mdi:alert-circle" class="w-8 h-8" />
-				<p>{error}</p>
-				<button class="btn-secondary" on:click={loadData}>Retry</button>
-			</div>
+			<div class="settings-page um-state"><SettingsState kind="error" message={error} onretry={loadData} /></div>
 		{:else if activeTab === 'user'}
 			<!-- User Tab -->
 			<div class="toolbar">
@@ -1229,34 +1207,23 @@
 		display: flex;
 		flex-direction: column;
 		height: 100%;
-		background: white;
+		background: var(--color-surface-50, #f8fafc);
 	}
 
-	/* Tabs */
-	.tabs {
-		display: flex;
-		gap: 8px;
-		padding: 0 20px;
-		border-bottom: 1px solid #e5e7eb;
+	.um-head {
+		min-height: 0;
+		padding: 24px 20px 0;
 	}
 
-	.tab {
-		padding: 14px 16px;
-		font-size: 14px;
-		color: #6b7280;
-		border-bottom: 2px solid transparent;
-		margin-bottom: -1px;
-		transition: all 0.15s ease;
+	.um-head :global(.settings-tabs) {
+		margin-bottom: 0;
 	}
 
-	.tab:hover {
-		color: #3b82f6;
+	.um-state {
+		flex: 1;
+		min-height: 0;
 	}
 
-	.tab.active {
-		color: #3b82f6;
-		border-bottom-color: #3b82f6;
-	}
 
 	/* Content */
 	.content {
@@ -1266,25 +1233,6 @@
 		overflow: hidden;
 	}
 
-	/* Loading and Error States */
-	.loading-state,
-	.error-state {
-		flex: 1;
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		gap: 12px;
-		color: #6b7280;
-	}
-
-	.error-state {
-		color: #ef4444;
-	}
-
-	.animate-spin {
-		animation: spin 1s linear infinite;
-	}
 
 	@keyframes spin {
 		from { transform: rotate(0deg); }
@@ -1400,21 +1348,6 @@
 	}
 
 	/* Icon Button */
-	.icon-btn {
-		width: 36px;
-		height: 36px;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		border-radius: 8px;
-		color: #6b7280;
-		transition: all 0.15s ease;
-	}
-
-	.icon-btn:hover {
-		background: #f3f4f6;
-		color: #374151;
-	}
 
 	/* Table */
 	.table-container {
@@ -1456,10 +1389,6 @@
 
 	.data-table tr:hover {
 		background: #f9fafb;
-	}
-
-	.data-table tr.disabled td {
-		color: #9ca3af;
 	}
 
 	/* User Cell */
@@ -1802,75 +1731,8 @@
 	}
 
 	/* Permission Filters */
-	.permission-filters {
-		display: flex;
-		align-items: flex-end;
-		gap: 16px;
-		margin-bottom: 20px;
-	}
-
-	.select-group {
-		display: flex;
-		flex-direction: column;
-		gap: 6px;
-	}
-
-	.select-group label {
-		font-size: 13px;
-		color: #6b7280;
-	}
-
-	.select-group select {
-		padding: 8px 12px;
-		border: 1px solid #e5e7eb;
-		border-radius: 6px;
-		font-size: 14px;
-		min-width: 150px;
-	}
 
 	/* Pagination */
-	.pagination {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		padding: 16px 0;
-		font-size: 13px;
-		color: #6b7280;
-	}
-
-	.pagination-controls {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-	}
-
-	.pagination-controls button {
-		width: 28px;
-		height: 28px;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		border: 1px solid #e5e7eb;
-		border-radius: 4px;
-		color: #6b7280;
-	}
-
-	.pagination-controls button:disabled {
-		opacity: 0.5;
-		cursor: not-allowed;
-	}
-
-	.page-number {
-		width: 28px;
-		height: 28px;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		border: 1px solid #3b82f6;
-		border-radius: 4px;
-		color: #3b82f6;
-		font-weight: 500;
-	}
 
 	/* Form */
 	.form-group {
@@ -1889,20 +1751,8 @@
 	}
 
 	.form-group input,
-	.form-group select {
-		width: 100%;
-		padding: 10px 12px;
-		border: 1px solid #e5e7eb;
-		border-radius: 8px;
-		font-size: 14px;
-	}
 
 	.form-group input:focus,
-	.form-group select:focus {
-		outline: none;
-		border-color: #3b82f6;
-		box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-	}
 
 	.form-group input:disabled {
 		background: #f3f4f6;
@@ -1983,10 +1833,6 @@
 		display: flex;
 		align-items: center;
 		gap: 10px;
-	}
-
-	.folder-icon {
-		color: #f59e0b;
 	}
 
 	.folder-path {
