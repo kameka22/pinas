@@ -178,6 +178,7 @@ libreelec/packages/pinas/
 | "not found" au lancement | Binaire non statique | Recompiler avec `--target aarch64-unknown-linux-musl` |
 | 404 sur le frontend | Frontend pas copié | Vérifier `/storage/.pinas/www/` |
 | Port 3000 inaccessible | Service pas démarré | `systemctl start pinas` |
+| `make image` : « Incorrect checksum » puis « Cannot get … sources » | Le site amont renvoie une page anti-robots au lieu de l'archive (ex. linuxtv.org pour v4l-utils) | Ajouter le paquet et un miroir de secours dans `scripts/lib/prefetch-sources.sh` (la somme `PKG_SHA256` de LibreELEC reste vérifiée) ; les scripts de build et la CI l'appellent avant `make image` |
 
 ### Commandes utiles sur le Pi
 

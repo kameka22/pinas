@@ -183,6 +183,11 @@ jobs:
           key: le-sources-${{ env.LIBREELEC_BRANCH }}-${{ matrix.name }}-${{ github.run_id }}
           restore-keys: le-sources-${{ env.LIBREELEC_BRANCH }}-${{ matrix.name }}-
 
+      # Upstreams behind an anti-bot wall (linuxtv.org) serve HTML instead of the tarball:
+      # fetch those from a fallback mirror, checked against LibreELEC's PKG_SHA256.
+      - name: Prefetch sources blocked upstream
+        run: scripts/lib/prefetch-sources.sh LibreELEC.tv
+
       # LibreELEC fetches ~300 tarballs from upstream mirrors (ftpmirror.gnu.org redirects to
       # random mirrors, some of which 404) and a single failed download aborts `make image`.
       # The build is incremental, so a re-run resumes where it stopped: retry a few times.

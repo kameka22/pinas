@@ -362,6 +362,7 @@ cp -r "${PROJECT_ROOT}/libreelec/packages/cups" "${LIBREELEC_DIR}/packages/"
 rm -rf "${LIBREELEC_DIR}/packages/pinas-nfs-server"
 cp -r "${PROJECT_ROOT}/libreelec/packages/pinas-nfs-server" "${LIBREELEC_DIR}/packages/"
 "${PROJECT_ROOT}/scripts/lib/apply-kernel-config.sh" "${LIBREELEC_DIR}/projects/RPi/devices/RPi5/linux/linux.aarch64.conf"
+"${PROJECT_ROOT}/scripts/lib/prefetch-sources.sh" "${LIBREELEC_DIR}"
 echo -e "    ${GREEN}✓${NC} CUPS package installed"
 
 # Verify www directory was copied
