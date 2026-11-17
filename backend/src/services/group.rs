@@ -22,8 +22,29 @@ pub enum GroupError {
     #[error("User is already a member of this group")]
     AlreadyMember,
 
+    #[error("Invalid group name: {0}")]
+    InvalidName(String),
+
     #[error("Database error: {0}")]
     DatabaseError(#[from] sqlx::Error),
+}
+
+/// Group names end up in smb.conf access lists (`@name`): 1 to 32
+/// characters from `A-Z a-z 0-9 _ . -`, starting with a letter, a digit or `_`.
+pub fn validate_group_name(name: &str) -> Result<(), GroupError> {
+    let ok = !name.is_empty()
+        && name.len() <= 32
+        && !name.starts_with(['-', '.'])
+        && name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '-'));
+    if ok {
+        Ok(())
+    } else {
+        Err(GroupError::InvalidName(
+            "1 to 32 letters, digits, '_', '.' or '-', not starting with '-' or '.'".to_string(),
+        ))
+    }
 }
 
 /// Create a new group
@@ -32,6 +53,8 @@ pub async fn create_group(
     name: &str,
     description: Option<String>,
 ) -> Result<UserGroup, GroupError> {
+    validate_group_name(name)?;
+
     // Check if group name already exists
     let existing = get_group_by_name(db, name).await?;
     if existing.is_some() {
@@ -101,6 +124,11 @@ pub async fn update_group(
     let existing = get_group_by_id(db, id).await?.ok_or(GroupError::NotFound)?;
 
     let now = chrono::Utc::now().to_rfc3339();
+    if let Some(new_name) = &name
+        && *new_name != existing.name
+    {
+        validate_group_name(new_name)?;
+    }
     let new_name = name.unwrap_or(existing.name.clone());
     let new_description = description.unwrap_or(existing.description.clone());
 

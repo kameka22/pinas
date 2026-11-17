@@ -325,6 +325,32 @@ impl UpdateService {
     }
 
     /// Execute a real update
+    /// Download a small text asset (checksum, signature) of `release`;
+    /// a missing asset is an error: updates are never installed unverified.
+    async fn download_release_text(
+        &self,
+        client: &reqwest::Client,
+        release: &GitHubRelease,
+        name: &str,
+    ) -> Result<String> {
+        let asset = release
+            .assets
+            .iter()
+            .find(|a| a.name == name)
+            .ok_or_else(|| anyhow!("Release has no {} — refusing unverified update", name))?;
+        if asset.size > 4096 {
+            return Err(anyhow!("{} is unexpectedly large", name));
+        }
+        Ok(client
+            .get(&asset.browser_download_url)
+            .header("User-Agent", "PiNAS-Update-Service")
+            .send()
+            .await?
+            .error_for_status()?
+            .text()
+            .await?)
+    }
+
     async fn execute_real_update(&self, task_id: &str) -> Result<()> {
         self.broadcast_progress(task_id, "running", 5, 100, Some("Checking for update..."), None);
 
@@ -372,24 +398,40 @@ impl UpdateService {
         let archive_bytes = download_response.bytes().await?;
         self.broadcast_progress(task_id, "running", 40, 100, Some("Download complete"), None);
 
-        // 2b. Integrity: the release must ship `<archive>.sha256` and it must match.
-        // Without this, a compromised GitHub account or a TLS interception point
-        // could push arbitrary root-executed code to every device.
-        self.broadcast_progress(task_id, "running", 45, 100, Some("Verifying checksum..."), None);
+        // 2b. Authenticity: the release must ship `<archive>.sha256` and
+        // `<archive>.sha256.sig`, an Ed25519 signature of that checksum file
+        // by the PiNAS release key embedded in this binary. The checksum file
+        // names the archive, so the signature also binds the version: a
+        // compromised GitHub account or a TLS interception point can neither
+        // push arbitrary root-executed code nor roll devices back to an older
+        // signed release.
+        self.broadcast_progress(task_id, "running", 45, 100, Some("Verifying signature..."), None);
+        if !is_newer_version(&Self::current_version(), &latest) {
+            return Err(anyhow!(
+                "Release {} is not newer than the installed version {}",
+                latest,
+                Self::current_version()
+            ));
+        }
+        if !asset.name.starts_with(&format!("pinas-update-v{}-", latest))
+            && !asset.name.starts_with(&format!("pinas-update-v{}.", latest))
+        {
+            return Err(anyhow!(
+                "Archive {} does not match release version {}",
+                asset.name,
+                latest
+            ));
+        }
         let checksum_name = format!("{}.sha256", asset.name);
-        let checksum_asset = release
-            .assets
-            .iter()
-            .find(|a| a.name == checksum_name)
-            .ok_or_else(|| anyhow!("Release has no {} — refusing unverified update", checksum_name))?;
-        let checksum_body = client
-            .get(&checksum_asset.browser_download_url)
-            .header("User-Agent", "PiNAS-Update-Service")
-            .send()
-            .await?
-            .error_for_status()?
-            .text()
+        let signature_name = format!("{}.sig", checksum_name);
+        let checksum_body = self
+            .download_release_text(&client, &release, &checksum_name)
             .await?;
+        let signature_body = self
+            .download_release_text(&client, &release, &signature_name)
+            .await?;
+        verify_release_signature(checksum_body.as_bytes(), &signature_body, UPDATE_SIGNING_KEYS)?;
+        verify_checksum_names(&checksum_body, &asset.name)?;
         verify_sha256(&archive_bytes, &checksum_body)?;
 
         // 3. Extract to storage (NOT /tmp/ — PrivateTmp=true would wipe it on service stop)
@@ -769,6 +811,51 @@ pub struct UpdateTaskProgress {
     pub version: String,
 }
 
+/// Ed25519 public keys (base64 of the raw 32 bytes) allowed to sign releases.
+/// The private key never enters the repository (see docs/RELEASE_CHECKLIST.md);
+/// to rotate it, ship a release signed by the old key that adds the new one.
+const UPDATE_SIGNING_KEYS: &[&str] = &["AUcH12byM2wsJ3WQ74SBbtevHEjQtTynL5dP++z5lMw="];
+
+/// Verify that `signature_b64` (base64 of a raw 64-byte Ed25519 signature, as
+/// written by `openssl pkeyutl -sign -rawin | base64`) signs `message` with one
+/// of `keys`.
+fn verify_release_signature(message: &[u8], signature_b64: &str, keys: &[&str]) -> Result<()> {
+    use base64::{engine::general_purpose::STANDARD, Engine};
+    use ed25519_dalek::{Signature, VerifyingKey};
+
+    let compact: String = signature_b64.split_whitespace().collect();
+    let raw = STANDARD
+        .decode(compact.as_bytes())
+        .map_err(|_| anyhow!("Malformed release signature"))?;
+    let raw: [u8; 64] = raw
+        .try_into()
+        .map_err(|_| anyhow!("Release signature has the wrong length"))?;
+    let signature = Signature::from_bytes(&raw);
+
+    for key in keys {
+        let Ok(bytes) = STANDARD.decode(key) else { continue };
+        let Ok(bytes) = <[u8; 32]>::try_from(bytes) else { continue };
+        let Ok(verifying_key) = VerifyingKey::from_bytes(&bytes) else { continue };
+        if verifying_key.verify_strict(message, &signature).is_ok() {
+            return Ok(());
+        }
+    }
+    Err(anyhow!("Release signature is not valid for any trusted PiNAS key"))
+}
+
+/// The signed checksum file must describe exactly `archive_name`
+/// (`<hex>  <archive_name>`), so a signature cannot be replayed on another
+/// archive or version.
+fn verify_checksum_names(checksum_file: &str, archive_name: &str) -> Result<()> {
+    let mut tokens = checksum_file.split_whitespace();
+    let _hash = tokens.next();
+    let named = tokens.next().map(|n| n.trim_start_matches('*'));
+    if named != Some(archive_name) || tokens.next().is_some() {
+        return Err(anyhow!("Checksum file does not describe {}", archive_name));
+    }
+    Ok(())
+}
+
 /// Verify `data` against the content of a `sha256sum`-style file
 /// (`<hex>  <filename>`; only the first token is used).
 fn verify_sha256(data: &[u8], checksum_file: &str) -> Result<()> {
@@ -857,6 +944,51 @@ mod tests {
         assert!(verify_sha256(b"hello", &file).is_ok());
         // Upper-case hex and no filename are fine too
         assert!(verify_sha256(b"hello", &HELLO_SHA256.to_uppercase()).is_ok());
+    }
+
+    // Produced by the release procedure with a throwaway key:
+    //   openssl genpkey -algorithm ed25519 -out k.pem
+    //   openssl pkeyutl -sign -rawin -inkey k.pem -in <checksum file> | base64 -w0
+    //   openssl pkey -in k.pem -pubout -outform DER | tail -c 32 | base64
+    const TEST_CHECKSUM: &str = "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824  pinas-update-v0.11.0-aarch64.tar.gz\n";
+    const TEST_SIGNATURE: &str = "OA/k+lcemZuAWuGusU5sDwct0N6MBp2TujHSd3N8RmzQeWlmfc8fu1IpG0E7slGK8gYmSsPXPke6DP7iglYwCw==";
+    const TEST_KEY: &str = "L1FXI77KXPu654EhivLdxs84JJ5kPHgW5+5rNfw7AQI=";
+
+    #[test]
+    fn openssl_signature_is_accepted() {
+        assert!(verify_release_signature(TEST_CHECKSUM.as_bytes(), TEST_SIGNATURE, &[TEST_KEY]).is_ok());
+        // trailing newline from `base64` and several keys are fine
+        let wrapped = format!("{}\n", TEST_SIGNATURE);
+        assert!(verify_release_signature(TEST_CHECKSUM.as_bytes(), &wrapped, &[UPDATE_SIGNING_KEYS[0], TEST_KEY]).is_ok());
+    }
+
+    #[test]
+    fn tampered_or_foreign_signature_is_rejected() {
+        let tampered = TEST_CHECKSUM.replace("v0.11.0", "v0.12.0");
+        assert!(verify_release_signature(tampered.as_bytes(), TEST_SIGNATURE, &[TEST_KEY]).is_err());
+        // valid signature, but not by a trusted key
+        assert!(verify_release_signature(TEST_CHECKSUM.as_bytes(), TEST_SIGNATURE, UPDATE_SIGNING_KEYS).is_err());
+        assert!(verify_release_signature(TEST_CHECKSUM.as_bytes(), "", &[TEST_KEY]).is_err());
+        assert!(verify_release_signature(TEST_CHECKSUM.as_bytes(), "not base64!", &[TEST_KEY]).is_err());
+        assert!(verify_release_signature(TEST_CHECKSUM.as_bytes(), &TEST_SIGNATURE[..40], &[TEST_KEY]).is_err());
+    }
+
+    #[test]
+    fn embedded_release_key_is_well_formed() {
+        use base64::{engine::general_purpose::STANDARD, Engine};
+        for key in UPDATE_SIGNING_KEYS {
+            let bytes: [u8; 32] = STANDARD.decode(key).unwrap().try_into().unwrap();
+            assert!(ed25519_dalek::VerifyingKey::from_bytes(&bytes).is_ok());
+        }
+    }
+
+    #[test]
+    fn checksum_file_must_name_the_archive() {
+        assert!(verify_checksum_names(TEST_CHECKSUM, "pinas-update-v0.11.0-aarch64.tar.gz").is_ok());
+        assert!(verify_checksum_names(TEST_CHECKSUM, "pinas-update-v0.11.0-x86_64.tar.gz").is_err());
+        assert!(verify_checksum_names(HELLO_SHA256, "pinas-update-v0.11.0-aarch64.tar.gz").is_err());
+        let two = format!("{}{}", TEST_CHECKSUM, TEST_CHECKSUM);
+        assert!(verify_checksum_names(&two, "pinas-update-v0.11.0-aarch64.tar.gz").is_err());
     }
 
     #[test]

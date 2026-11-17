@@ -1277,6 +1277,7 @@ export default {
 			scanning: 'Scanning...',
 			cleaning: 'Cleaning...',
 			scanStarted: 'Library scan started',
+			cleanStarted: 'Library cleanup started',
 			lastScanned: 'Last scanned',
 			movies: 'Movies',
 			tvShows: 'TV Shows',
@@ -1296,7 +1297,8 @@ export default {
 			removeSourceFailed: 'Failed to remove source',
 			updateSettingFailed: 'Failed to update setting',
 			toggleAddonFailed: 'Failed to toggle addon',
-			scanFailed: 'Failed to scan library'
+			scanFailed: 'Failed to scan library',
+			cleanFailed: 'Failed to clean library'
 		}
 	},
 

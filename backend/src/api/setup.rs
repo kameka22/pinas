@@ -93,6 +93,10 @@ async fn complete_setup(
         return ApiError::bad_request("Username must be at least 3 characters".to_string()).with_code("VALIDATION_ERROR".to_string()).into_response();
     }
 
+    if let Err(e) = crate::services::user::validate_username(&payload.admin_username) {
+        return ApiError::from(e).into_response();
+    }
+
     let policy = crate::services::password_policy::PasswordPolicy::default();
     if let Some(reason) = policy.violation(&payload.admin_password, Some(&payload.admin_username)) {
         return ApiError::bad_request(reason).with_code("VALIDATION_ERROR").into_response();

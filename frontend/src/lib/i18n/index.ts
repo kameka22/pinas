@@ -93,13 +93,11 @@ export async function loadAppTranslations(appId: string): Promise<void> {
 	const currentLocale = get(locale);
 
 	try {
-		const response = await fetch(`/api/apps/${appId}/i18n/${currentLocale}`);
-		if (!response.ok) {
-			console.warn(`Failed to load translations for ${appId}:`, response.statusText);
-			return;
-		}
-
-		const translations = await response.json();
+		// Imported lazily: the API client itself depends on this module for its error messages.
+		const { api } = await import('#lib/stores/api.js');
+		const translations = await api.get<Record<string, unknown>>(
+			`/apps/${encodeURIComponent(appId)}/i18n/${currentLocale}`
+		);
 
 		if (Object.keys(translations).length > 0) {
 			appTranslations.update((current) => ({

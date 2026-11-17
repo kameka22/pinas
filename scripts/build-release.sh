@@ -15,6 +15,11 @@
 #   ./scripts/build-release.sh --tag            # also create the annotated git tag v<VERSION> locally
 #   ./scripts/build-release.sh --arch x86_64    # target architecture: aarch64 (default, Pi 5), x86_64 (PC/VM), all
 #
+# Signing: every archive's .sha256 file is signed with the PiNAS release key
+# (Ed25519, PEM) into <archive>.sha256.sig; devices refuse unsigned updates.
+# Key: $PINAS_UPDATE_SIGNING_KEY, default ~/.config/pinas/update-signing.pem.
+# Its public half must be listed in UPDATE_SIGNING_KEYS (backend/src/services/update.rs).
+#
 # Version: read from VERSION (single source, propagated by scripts/sync-version.sh).
 # Changelog: --changelog text, or generated from conventional commits since the last v* tag.
 
@@ -116,6 +121,33 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+# ──────────────────────────────────────────────────────────────
+# Release signing key: checked before anything is built
+# ──────────────────────────────────────────────────────────────
+SIGNING_KEY="${PINAS_UPDATE_SIGNING_KEY:-$HOME/.config/pinas/update-signing.pem}"
+if [ ! -r "$SIGNING_KEY" ]; then
+    echo -e "${RED}Error: release signing key not found: $SIGNING_KEY${NC}"
+    echo "  Devices refuse unsigned updates. Restore the key from its backup or set PINAS_UPDATE_SIGNING_KEY."
+    exit 1
+fi
+SIGNING_PUBKEY=$(openssl pkey -in "$SIGNING_KEY" -pubout -outform DER | tail -c 32 | base64 -w0)
+if ! grep -qF "\"$SIGNING_PUBKEY\"" "$PROJECT_ROOT/backend/src/services/update.rs"; then
+    echo -e "${RED}Error: the public key of $SIGNING_KEY ($SIGNING_PUBKEY) is not in UPDATE_SIGNING_KEYS${NC}"
+    echo "  (backend/src/services/update.rs): devices would reject this release."
+    exit 1
+fi
+
+# Sign <file> into <file>.sig (base64 of the raw Ed25519 signature) and check it
+sign_file() {
+    local file="$1"
+    local raw_sig
+    raw_sig=$(mktemp)
+    openssl pkeyutl -sign -rawin -inkey "$SIGNING_KEY" -in "$file" -out "$raw_sig"
+    openssl pkeyutl -verify -rawin -inkey "$SIGNING_KEY" -in "$file" -sigfile "$raw_sig" >/dev/null
+    base64 -w0 "$raw_sig" > "$file.sig"
+    rm -f "$raw_sig"
+}
 
 # Cleanup function
 cleanup() {
@@ -519,7 +551,11 @@ for ARCHIVE_NAME in $ARCHIVES; do
         exit 1
     fi
     run_remote "rm -rf $REMOTE_PROJECT/build/release-* $REMOTE_PROJECT/build/$ARCHIVE_NAME $REMOTE_PROJECT/build/$CHECKSUM_NAME"
-    LOCAL_FILES="$LOCAL_FILES build/$ARCHIVE_NAME build/$CHECKSUM_NAME"
+    # The checksum file names the archive (and so the version): signing it
+    # authenticates both the content and the version
+    (cd "$PROJECT_ROOT/build" && sha256sum -c "$CHECKSUM_NAME" >/dev/null)
+    sign_file "$PROJECT_ROOT/build/$CHECKSUM_NAME"
+    LOCAL_FILES="$LOCAL_FILES build/$ARCHIVE_NAME build/$CHECKSUM_NAME build/$CHECKSUM_NAME.sig"
 done
 
 echo ""

@@ -5,7 +5,7 @@ use std::path::Path;
 use crate::api::middleware::AuthUser;
 use crate::models::storage::VolumeStatus;
 use crate::services::home::HomeService;
-use crate::services::permission::PermissionService;
+use crate::services::permission::{most_specific_permission, PermissionService};
 use crate::services::storage::StorageService;
 use crate::AppState;
 
@@ -60,18 +60,9 @@ async fn get_locations(
 
     // 1. User's home directory
     let home_service = HomeService::new(&state.config);
-    let home_path = home_service.get_home_path(&user.username);
-
-    if home_path.exists() {
-        locations.push(BrowsableLocation::Home {
-            id: format!("home-{}", user.id),
-            name: "My Files".to_string(),
-            path: home_path.to_string_lossy().to_string(),
-            icon: "mdi:folder-home".to_string(),
-        });
-    } else {
-        // Home doesn't exist yet - create it on demand
-        if let Ok(path) = home_service.create_home(&user.username).await {
+    let home_path = home_service.get_home_path(&user.username).ok();
+    match &home_path {
+        Some(path) if path.exists() => {
             locations.push(BrowsableLocation::Home {
                 id: format!("home-{}", user.id),
                 name: "My Files".to_string(),
@@ -79,59 +70,84 @@ async fn get_locations(
                 icon: "mdi:folder-home".to_string(),
             });
         }
+        Some(_) => {
+            // Home doesn't exist yet - create it on demand
+            if let Ok(path) = home_service.create_home(&user.username).await {
+                locations.push(BrowsableLocation::Home {
+                    id: format!("home-{}", user.id),
+                    name: "My Files".to_string(),
+                    path: path.to_string_lossy().to_string(),
+                    icon: "mdi:folder-home".to_string(),
+                });
+            }
+        }
+        None => tracing::warn!("No home folder for user with unsafe name {:?}", user.username),
     }
 
     // 2. Folders the user has been granted permission to access
     let permission_service = PermissionService::new(state.db.clone());
-    match permission_service.list_by_user(&user.id).await {
-        Ok(permissions) => {
-            let user_home = home_service.get_home_path(&user.username);
-            let user_home_str = user_home.to_string_lossy().to_string();
-
-            // Deduplicate: collect unique paths, keeping the first permission ID
-            let mut seen_paths: std::collections::HashMap<String, String> = std::collections::HashMap::new();
-            for perm in &permissions {
-                if perm.permission_level().can_read() {
-                    let path = perm.path.trim_end_matches('/').to_string();
-                    // Keep the first permission ID for each unique path
-                    seen_paths.entry(path).or_insert_with(|| perm.id.clone());
-                }
-            }
-
-            for (path, perm_id) in seen_paths {
-                // Skip the user's own home (already shown above)
-                if path.trim_end_matches('/') == user_home_str.trim_end_matches('/') {
-                    continue;
-                }
-
-                // Only add if the path exists on disk
-                if !Path::new(&path).exists() {
-                    continue;
-                }
-
-                // Derive a display name from the path (last component)
-                let name = Path::new(&path)
-                    .file_name()
-                    .map(|n| n.to_string_lossy().to_string())
-                    .unwrap_or_else(|| path.clone());
-
-                locations.push(BrowsableLocation::Home {
-                    id: format!("perm-{}", perm_id),
-                    name,
-                    path,
-                    icon: "mdi:folder-account".to_string(),
-                });
-            }
-        }
+    let user_perms = match permission_service.list_by_user(&user.id).await {
+        Ok(permissions) => permissions,
         Err(e) => {
             tracing::warn!("Failed to load user permissions: {}", e);
+            Vec::new()
         }
+    };
+    let user_home_str = home_path
+        .as_ref()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_default();
+
+    // Deduplicate: collect unique paths, keeping the first permission ID
+    let mut seen_paths: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    for perm in &user_perms {
+        if perm.permission_level().can_read() {
+            let path = perm.path.trim_end_matches('/').to_string();
+            // Keep the first permission ID for each unique path
+            seen_paths.entry(path).or_insert_with(|| perm.id.clone());
+        }
+    }
+
+    for (path, perm_id) in seen_paths {
+        // Skip the user's own home (already shown above)
+        if path.trim_end_matches('/') == user_home_str.trim_end_matches('/') {
+            continue;
+        }
+
+        // Only add if the path exists on disk
+        if !Path::new(&path).exists() {
+            continue;
+        }
+
+        // Derive a display name from the path (last component)
+        let name = Path::new(&path)
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| path.clone());
+
+        locations.push(BrowsableLocation::Home {
+            id: format!("perm-{}", perm_id),
+            name,
+            path,
+            icon: "mdi:folder-account".to_string(),
+        });
     }
 
     // 3. Shared folders from database
     match get_enabled_shares(&state).await {
         Ok(shares) => {
             for share in shares {
+                // Same rule as the file API and Samba: an explicit permission
+                // decides, a share without any ACL is open to every account.
+                if !user.is_admin {
+                    let visible = match most_specific_permission(&user_perms, &share.path) {
+                        Some(level) => level.can_read(),
+                        None => !permission_service.folder_has_acl(&share.path).await.unwrap_or(true),
+                    };
+                    if !visible {
+                        continue;
+                    }
+                }
                 // Check if share path exists
                 if Path::new(&share.path).exists() {
                     let icon = match share.share_type.as_str() {
@@ -202,6 +218,13 @@ async fn get_locations(
     match get_mounted_media().await {
         Ok(media) => {
             for m in media {
+                // Removable media need an explicit read permission for non-admins
+                if !user.is_admin
+                    && !most_specific_permission(&user_perms, &m.mount_point)
+                        .is_some_and(|level| level.can_read())
+                {
+                    continue;
+                }
                 locations.push(BrowsableLocation::Media {
                     id: format!("media-{}", m.name),
                     name: m.name,
@@ -222,15 +245,41 @@ async fn get_locations(
 
 /// Mounted media info
 #[derive(Debug)]
-struct MountedMedia {
-    name: String,
-    mount_point: String,
-    device: String,
-    fs_type: String,
+pub(crate) struct MountedMedia {
+    pub(crate) name: String,
+    pub(crate) mount_point: String,
+    pub(crate) device: String,
+    pub(crate) fs_type: String,
+}
+
+/// Decode the octal escapes the kernel uses in /proc/mounts (`\040` = space,
+/// `\011` tab, `\012` newline, `\134` backslash).
+fn unescape_mount_field(field: &str) -> String {
+    let bytes = field.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'\\'
+            && i + 3 < bytes.len()
+            && bytes[i + 1..i + 4].iter().all(|b| (b'0'..=b'7').contains(b))
+        {
+            let value = (bytes[i + 1] - b'0') as u32 * 64
+                + (bytes[i + 2] - b'0') as u32 * 8
+                + (bytes[i + 3] - b'0') as u32;
+            if let Ok(byte) = u8::try_from(value) {
+                out.push(byte);
+                i += 4;
+                continue;
+            }
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
 }
 
 /// Scan /proc/mounts for auto-mounted removable media
-async fn get_mounted_media() -> Result<Vec<MountedMedia>, std::io::Error> {
+pub(crate) async fn get_mounted_media() -> Result<Vec<MountedMedia>, std::io::Error> {
     let mounts = tokio::fs::read_to_string("/proc/mounts").await?;
     let mut media = Vec::new();
     let mut seen_names: std::collections::HashSet<String> = std::collections::HashSet::new();
@@ -241,8 +290,9 @@ async fn get_mounted_media() -> Result<Vec<MountedMedia>, std::io::Error> {
             continue;
         }
 
-        let device = fields[0];
-        let mount_point = fields[1];
+        let device = unescape_mount_field(fields[0]);
+        let mount_point = unescape_mount_field(fields[1]);
+        let mount_point = mount_point.as_str();
         let fs_type = fields[2];
 
         // Only include mounts under /var/media/ (LibreELEC auto-mount)
@@ -256,14 +306,14 @@ async fn get_mounted_media() -> Result<Vec<MountedMedia>, std::io::Error> {
             .unwrap_or(mount_point)
             .to_string();
 
-        if name.is_empty() || !seen_names.insert(name.clone()) {
+        if name.is_empty() || name.contains('/') || !seen_names.insert(name.clone()) {
             continue;
         }
 
         media.push(MountedMedia {
             name,
             mount_point: mount_point.to_string(),
-            device: device.to_string(),
+            device,
             fs_type: fs_type.to_string(),
         });
     }

@@ -144,8 +144,9 @@ async fn handle_socket(
                         network_tx_bytes_per_sec: rates.tx_bytes_per_sec,
                     });
 
-                    let msg = serde_json::to_string(&event).unwrap();
-                    if sender.send(Message::Text(msg.into())).await.is_err() {
+                    if let Some(msg) = encode_event(&event)
+                        && sender.send(Message::Text(msg.into())).await.is_err()
+                    {
                         break;
                     }
                 }
@@ -153,8 +154,9 @@ async fn handle_socket(
                     match result {
                         Ok(progress) => {
                             let event = WsEvent::TaskProgress(progress);
-                            let msg = serde_json::to_string(&event).unwrap();
-                            if sender.send(Message::Text(msg.into())).await.is_err() {
+                            if let Some(msg) = encode_event(&event)
+                                && sender.send(Message::Text(msg.into())).await.is_err()
+                            {
                                 break;
                             }
                         }
@@ -170,8 +172,9 @@ async fn handle_socket(
                     match result {
                         Ok(file_event) => {
                             let event = WsEvent::FileTask(file_event);
-                            let msg = serde_json::to_string(&event).unwrap();
-                            if sender.send(Message::Text(msg.into())).await.is_err() {
+                            if let Some(msg) = encode_event(&event)
+                                && sender.send(Message::Text(msg.into())).await.is_err()
+                            {
                                 break;
                             }
                         }
@@ -187,8 +190,9 @@ async fn handle_socket(
                     match result {
                         Ok(notification) => {
                             let event = WsEvent::Notification(notification);
-                            let msg = serde_json::to_string(&event).unwrap();
-                            if sender.send(Message::Text(msg.into())).await.is_err() {
+                            if let Some(msg) = encode_event(&event)
+                                && sender.send(Message::Text(msg.into())).await.is_err()
+                            {
                                 break;
                             }
                         }
@@ -204,8 +208,9 @@ async fn handle_socket(
                     match result {
                         Ok(alert) => {
                             let event = WsEvent::StorageAlert(alert);
-                            let msg = serde_json::to_string(&event).unwrap();
-                            if sender.send(Message::Text(msg.into())).await.is_err() {
+                            if let Some(msg) = encode_event(&event)
+                                && sender.send(Message::Text(msg.into())).await.is_err()
+                            {
                                 break;
                             }
                         }
@@ -241,4 +246,12 @@ async fn handle_socket(
 
     // Clean up
     send_task.abort();
+}
+
+/// Serialize an event for the socket; a failure (never expected for these
+/// plain structs) drops that one event instead of the connection task.
+fn encode_event(event: &WsEvent) -> Option<String> {
+    serde_json::to_string(event)
+        .inspect_err(|e| tracing::warn!("Failed to serialize WebSocket event: {}", e))
+        .ok()
 }

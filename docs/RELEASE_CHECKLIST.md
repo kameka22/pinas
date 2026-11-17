@@ -6,7 +6,7 @@
 
 - [ ] `VERSION` incrémenté, `scripts/sync-version.sh --check` vert (CI `Version consistency`).
 - [ ] `ci.yml` vert sur `master` (cargo test / `-D warnings`, svelte-check 0 erreur, Vitest, build).
-- [ ] Image construite depuis le commit taggé (`build-libreelec.yml` ou `scripts/remote-build.sh`) ; archive de mise à jour + `.sha256` (`scripts/build-release.sh --tag`).
+- [ ] Image construite depuis le commit taggé (`build-libreelec.yml` ou `scripts/remote-build.sh`) ; archive de mise à jour + `.sha256` + `.sha256.sig` (`scripts/build-release.sh --tag`, clé privée `~/.config/pinas/update-signing.pem` présente — sauvegardée hors du Pi).
 - [ ] Un Pi « neuf » (image flashée) **et** un Pi en version N-1 (pour la mise à jour) ; 2 clés USB pour le RAID ; un client SMB/NFS sur le LAN.
 
 ## 1. Boot et services (image neuve)
@@ -84,7 +84,7 @@
 | # | Étape | Attendu | OK |
 |---|---|---|---|
 | 7.1 | Vérification | Control Panel › Mise à jour voit la nouvelle version et le changelog | ☐ |
-| 7.2 | Intégrité | Modifier un octet de l'archive sur un miroir de test → installation refusée (`sha256` invalide) | ☐ |
+| 7.2 | Intégrité | Modifier un octet de l'archive sur un miroir de test → installation refusée (`sha256` invalide) ; supprimer ou altérer le `.sig` → refusée (signature invalide) | ☐ |
 | 7.3 | Installation | Écran plein, redémarrage du service, `GET /api/system/info` renvoie la nouvelle version, modal « mis à jour » | ☐ |
 | 7.4 | Données | Utilisateurs, partages, pools, apps, préférences intacts ; migrations SQL appliquées sans erreur | ☐ |
 | 7.5 | Cohabitation Kodi | Kodi toujours fonctionnel après la mise à jour | ☐ |
@@ -92,7 +92,7 @@
 ## 8. Publication
 
 - [ ] Résultats consignés ci-dessous (date, version, image, testeur) ; toute ligne ✗ a un ticket.
-- [ ] Draft GitHub Release `vX.Y.Z` complété : image `.img.gz`, `pinas-update-vX.Y.Z.tar.gz` + `.sha256`, notes générées par `build-release.sh`.
+- [ ] Draft GitHub Release `vX.Y.Z` complété : image `.img.gz`, `pinas-update-vX.Y.Z.tar.gz` + `.sha256` + `.sha256.sig`, notes générées par `build-release.sh`.
 - [ ] Tag `vX.Y.Z` poussé (`git push origin vX.Y.Z`), release publiée.
 
 ## Historique des validations

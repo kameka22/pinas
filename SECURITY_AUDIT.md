@@ -337,7 +337,7 @@ Validation du path puis opération async dans un `tokio::spawn`. Symlinks modifi
 
 ~~L'archive `pinas-update-*.tar.gz` était téléchargée depuis GitHub et extraite sans aucun contrôle : une compromission du compte GitHub ou une interception TLS permettait l'exécution de code en root sur tous les appareils.~~
 
-**Correction** : `build-release.sh` publie `<archive>.sha256` à côté de l'archive. `install_update` télécharge le fichier de somme, vérifie le SHA-256 (`verify_sha256`, testé) et **refuse toute release qui n'en fournit pas**. Étape suivante possible : signature minisign avec clé publique embarquée.
+**Correction** : `build-release.sh` publie `<archive>.sha256` à côté de l'archive. `install_update` télécharge le fichier de somme, vérifie le SHA-256 (`verify_sha256`, testé) et **refuse toute release qui n'en fournit pas**. Complété par la signature Ed25519 (n° 38).
 
 ### ~~29. Partages Samba : `guest ok` contournait les permissions~~ — CORRIGE
 
@@ -352,6 +352,64 @@ Validation du path puis opération async dans un `tokio::spawn`. Symlinks modifi
 **`backend/src/api/auth.rs`, `backend/src/main.rs`**
 
 **Correction** : en plus de la limite par nom d'utilisateur (5/min), limite par IP source (20/min) via `ConnectInfo<SocketAddr>` ; le serveur est démarré avec `into_make_service_with_connect_info`. Vérifié : 6ᵉ tentative → 429.
+
+## Revue de novembre 2026 (branche `fix/security-review`)
+
+### ~~32. Traversée de répertoire via les emplacements média~~ — CORRIGE
+
+**`backend/src/api/files.rs`**
+
+~~Les chemins `media:` n'étaient pas canonicalisés : `..` permettait de sortir du point de montage et de lire ou écrire n'importe où en root.~~
+
+**Correction** : tous les chemins passent par `checked_path` (canonicalisation + vérification que la cible reste sous la racine de l'emplacement), y compris pour les médias montés.
+
+### ~~33. Permissions de dossiers ignorées pour les non-admins~~ — CORRIGE
+
+**`backend/src/services/permission.rs`, `backend/src/api/files.rs`, `backend/src/api/locations.rs`**
+
+~~Une permission `none` ou l'absence de permission ne bloquait ni le listage, ni la recherche, ni l'affichage des emplacements.~~
+
+**Correction** : modèle unique `most_specific_permission` (préfixe le plus long, niveau le plus haut à égalité), aligné sur Samba : une permission explicite décide toujours ; un partage sans ACL reste ouvert aux utilisateurs authentifiés ; un média n'est visible qu'avec une permission explicite ; un admin a tous les droits. Listage, recherche et emplacements filtrent les entrées refusées.
+
+### ~~34. Réglages Kodi accessibles à tout utilisateur~~ — CORRIGE
+
+**`backend/src/api/kodi.rs`, `frontend/src/lib/components/apps/KodiApp.svelte`**
+
+**Correction** : sources, réglages, add-ons, nettoyage de bibliothèque, redémarrage et extinction exigent `AdminUser` ; l'UI masque ces actions aux non-admins (lecture et navigation restent ouvertes).
+
+### ~~35. Rétrogradation du dernier admin, sessions conservées après changement de rôle~~ — CORRIGE
+
+**`backend/src/services/user.rs`**
+
+**Correction** : la mise à jour est transactionnelle et refuse (`403 CANNOT_DEMOTE_LAST_ADMIN`) de retirer le rôle admin au dernier administrateur ; tout changement de rôle révoque les sessions de l'utilisateur.
+
+### ~~36. Noms d'utilisateur et de groupe non validés~~ — CORRIGE
+
+**`backend/src/services/user.rs`, `backend/src/services/group.rs`, `backend/src/services/home.rs`**
+
+~~Un nom comme `../x`, `root` ou `-o` atteignait `useradd`, `smbpasswd` et la construction du dossier personnel.~~
+
+**Correction** : `validate_username` (1–32 caractères `[A-Za-z0-9_.-]`, pas de `-`/`.` initial, pas uniquement des chiffres, noms système réservés refusés) à la création et au setup ; `validate_group_name` équivalent ; `get_home_path` refuse tout nom qui ne serait pas un unique composant de chemin. Les comptes système existants (uid < 1000) ne sont jamais réutilisés pour Samba ni supprimés.
+
+### ~~37. Injection dans `smb.conf`~~ — CORRIGE
+
+**`backend/src/models/share.rs`, `backend/src/services/share.rs`**
+
+~~Nom, description, masques, hôtes et `extra_options` étaient recopiés tels quels : un retour à la ligne ou `root preexec = …` donnait une exécution de commande en root via Samba.~~
+
+**Correction** : caractères de contrôle refusés partout, jeu de caractères restreint pour les noms de partage (noms réservés interdits), masques octaux, hôtes validés, `extra_options` au format `clé = valeur` avec liste de paramètres interdits (exec, script, include, path, force, guest, hosts, vfs…). La génération ignore (avec un avertissement) une configuration stockée invalide au lieu de l'écrire.
+
+### ~~38. Mise à jour non signée~~ — CORRIGE
+
+**`backend/src/services/update.rs`, `scripts/build-release.sh`**
+
+~~Le `.sha256` venait de la même release que l'archive : il protégeait de la corruption, pas d'une release malveillante.~~
+
+**Correction** : le fichier `.sha256` est signé en Ed25519 (`<archive>.sha256.sig`, signature brute en base64 produite par `openssl pkeyutl -sign -rawin`) ; la clé publique est embarquée dans `UPDATE_SIGNING_KEYS`. Le backend vérifie la signature, que le `.sha256` nomme exactement l'archive, que la version est strictement plus récente (anti-rollback) et que le nom de l'archive correspond à la version annoncée. **Une release sans `.sig` valide est refusée.** La clé privée vit hors du dépôt (`~/.config/pinas/update-signing.pem` ou `PINAS_UPDATE_SIGNING_KEY`) et doit être sauvegardée.
+
+### ~~39. Points mineurs~~ — CORRIGE
+
+`unwrap()` de production retirés (sérialisation WebSocket, mutex CUPS empoisonné), hostname refusé s'il commence ou finit par `-`, derniers `fetch('/api/…')` du frontend passés par le client `api`.
 
 ### 31. À valider sur le Pi (non testable en sandbox)
 

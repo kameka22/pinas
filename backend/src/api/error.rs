@@ -137,6 +137,8 @@ impl From<UserError> for ApiError {
             UserError::DuplicateUsername => (StatusCode::CONFLICT, "DUPLICATE_USERNAME"),
             UserError::CannotDeleteSelf => (StatusCode::FORBIDDEN, "CANNOT_DELETE_SELF"),
             UserError::CannotDeleteLastAdmin => (StatusCode::FORBIDDEN, "CANNOT_DELETE_LAST_ADMIN"),
+            UserError::CannotDemoteLastAdmin => (StatusCode::FORBIDDEN, "CANNOT_DEMOTE_LAST_ADMIN"),
+            UserError::InvalidUsername(_) => (StatusCode::BAD_REQUEST, "INVALID_USERNAME"),
             UserError::DatabaseError(_) => (StatusCode::INTERNAL_SERVER_ERROR, "DATABASE_ERROR"),
             UserError::AuthError(_) => (StatusCode::INTERNAL_SERVER_ERROR, "AUTH_ERROR"),
         };
@@ -152,6 +154,7 @@ impl From<GroupError> for ApiError {
             GroupError::CannotDeleteSystemGroup => (StatusCode::FORBIDDEN, "CANNOT_DELETE_SYSTEM_GROUP"),
             GroupError::NotAMember => (StatusCode::NOT_FOUND, "NOT_A_MEMBER"),
             GroupError::AlreadyMember => (StatusCode::CONFLICT, "ALREADY_MEMBER"),
+            GroupError::InvalidName(_) => (StatusCode::BAD_REQUEST, "INVALID_GROUP_NAME"),
             GroupError::DatabaseError(_) => (StatusCode::INTERNAL_SERVER_ERROR, "DATABASE_ERROR"),
         };
         ApiError::new(status, code, err.to_string())
