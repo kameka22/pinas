@@ -1,4 +1,11 @@
 <script lang="ts">
+	import SettingsHeader from '#lib/components/ui/settings/SettingsHeader.svelte';
+	import SettingsTabs from '#lib/components/ui/settings/SettingsTabs.svelte';
+	import SettingsSection from '#lib/components/ui/settings/SettingsSection.svelte';
+	import SettingsActions from '#lib/components/ui/settings/SettingsActions.svelte';
+	import SettingsState from '#lib/components/ui/settings/SettingsState.svelte';
+	import '#lib/components/ui/settings/settings.css';
+
 	import Icon from '@iconify/svelte';
 	import { onMount, onDestroy } from 'svelte';
 	import { t, locale, languages, type Locale } from '#lib/i18n/index.js';
@@ -11,6 +18,7 @@
 	let status: TimeStatus | null = null;
 	let zones: string[] = [];
 	let loading = true;
+	let loadError = '';
 	let saving = false;
 	let syncing = false;
 
@@ -42,12 +50,13 @@
 
 	async function load() {
 		loading = true;
+		loadError = '';
 		try {
 			const [s, z] = await Promise.all([api.getTimeStatus(), api.getTimezones()]);
 			applyStatus(s);
 			zones = z;
 		} catch (e) {
-			toasts.error(errorMessage(e, $t.common.errors.loadFailed));
+			loadError = errorMessage(e, $t.common.errors.loadFailed);
 		}
 		try {
 			const [df, tf] = await Promise.allSettled([api.getPreference('ui.dateFormat'), api.getPreference('ui.timeFormat')]);
@@ -114,25 +123,16 @@
 	onDestroy(() => { if (interval) clearInterval(interval); });
 </script>
 
-<div class="time-language">
-	<div class="tabs-header">
-		<button class="tab" class:active={activeTab === 'time'} on:click={() => (activeTab = 'time')}>
-			<Icon icon="mdi:clock-outline" class="w-4 h-4" />
-			{$t.timeLanguage.tabs.time}
-		</button>
-		<button class="tab" class:active={activeTab === 'language'} on:click={() => (activeTab = 'language')}>
-			<Icon icon="mdi:translate" class="w-4 h-4" />
-			{$t.timeLanguage.tabs.language}
-		</button>
-	</div>
+<div class="time-language settings-page">
+	<SettingsHeader title={$t.timeLanguage.title} description={$t.settingsUi.timeDescription} icon="mdi:clock-outline" />
+	<SettingsTabs label={$t.timeLanguage.title} items={[
+		{ value: 'time', label: $t.timeLanguage.tabs.time },
+		{ value: 'language', label: $t.timeLanguage.tabs.language }
+	]} value={activeTab} onchange={(value) => activeTab = value === 'time' ? 'time' : 'language'} />
 
 	<div class="tab-content">
 		{#if activeTab === 'time'}
-			<div class="settings-section">
-				<h3 class="section-title">
-					<Icon icon="mdi:clock-outline" class="w-5 h-5" />
-					{$t.timeLanguage.time.title}
-				</h3>
+			<SettingsSection title={$t.timeLanguage.time.title}>
 
 				<div class="setting-card">
 					<div class="current-time">
@@ -148,13 +148,15 @@
 				</div>
 
 				{#if loading}
-					<p class="section-description">{$t.common.loading}</p>
+					<SettingsState kind="loading" message={$t.common.loading} />
+				{:else if loadError}
+					<SettingsState kind="error" message={loadError} onretry={load} />
 				{:else}
 					<div class="setting-row">
 						<label class="setting-label" for="tz-filter">{$t.timeLanguage.time.timezone}</label>
 						<div class="tz-picker">
 							<input id="tz-filter" type="text" class="setting-input" placeholder={$t.timeLanguage.time.selectTimezone} bind:value={zoneFilter} disabled={!isAdmin} />
-							<select bind:value={timezone} class="setting-select" size="1" disabled={!isAdmin}>
+							<select aria-label={$t.timeLanguage.time.timezone} bind:value={timezone} class="setting-select" size="1" disabled={!isAdmin}>
 								{#if !filteredZones.includes(timezone)}<option value={timezone}>{timezone}</option>{/if}
 								{#each filteredZones as tz}
 									<option value={tz}>{tz}</option>
@@ -163,6 +165,7 @@
 						</div>
 					</div>
 
+					<p class="settings-help">{$t.settingsUi.immediate}</p>
 					<div class="setting-row">
 						<label class="setting-label" for="date-format">{$t.timeLanguage.time.dateFormat}</label>
 						<select id="date-format" bind:value={dateFormat} class="setting-select" on:change={() => savePreference('ui.dateFormat', dateFormat)}>
@@ -193,7 +196,7 @@
 							<span class="setting-label">{$t.timeLanguage.time.syncWithNtp}</span>
 						</div>
 						<label class="toggle">
-							<input type="checkbox" bind:checked={ntpEnabled} disabled={!isAdmin} />
+							<input aria-label={$t.timeLanguage.time.syncWithNtp} type="checkbox" bind:checked={ntpEnabled} disabled={!isAdmin} />
 							<span class="toggle-slider"></span>
 						</label>
 					</div>
@@ -205,20 +208,16 @@
 						</div>
 						<div class="setting-row">
 							<span class="setting-hint">{$t.timeLanguage.time.serversHint}</span>
-							<button class="btn-secondary" on:click={syncNow} disabled={!isAdmin || syncing || dirty}>
+							<button class="settings-button" on:click={syncNow} disabled={!isAdmin || syncing || dirty}>
 								<Icon icon="mdi:sync" class="w-4 h-4 {syncing ? 'animate-spin' : ''}" />
 								{$t.timeLanguage.time.syncNow}
 							</button>
 						</div>
 					{/if}
 				{/if}
-			</div>
+			</SettingsSection>
 		{:else}
-			<div class="settings-section">
-				<h3 class="section-title">
-					<Icon icon="mdi:translate" class="w-5 h-5" />
-					{$t.timeLanguage.language.title}
-				</h3>
+			<SettingsSection title={$t.timeLanguage.language.title} description={$t.settingsUi.immediate}>
 
 				<p class="section-description">{$t.timeLanguage.language.restart}</p>
 
@@ -240,80 +239,17 @@
 						</button>
 					{/each}
 				</div>
-			</div>
+			</SettingsSection>
 		{/if}
 	</div>
 
-	{#if activeTab === 'time' && isAdmin}
-		<div class="actions-bar">
-			{#if status?.dev_mode}<span class="setting-hint">{$t.timeLanguage.time.devMode}</span>{/if}
-			<button class="btn-primary" on:click={apply} disabled={!dirty || saving}>
-				{saving ? $t.common.loading : $t.common.apply}
-			</button>
-		</div>
+	{#if activeTab === 'time' && isAdmin && status && !loading && !loadError}
+		<SettingsActions {dirty} {saving} hint={status.dev_mode ? $t.timeLanguage.time.devMode : ''}
+			onsave={apply} oncancel={() => { if (status) applyStatus(status); }} />
 	{/if}
 </div>
 
 <style>
-	.time-language {
-		display: flex;
-		flex-direction: column;
-		height: 100%;
-		background: white;
-	}
-
-	.tabs-header {
-		display: flex;
-		gap: 0;
-		border-bottom: 1px solid #e5e7eb;
-		padding: 0 24px;
-		background: #fafafa;
-	}
-
-	.tab {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		padding: 16px 24px;
-		font-size: 14px;
-		color: #6b7280;
-		border-bottom: 2px solid transparent;
-		transition: all 0.15s ease;
-		background: transparent;
-		border-top: none;
-		border-left: none;
-		border-right: none;
-	}
-
-	.tab:hover {
-		color: #374151;
-	}
-
-	.tab.active {
-		color: #2563eb;
-		border-bottom-color: #2563eb;
-		background: white;
-	}
-
-	.tab-content {
-		flex: 1;
-		overflow-y: auto;
-		padding: 24px;
-	}
-
-	.settings-section {
-		max-width: 600px;
-	}
-
-	.section-title {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		font-size: 16px;
-		font-weight: 600;
-		color: #1f2937;
-		margin-bottom: 8px;
-	}
 
 	.section-description {
 		font-size: 13px;
@@ -522,45 +458,6 @@
 	}
 
 	/* Buttons */
-	.btn-primary {
-		padding: 10px 24px;
-		background: #3b82f6;
-		color: white;
-		border-radius: 8px;
-		font-size: 14px;
-		font-weight: 500;
-		transition: all 0.15s ease;
-	}
-
-	.btn-primary:hover {
-		background: #2563eb;
-	}
-
-	.btn-secondary {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		padding: 8px 16px;
-		background: white;
-		border: 1px solid #e5e7eb;
-		border-radius: 8px;
-		font-size: 14px;
-		color: #374151;
-		transition: all 0.15s ease;
-	}
-
-	.btn-secondary:hover {
-		background: #f9fafb;
-		border-color: #d1d5db;
-	}
-
-	.actions-bar {
-		padding: 16px 24px;
-		border-top: 1px solid #e5e7eb;
-		display: flex;
-		justify-content: flex-end;
-		background: #fafafa;
-	}
 
 	.tz-picker { display: flex; gap: 0.5rem; flex: 1; min-width: 0; }
 	.tz-picker .setting-input { flex: 1; min-width: 8rem; }
@@ -568,5 +465,16 @@
 	.ntp-state { display: inline-flex; align-items: center; gap: 0.375rem; margin-top: 0.5rem; font-size: 0.75rem; color: #b45309; }
 	.ntp-state.synced { color: #15803d; }
 	.setting-hint { font-size: 0.75rem; color: #64748b; }
-	.actions-bar { display: flex; justify-content: flex-end; align-items: center; gap: 1rem; padding: 0.75rem 1.5rem; border-top: 1px solid #e2e8f0; }
+
+	.tab-content { min-width: 0; }
+	.setting-row { gap: 16px; flex-wrap: wrap; }
+	.setting-row > :last-child { max-width: 100%; }
+	.tz-picker { flex-wrap: wrap; }
+	.time-value { font-size: 20px; overflow-wrap: anywhere; }
+	.toggle input:focus-visible + .toggle-slider { outline: 2px solid #2563eb; outline-offset: 3px; }
+	@container (max-width: 440px) {
+		.setting-row { align-items: stretch; flex-direction: column; }
+		.setting-input, .setting-select { min-width: 0; width: 100%; }
+		.radio-group { flex-wrap: wrap; gap: 12px; }
+	}
 </style>

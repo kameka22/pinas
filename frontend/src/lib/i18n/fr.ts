@@ -183,6 +183,12 @@ export default {
 		contentFor: "Contenu de l'onglet {tab}"
 	},
 
+	settingsUi: {
+		unsaved: 'Modifications non enregistrées',
+		timeDescription: 'Réglez l’horloge du NAS et vos préférences d’affichage.',
+		immediate: 'Les préférences d’affichage sont enregistrées immédiatement.'
+	},
+
 	// Time & Language
 	timeLanguage: {
 		title: 'Heure et langue',

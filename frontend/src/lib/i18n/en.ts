@@ -183,6 +183,12 @@ export default {
 		contentFor: 'Content for {tab} tab'
 	},
 
+	settingsUi: {
+		unsaved: 'Unsaved changes',
+		timeDescription: 'Manage the NAS clock and your display preferences.',
+		immediate: 'Display preferences are saved immediately.'
+	},
+
 	// Time & Language
 	timeLanguage: {
 		title: 'Time & Language',
