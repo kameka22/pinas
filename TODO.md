@@ -14,6 +14,34 @@ Restes connus hors phase 9 : historique des métriques (widgets), thème sombre,
 
 ---
 
+## Revue UI du 2026-11-17 (parcours complet en dev mode)
+
+Branche `fix/ui-walkthrough`. P1 = fonctionnel / risque de données, P2 = le dev mode agit sur la vraie machine, P3 = finitions.
+
+**P1**
+- [x] Création de pool : nombre de disques validé par type de RAID **avant** tout effacement (`RaidType::validate_devices`, code `INVALID_POOL_LAYOUT`), aussi en dev mode
+- [x] Capacité d'un pool = capacité utile du niveau RAID (`RaidType::usable_capacity`), pas la somme des disques (création et agrandissement)
+- [ ] Assistant de pool : « Basique » proposé/recommandé avec 2+ disques, même capacité affichée pour chaque option, recommandation selon le nombre de disques, avertissement d'effacement dans le récapitulatif
+- [ ] `Window.svelte` : `.window` sans `color` → texte blanc sur blanc (Connexion appareil, Sécurité)
+- [ ] Setup : `machine_name` ignoré (TODO `api/setup.rs`), hostname et noms réservés (`root`…) validés trop tard, erreurs en anglais sans retour à l'étape fautive, « Setting up... » non traduit
+- [ ] Proxy Vite sans `ws: true` : pas de WebSocket en dev (CPU/mémoire à 0 %, widgets et tâches figés)
+
+**P2**
+- [ ] App Docker en dev mode : parle au vrai démon Docker de la machine
+- [ ] `kill_process` agit sur les vrais processus en dev mode ; aucune garde pour PID 1 ni pour PiNAS lui-même
+- [ ] Terminal : racine dev codée en dur (`./data`) au lieu de `AppConfig`
+
+**P3**
+- [ ] Chaînes anglaises : écran de connexion, menu utilisateur (Profile/Change Password/Logout), erreurs backend (politique de mot de passe, hostname…), rôles, groupes seedés, « My Files »
+- [ ] Connexion appareil : chemin SMB affiché `\\\\ip` ; hostname en double avec Réseau ; À propos affiche le hostname réel ≠ Réseau
+- [ ] FolderPicker : le chemin affiché ne suit pas le changement d'emplacement (la valeur retournée est correcte)
+- [ ] Permissions : ajout de dossier en saisie libre (exemple `/storage/shares/`), droits non gérables depuis Partages (« 0 permissions »)
+- [ ] Lanceur « Tout 10 » pour 9 apps (Tableau de bord seulement via la recherche) ; 404 sur les préférences non définies au premier chargement
+- [ ] Stockage : onglets « bientôt disponibles », « Dernière vérification : 3 jours » factice, icône de pool vide, tailles GB/TB incohérentes, pool non présélectionné à la création de volume
+- [ ] Fichiers : taille « - » pour un fichier vide ; espace avant « : » en français ; uptime non localisé
+
+---
+
 ## Phase 9 : Features inspirées OpenMediaVault
 
 > Référence : analyse du code source OMV (`extra/openmediavault/`)
