@@ -130,12 +130,7 @@ export const allApps = derived([installedApps, auth], ([$installedApps, $auth]) 
 // Fetch installed apps from the backend registry
 export async function loadInstalledApps(): Promise<void> {
 	try {
-		const response = await fetch('/api/apps/registry');
-		if (!response.ok) {
-			console.warn('Failed to load app registry:', response.statusText);
-			return;
-		}
-		const registry: AppRegistryEntry[] = await response.json();
+		const registry = await api.get<AppRegistryEntry[]>('/apps/registry');
 
 		const apps: DesktopApp[] = registry.map((entry) => ({
 			id: entry.id,

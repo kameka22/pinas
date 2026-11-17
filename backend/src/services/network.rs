@@ -216,6 +216,9 @@ impl NetworkService {
         {
             anyhow::bail!("Hostname can only contain letters, numbers and hyphens");
         }
+        if hostname.starts_with('-') || hostname.ends_with('-') {
+            anyhow::bail!("Hostname cannot start or end with a hyphen");
+        }
 
         if self.dev_mode {
             tracing::info!("[DEV MODE] Would set hostname to: {}", hostname);

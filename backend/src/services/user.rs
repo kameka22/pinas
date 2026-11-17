@@ -22,6 +22,12 @@ pub enum UserError {
     #[error("Cannot delete the last admin")]
     CannotDeleteLastAdmin,
 
+    #[error("Cannot remove admin rights from the last admin")]
+    CannotDemoteLastAdmin,
+
+    #[error("Invalid username: {0}")]
+    InvalidUsername(String),
+
     #[error("Database error: {0}")]
     DatabaseError(#[from] sqlx::Error),
 
@@ -36,6 +42,43 @@ pub struct UserUpdate {
     pub is_admin: Option<bool>,
 }
 
+/// System accounts a PiNAS user must never map to: the username becomes a
+/// Linux account (`useradd`) and a Samba account, and deleting the PiNAS
+/// user removes both.
+const RESERVED_USERNAMES: &[&str] = &[
+    "root", "kodi", "nobody", "daemon", "bin", "sys", "sync", "games", "man", "lp", "mail",
+    "news", "uucp", "proxy", "www-data", "backup", "list", "irc", "gnats", "sshd", "dbus",
+    "messagebus", "avahi", "systemd-network", "systemd-resolve", "systemd-timesync", "pinas",
+    "guest", "smbguest", "nfsnobody",
+];
+
+/// Usernames are a Linux and Samba account name and a home folder name:
+/// 1 to 32 characters from `A-Z a-z 0-9 _ . -`, starting with a letter, a
+/// digit or `_` (never `-`, read as an option by the system tools, nor `.`),
+/// not only digits (read as a uid) and not a reserved system account.
+pub fn validate_username(username: &str) -> Result<(), UserError> {
+    let invalid = |reason: &str| Err(UserError::InvalidUsername(reason.to_string()));
+    if username.is_empty() || username.len() > 32 {
+        return invalid("must be 1 to 32 characters long");
+    }
+    if !username
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '-'))
+    {
+        return invalid("only letters, digits, '_', '.' and '-' are allowed");
+    }
+    if username.starts_with(['-', '.']) {
+        return invalid("must not start with '-' or '.'");
+    }
+    if username.chars().all(|c| c.is_ascii_digit()) {
+        return invalid("must not be only digits");
+    }
+    if RESERVED_USERNAMES.contains(&username.to_ascii_lowercase().as_str()) {
+        return invalid("this name is reserved for a system account");
+    }
+    Ok(())
+}
+
 /// Create a new user
 pub async fn create_user(
     db: &SqlitePool,
@@ -44,6 +87,8 @@ pub async fn create_user(
     email: Option<String>,
     is_admin: bool,
 ) -> Result<User, UserError> {
+    validate_username(username)?;
+
     // Check if username already exists
     let existing = get_user_by_username(db, username).await?;
     if existing.is_some() {
@@ -173,20 +218,41 @@ pub async fn update_user(
     // updates.email: None = don't change, Some(None) = set to null, Some(Some(v)) = set to v
     let email = updates.email.unwrap_or_else(|| existing.email.clone());
     let is_admin = updates.is_admin.unwrap_or(existing.is_admin);
+    let role_changed = is_admin != existing.is_admin;
 
-    sqlx::query(
+    let mut tx = db.begin().await?;
+    // The admin-count guard is part of the UPDATE itself so two concurrent
+    // demotions cannot leave the system without an administrator.
+    let result = sqlx::query(
         r#"
         UPDATE users
         SET email = ?, is_admin = ?, updated_at = ?
         WHERE id = ?
+          AND (? OR NOT is_admin
+               OR (SELECT COUNT(*) FROM users WHERE is_admin = TRUE AND id != ?) > 0)
         "#,
     )
     .bind(&email)
     .bind(is_admin)
     .bind(&now)
     .bind(id)
-    .execute(db)
+    .bind(is_admin)
+    .bind(id)
+    .execute(&mut *tx)
     .await?;
+    if result.rows_affected() == 0 {
+        return Err(UserError::CannotDemoteLastAdmin);
+    }
+
+    // Sessions carry the admin flag in their JWT: a role change must force a
+    // new login so the old privileges cannot be used any more.
+    if role_changed {
+        sqlx::query("DELETE FROM sessions WHERE user_id = ?")
+            .bind(id)
+            .execute(&mut *tx)
+            .await?;
+    }
+    tx.commit().await?;
 
     // Return updated user
     get_user_by_id(db, id)
@@ -383,6 +449,55 @@ mod more_tests {
         let other = create_user(&pool, "other", "Other-Passw0rd!!", None, true).await.unwrap();
         delete_user(&pool, &other.id, &admin.id).await.unwrap();
         assert!(matches!(delete_user(&pool, &admin.id, &other.id).await, Err(UserError::CannotDeleteLastAdmin)));
+    }
+
+    #[test]
+    fn usernames_are_validated() {
+        for ok in ["alice", "Bob", "j.doe", "user_1", "a-b", "_svc", "x"] {
+            assert!(validate_username(ok).is_ok(), "{ok}");
+        }
+        for bad in ["", "..", ".hidden", "-rf", "a/b", "a\\b", "a b", "été", "1234", "root", "Kodi", "a\nb",
+            "abcdefghijklmnopqrstuvwxyz0123456"] {
+            assert!(matches!(validate_username(bad), Err(UserError::InvalidUsername(_))), "{bad}");
+        }
+    }
+
+    #[tokio::test]
+    async fn invalid_username_is_rejected_on_create() {
+        let pool = migrated_pool().await;
+        assert!(matches!(
+            create_user(&pool, "../etc", "Some-Passw0rd!!", None, false).await,
+            Err(UserError::InvalidUsername(_))
+        ));
+    }
+
+    #[tokio::test]
+    async fn last_admin_cannot_be_demoted_and_role_change_revokes_sessions() {
+        let pool = migrated_pool().await;
+        let admin = create_user(&pool, "admin", "Adm1n-Passw0rd!!", None, true).await.unwrap();
+        let demote = UserUpdate { is_admin: Some(false), ..Default::default() };
+        assert!(matches!(
+            update_user(&pool, &admin.id, demote).await,
+            Err(UserError::CannotDemoteLastAdmin)
+        ));
+        // other fields still update on the last admin
+        let email = UserUpdate { email: Some(Some("a@b.c".into())), ..Default::default() };
+        assert!(update_user(&pool, &admin.id, email).await.unwrap().is_admin);
+
+        let second = create_user(&pool, "second", "Sec0nd-Passw0rd!!", None, true).await.unwrap();
+        sqlx::query("INSERT INTO sessions (id, user_id, token, expires_at, created_at) VALUES ('s1', ?, 't', '2999-01-01T00:00:00Z', '2026-01-01T00:00:00Z')")
+            .bind(&second.id)
+            .execute(&pool)
+            .await
+            .unwrap();
+        let demote = UserUpdate { is_admin: Some(false), ..Default::default() };
+        assert!(!update_user(&pool, &second.id, demote).await.unwrap().is_admin);
+        let (left,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM sessions WHERE user_id = ?")
+            .bind(&second.id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(left, 0);
     }
 
     #[tokio::test]

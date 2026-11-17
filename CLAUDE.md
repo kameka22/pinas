@@ -117,6 +117,7 @@ RUST_LOG=pinas=info,tower_http=info
 
 ### Rust
 - **Authentification** : `main.rs` sépare un routeur public (`/api/health`, `/api/auth`, `/api/setup`, `/api/ws`) d'un routeur protégé par `require_auth` (JWT + session en base). Les routeurs purement administratifs (`storage`, `docker`, `packages`, `system/update`, `cups`, `terminal`, `display`) sont enveloppés par `require_admin`. Un nouveau routeur va dans le bloc protégé ; un handler destructif prend `AdminUser` en paramètre. Ne jamais ajouter de route hors du bloc protégé sans raison documentée.
+- **Permissions de dossiers** : `permission::most_specific_permission` (préfixe le plus long) décide ; sans permission explicite, un partage sans ACL est ouvert aux authentifiés, un média est refusé ; admin = accès total. Les noms d'utilisateur/groupe passent par `validate_username`/`validate_group_name`, tout ce qui finit dans `smb.conf` par les `validate*` de `models/share.rs`.
 - **Erreurs API** : un handler renvoie `Result<_, ApiError>` (`api/error.rs`, JSON `{error, code}`) ; les erreurs de service (`thiserror`) se convertissent avec `?` via un `impl From<XError> for ApiError` qui fixe status + code. Pas de `StatusCode` construit à la main dans les handlers.
 - `thiserror` pour les erreurs custom
 - Async/await partout (Tokio runtime)
@@ -142,7 +143,7 @@ RUST_LOG=pinas=info,tower_http=info
 ### Git
 - Commits conventionnels : `feat:`, `fix:`, `docs:`, `refactor:`
 - Branches : `feature/`, `fix/`, `release/`
-- **Version** : une seule source, le fichier `VERSION`. `scripts/sync-version.sh` la propage (Cargo.toml/lock, package.json/lock, package.mk) ; `--check` en CI refuse toute dérive ; `--set X.Y.Z` pour bumper. Release : `scripts/build-release.sh [--tag]` (notes générées depuis les commits conventionnels), validation Pi : `docs/RELEASE_CHECKLIST.md`.
+- **Version** : une seule source, le fichier `VERSION`. `scripts/sync-version.sh` la propage (Cargo.toml/lock, package.json/lock, package.mk) ; `--check` en CI refuse toute dérive ; `--set X.Y.Z` pour bumper. Release : `scripts/build-release.sh [--tag]` (signe chaque `.sha256` en Ed25519 → `.sha256.sig` avec la clé privée `~/.config/pinas/update-signing.pem` ou `PINAS_UPDATE_SIGNING_KEY` ; sa clé publique doit figurer dans `UPDATE_SIGNING_KEYS` de `services/update.rs` ; une release sans `.sig` est refusée par les Pi ; `scripts/signing-key.sh` gère la clé : `status`, `restore`, `remove`, `new` pour une rotation — une release qui introduit une nouvelle clé doit encore être signée par l'ancienne) (notes générées depuis les commits conventionnels), validation Pi : `docs/RELEASE_CHECKLIST.md`.
 
 ### Dev local
 - **Point d'entrée des scripts** : `./scripts/pinas.sh` (menu interactif ; `list` ; `<nom> [args]` pour lancer directement, ex. `./scripts/pinas.sh dev -d`, `./scripts/pinas.sh check`, `./scripts/pinas.sh release --arch all`)

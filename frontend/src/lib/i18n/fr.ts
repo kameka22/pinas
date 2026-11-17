@@ -1277,6 +1277,7 @@ export default {
 			scanning: 'Analyse en cours...',
 			cleaning: 'Nettoyage en cours...',
 			scanStarted: 'Analyse de la médiathèque lancée',
+			cleanStarted: 'Nettoyage de la médiathèque lancé',
 			lastScanned: 'Dernière analyse',
 			movies: 'Films',
 			tvShows: 'Séries TV',
@@ -1296,7 +1297,8 @@ export default {
 			removeSourceFailed: 'Échec de la suppression de la source',
 			updateSettingFailed: 'Échec de la mise à jour du paramètre',
 			toggleAddonFailed: 'Échec de l\'activation/désactivation de l\'addon',
-			scanFailed: 'Échec de l\'analyse de la médiathèque'
+			scanFailed: 'Échec de l\'analyse de la médiathèque',
+			cleanFailed: 'Échec du nettoyage de la médiathèque'
 		}
 	},
 

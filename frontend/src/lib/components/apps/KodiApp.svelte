@@ -3,7 +3,7 @@
 	import Icon from '@iconify/svelte';
 	import { t } from '#lib/i18n/index.js';
 	import { onMount, onDestroy } from 'svelte';
-	import { api } from '#lib/stores/api.js';
+	import { api, auth } from '#lib/stores/api.js';
 	import FolderPicker from '#lib/components/ui/FolderPicker.svelte';
 
 	// Types
@@ -66,6 +66,8 @@
 	let loading = true;
 	let error: string | null = null;
 	let activeTab = 'remote';
+	// Sources, settings, add-ons and library cleanup change the Kodi install: admin only (enforced by the backend)
+	$: isAdmin = $auth.user?.role === 'admin';
 	let settingsCategory = 'video';
 	let sourceFilter = 'all';
 
@@ -92,7 +94,11 @@
 		loading = true;
 		error = null;
 		try {
-			await Promise.all([loadStatus(), loadInfo(), loadSources(), loadSettings(), loadAddons()]);
+			await Promise.all(
+				isAdmin
+					? [loadStatus(), loadInfo(), loadSources(), loadSettings(), loadAddons()]
+					: [loadStatus(), loadInfo(), loadSources()]
+			);
 		} catch (e) {
 			error = e instanceof Error ? e.message : $t.kodi.errors.loadFailed;
 		} finally {
@@ -217,6 +223,15 @@
 		}
 	}
 
+	async function cleanLibrary(type: string) {
+		try {
+			await api.post(`/kodi/library/${type}/clean`);
+			toasts.success($t.kodi.library.cleanStarted);
+		} catch (e) {
+			toasts.error(errorMessage(e, $t.kodi.errors.cleanFailed));
+		}
+	}
+
 	// Computed
 	$: filteredSources =
 		sourceFilter === 'all' ? sources : sources.filter((s) => s.source_type === sourceFilter);
@@ -252,14 +267,16 @@
 			<Icon icon="mdi:folder-network" />
 			{$t.kodi.tabs.sources}
 		</button>
-		<button class:active={activeTab === 'settings'} on:click={() => (activeTab = 'settings')}>
-			<Icon icon="mdi:cog" />
-			{$t.kodi.tabs.settings}
-		</button>
-		<button class:active={activeTab === 'addons'} on:click={() => (activeTab = 'addons')}>
-			<Icon icon="mdi:puzzle" />
-			{$t.kodi.tabs.addons}
-		</button>
+		{#if isAdmin}
+			<button class:active={activeTab === 'settings'} on:click={() => (activeTab = 'settings')}>
+				<Icon icon="mdi:cog" />
+				{$t.kodi.tabs.settings}
+			</button>
+			<button class:active={activeTab === 'addons'} on:click={() => (activeTab = 'addons')}>
+				<Icon icon="mdi:puzzle" />
+				{$t.kodi.tabs.addons}
+			</button>
+		{/if}
 		<button class:active={activeTab === 'library'} on:click={() => (activeTab = 'library')}>
 			<Icon icon="mdi:filmstrip" />
 			{$t.kodi.tabs.library}
@@ -374,9 +391,11 @@
 							<option value="music">{$t.kodi.sources.mediaTypes.music}</option>
 							<option value="pictures">{$t.kodi.sources.mediaTypes.pictures}</option>
 						</select>
-						<button class="btn-primary" on:click={() => (showAddSourceModal = true)}>
-							<Icon icon="mdi:plus" /> {$t.kodi.sources.addSource}
-						</button>
+						{#if isAdmin}
+							<button class="btn-primary" on:click={() => (showAddSourceModal = true)}>
+								<Icon icon="mdi:plus" /> {$t.kodi.sources.addSource}
+							</button>
+						{/if}
 					</div>
 				</div>
 
@@ -402,9 +421,11 @@
 									{/if}
 								</div>
 							</div>
-							<button class="delete-btn" on:click={() => removeSource(source.id)} title={$t.common.delete}>
-								<Icon icon="mdi:delete" />
-							</button>
+							{#if isAdmin}
+								<button class="delete-btn" on:click={() => removeSource(source.id)} title={$t.common.delete}>
+									<Icon icon="mdi:delete" />
+								</button>
+							{/if}
 						</div>
 					{/each}
 					{#if filteredSources.length === 0}
@@ -415,7 +436,7 @@
 					{/if}
 				</div>
 			</div>
-		{:else if activeTab === 'settings'}
+		{:else if activeTab === 'settings' && isAdmin}
 			<!-- Settings Tab -->
 			<div class="settings-panel">
 				<div class="settings-sidebar">
@@ -491,7 +512,7 @@
 					</div>
 				</div>
 			</div>
-		{:else if activeTab === 'addons'}
+		{:else if activeTab === 'addons' && isAdmin}
 			<!-- Addons Tab -->
 			<div class="addons-panel">
 				<h2>{$t.kodi.addons.title}</h2>
@@ -541,9 +562,11 @@
 							<button class="btn-primary" on:click={() => scanLibrary('video')}>
 								<Icon icon="mdi:magnify" /> {$t.kodi.library.scan}
 							</button>
-							<button on:click={() => api.post('/kodi/library/video/clean')}>
-								<Icon icon="mdi:broom" /> {$t.kodi.library.clean}
-							</button>
+							{#if isAdmin}
+								<button on:click={() => cleanLibrary('video')}>
+									<Icon icon="mdi:broom" /> {$t.kodi.library.clean}
+								</button>
+							{/if}
 						</div>
 					</div>
 
@@ -554,9 +577,11 @@
 							<button class="btn-primary" on:click={() => scanLibrary('music')}>
 								<Icon icon="mdi:magnify" /> {$t.kodi.library.scan}
 							</button>
-							<button on:click={() => api.post('/kodi/library/music/clean')}>
-								<Icon icon="mdi:broom" /> {$t.kodi.library.clean}
-							</button>
+							{#if isAdmin}
+								<button on:click={() => cleanLibrary('music')}>
+									<Icon icon="mdi:broom" /> {$t.kodi.library.clean}
+								</button>
+							{/if}
 						</div>
 					</div>
 				</div>

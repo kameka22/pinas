@@ -5,7 +5,7 @@ use tokio::process::Command as AsyncCommand;
 
 use std::collections::HashSet;
 
-use crate::models::share::{NfsShareConfig, NfsStatus};
+use crate::models::share::{check_conf_value, validate_share_name, NfsShareConfig, NfsStatus};
 use crate::models::{
     SambaStatus, Share, ShareInfo, SmbGlobalConfig, SmbShareConfig,
 };
@@ -38,6 +38,26 @@ pub enum ShareError {
 static DEV_SAMBA_ENABLED: AtomicBool = AtomicBool::new(false);
 static DEV_NFS_ENABLED: AtomicBool = AtomicBool::new(false);
 
+/// First uid `useradd` gives to a regular account; below are system accounts.
+const FIRST_REGULAR_UID: u32 = 1000;
+
+/// uid of a local account, `None` when it does not exist.
+async fn system_uid(username: &str) -> Result<Option<u32>, ShareError> {
+    let output = AsyncCommand::new("id")
+        .args(["-u", "--", username])
+        .output()
+        .await
+        .map_err(|e| ShareError::SystemError(format!("Failed to run id: {}", e)))?;
+    if !output.status.success() {
+        return Ok(None);
+    }
+    String::from_utf8_lossy(&output.stdout)
+        .trim()
+        .parse()
+        .map(Some)
+        .map_err(|e| ShareError::SystemError(format!("Unexpected id output for {}: {}", username, e)))
+}
+
 /// Share and Samba service manager
 pub struct ShareService {
     db: SqlitePool,
@@ -45,7 +65,7 @@ pub struct ShareService {
 }
 
 impl ShareService {
-    #[cfg(test)]
+#[cfg(test)]
     pub fn for_tests(db: SqlitePool) -> Self {
         Self { db, dev_mode: true }
     }
@@ -102,6 +122,15 @@ impl ShareService {
         description: Option<String>,
         config: Option<serde_json::Value>,
     ) -> Result<ShareInfo, ShareError> {
+        validate_share_name(name).map_err(ShareError::InvalidConfig)?;
+        check_conf_value("Share path", path).map_err(ShareError::InvalidConfig)?;
+        if !path.starts_with('/') {
+            return Err(ShareError::InvalidConfig("Share path must be absolute".to_string()));
+        }
+        if let Some(desc) = &description {
+            check_conf_value("Description", desc).map_err(ShareError::InvalidConfig)?;
+        }
+
         // Check for duplicate name
         let existing = sqlx::query_as::<_, Share>(
             "SELECT * FROM shares WHERE name = ?",
@@ -132,6 +161,7 @@ impl ShareService {
             }
             (_, Some(v)) => {
                 let smb: SmbShareConfig = serde_json::from_value(v).map_err(|e| ShareError::InvalidConfig(format!("SMB: {}", e)))?;
+                smb.validate().map_err(ShareError::InvalidConfig)?;
                 share.set_smb_config(&smb);
             }
             (_, None) => {}
@@ -187,6 +217,13 @@ impl ShareService {
         .await?
         .ok_or(ShareError::NotFound)?;
 
+        if let Some(new_name) = name {
+            validate_share_name(new_name).map_err(ShareError::InvalidConfig)?;
+        }
+        if let Some(Some(desc)) = &description {
+            check_conf_value("Description", desc).map_err(ShareError::InvalidConfig)?;
+        }
+
         // Check for duplicate name if changing
         if let Some(new_name) = name
             && new_name != existing.name {
@@ -217,6 +254,7 @@ impl ShareService {
             }
             Some(v) => {
                 let smb: SmbShareConfig = serde_json::from_value(v).map_err(|e| ShareError::InvalidConfig(format!("SMB: {}", e)))?;
+                smb.validate().map_err(ShareError::InvalidConfig)?;
                 serde_json::to_string(&smb).ok()
             }
             None => existing.config.clone(),
@@ -532,6 +570,7 @@ impl ShareService {
 
     /// Update global SMB config in settings table
     pub async fn update_smb_config(&self, config: &SmbGlobalConfig) -> Result<(), ShareError> {
+        config.validate().map_err(ShareError::InvalidConfig)?;
         let now = chrono::Utc::now().to_rfc3339();
 
         let pairs = [
@@ -686,13 +725,15 @@ impl ShareService {
             return Ok(());
         }
 
-        // Check if already exists
-        let check = AsyncCommand::new("id")
-            .args(["-u", username])
-            .output()
-            .await
-            .map_err(|e| ShareError::SystemError(format!("Failed to run id: {}", e)))?;
-        if check.status.success() {
+        // Already there: fine for an account PiNAS created, refused for a
+        // system account (setting a Samba password on it would expose it)
+        if let Some(uid) = system_uid(username).await? {
+            if uid < FIRST_REGULAR_UID {
+                return Err(ShareError::SystemError(format!(
+                    "{} is a system account (uid {}), refusing to use it for Samba",
+                    username, uid
+                )));
+            }
             return Ok(());
         }
 
@@ -722,11 +763,15 @@ impl ShareService {
         if self.dev_mode {
             return Ok(());
         }
-        if username == "root" {
-            return Ok(());
+        // Only accounts in the regular range (the ones useradd created for
+        // PiNAS) are ever deleted, never a system account
+        match system_uid(username).await? {
+            Some(uid) if uid >= FIRST_REGULAR_UID => {
+                let _ = AsyncCommand::new("userdel").arg(username).output().await;
+            }
+            Some(uid) => tracing::warn!("Not deleting system account {} (uid {})", username, uid),
+            None => {}
         }
-
-        let _ = AsyncCommand::new("userdel").arg(username).output().await;
         Ok(())
     }
 
@@ -792,7 +837,14 @@ impl ShareService {
 
     /// Generate smb.conf content from DB state
     async fn generate_smb_conf(&self) -> Result<String, ShareError> {
-        let global_config = self.get_smb_config().await?;
+        let mut global_config = self.get_smb_config().await?;
+        // Values are validated on input; anything stored before that (or
+        // edited directly in the database) falls back to the defaults rather
+        // than being written into smb.conf.
+        if let Err(e) = global_config.validate() {
+            tracing::warn!("Invalid stored Samba global settings ({}), using defaults", e);
+            global_config = SmbGlobalConfig::default();
+        }
 
         let shares = sqlx::query_as::<_, Share>(
             "SELECT * FROM shares WHERE share_type = 'smb' AND enabled = TRUE ORDER BY name",
@@ -837,6 +889,14 @@ impl ShareService {
         // Per-share sections
         for share in &shares {
             let smb_cfg = share.smb_config();
+            let share_ok = validate_share_name(&share.name)
+                .and_then(|_| check_conf_value("Share path", &share.path))
+                .and_then(|_| share.description.as_deref().map_or(Ok(()), |d| check_conf_value("Description", d)))
+                .and_then(|_| smb_cfg.validate());
+            if let Err(e) = share_ok {
+                tracing::warn!("Skipping share '{}' in smb.conf: {}", share.name.escape_debug(), e);
+                continue;
+            }
             let permissions = perm_svc.list_by_folder(&share.path).await.unwrap_or_default();
 
             conf.push_str(&format!("[{}]\n", share.name));

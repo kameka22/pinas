@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use thiserror::Error;
 use tokio::fs;
 
@@ -28,22 +28,20 @@ impl HomeService {
     }
 
     /// Get the path to a user's home directory
-    pub fn get_home_path(&self, username: &str) -> PathBuf {
-        self.homes_root.join(username)
+    ///
+    /// The name must be a single plain path component (no separator, no `.`
+    /// or `..`, not hidden) so the result always stays inside `homes_root`,
+    /// even for accounts created before usernames were validated.
+    pub fn get_home_path(&self, username: &str) -> Result<PathBuf, HomeError> {
+        if !is_safe_home_name(username) {
+            return Err(HomeError::InvalidUsername);
+        }
+        Ok(self.homes_root.join(username))
     }
 
     /// Create a home directory for a user with default subdirectories
     pub async fn create_home(&self, username: &str) -> Result<PathBuf, HomeError> {
-        // Validate username (no path separators, not empty, not hidden)
-        if username.is_empty()
-            || username.contains('/')
-            || username.contains('\\')
-            || username.starts_with('.')
-        {
-            return Err(HomeError::InvalidUsername);
-        }
-
-        let home_path = self.get_home_path(username);
+        let home_path = self.get_home_path(username)?;
 
         // Check if already exists
         if home_path.exists() {
@@ -75,7 +73,7 @@ impl HomeService {
     /// Handle home directory when a user is deleted
     /// Policy can be: "archive", "delete", or "keep"
     pub async fn handle_user_deletion(&self, username: &str) -> Result<(), HomeError> {
-        let home_path = self.get_home_path(username);
+        let home_path = self.get_home_path(username)?;
 
         if !home_path.exists() {
             tracing::debug!("No home directory to handle for deleted user: {}", username);
@@ -127,6 +125,16 @@ impl HomeService {
 
 }
 
+/// True when `name` is one plain, non-hidden path component.
+fn is_safe_home_name(name: &str) -> bool {
+    use std::path::Component;
+    if name.is_empty() || name.starts_with('.') || name.contains(['/', '\\', '\0']) {
+        return false;
+    }
+    let mut components = Path::new(name).components();
+    matches!(components.next(), Some(Component::Normal(_))) && components.next().is_none()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -173,5 +181,10 @@ mod tests {
         assert!(service.create_home("").await.is_err());
         assert!(service.create_home("../escape").await.is_err());
         assert!(service.create_home(".hidden").await.is_err());
+        assert!(service.create_home("..").await.is_err());
+        assert!(service.get_home_path("a\\b").is_err());
+        // deletion of an unsafe name never touches anything outside homes_root
+        assert!(service.handle_user_deletion("..").await.is_err());
+        assert!(service.get_home_path("alice").unwrap().starts_with(temp.path()));
     }
 }
