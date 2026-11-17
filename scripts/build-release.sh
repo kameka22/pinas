@@ -128,7 +128,7 @@ done
 SIGNING_KEY="${PINAS_UPDATE_SIGNING_KEY:-$HOME/.config/pinas/update-signing.pem}"
 if [ ! -r "$SIGNING_KEY" ]; then
     echo -e "${RED}Error: release signing key not found: $SIGNING_KEY${NC}"
-    echo "  Devices refuse unsigned updates. Restore the key from its backup or set PINAS_UPDATE_SIGNING_KEY."
+    echo "  Devices refuse unsigned updates. Restore it: scripts/signing-key.sh restore <backup> (or set PINAS_UPDATE_SIGNING_KEY)."
     exit 1
 fi
 SIGNING_PUBKEY=$(openssl pkey -in "$SIGNING_KEY" -pubout -outform DER | tail -c 32 | base64 -w0)

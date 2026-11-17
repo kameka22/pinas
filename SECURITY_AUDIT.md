@@ -405,7 +405,7 @@ Validation du path puis opération async dans un `tokio::spawn`. Symlinks modifi
 
 ~~Le `.sha256` venait de la même release que l'archive : il protégeait de la corruption, pas d'une release malveillante.~~
 
-**Correction** : le fichier `.sha256` est signé en Ed25519 (`<archive>.sha256.sig`, signature brute en base64 produite par `openssl pkeyutl -sign -rawin`) ; la clé publique est embarquée dans `UPDATE_SIGNING_KEYS`. Le backend vérifie la signature, que le `.sha256` nomme exactement l'archive, que la version est strictement plus récente (anti-rollback) et que le nom de l'archive correspond à la version annoncée. **Une release sans `.sig` valide est refusée.** La clé privée vit hors du dépôt (`~/.config/pinas/update-signing.pem` ou `PINAS_UPDATE_SIGNING_KEY`) et doit être sauvegardée.
+**Correction** : le fichier `.sha256` est signé en Ed25519 (`<archive>.sha256.sig`, signature brute en base64 produite par `openssl pkeyutl -sign -rawin`) ; la clé publique est embarquée dans `UPDATE_SIGNING_KEYS`. Le backend vérifie la signature, que le `.sha256` nomme exactement l'archive, que la version est strictement plus récente (anti-rollback) et que le nom de l'archive correspond à la version annoncée. **Une release sans `.sig` valide est refusée.** La clé privée vit hors du dépôt (`~/.config/pinas/update-signing.pem` ou `PINAS_UPDATE_SIGNING_KEY`) et doit être sauvegardée. `scripts/signing-key.sh` la restaure depuis la sauvegarde (en vérifiant qu'elle est bien de confiance), la détruit après usage et gère la rotation.
 
 ### ~~39. Points mineurs~~ — CORRIGE
 

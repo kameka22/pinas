@@ -6,7 +6,7 @@
 
 - [ ] `VERSION` incrémenté, `scripts/sync-version.sh --check` vert (CI `Version consistency`).
 - [ ] `ci.yml` vert sur `master` (cargo test / `-D warnings`, svelte-check 0 erreur, Vitest, build).
-- [ ] Image construite depuis le commit taggé (`build-libreelec.yml` ou `scripts/remote-build.sh`) ; archive de mise à jour + `.sha256` + `.sha256.sig` (`scripts/build-release.sh --tag`, clé privée `~/.config/pinas/update-signing.pem` présente — sauvegardée hors du Pi).
+- [ ] Image construite depuis le commit taggé (`build-libreelec.yml` ou `scripts/remote-build.sh`) ; archive de mise à jour + `.sha256` + `.sha256.sig` (`scripts/build-release.sh --tag`, clé privée remise en place par `scripts/signing-key.sh restore <sauvegarde>`, puis retirée après publication par `scripts/signing-key.sh remove`).
 - [ ] Un Pi « neuf » (image flashée) **et** un Pi en version N-1 (pour la mise à jour) ; 2 clés USB pour le RAID ; un client SMB/NFS sur le LAN.
 
 ## 1. Boot et services (image neuve)
