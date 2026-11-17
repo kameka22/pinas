@@ -4,41 +4,59 @@ Actualisé le 17 novembre 2026. Ce plan remplace le suivi historique de remédia
 
 ## Travaux sortis du plan actif
 
-Les correctifs de parcours P1/P2/P3 sont implémentés et publiés dans la [PR #45](https://github.com/kameka22/pinas/pull/45). Détail, commits et validations : [historique de la revue UI](docs/archive/UI_WALKTHROUGH_PR45.md). Ne pas les refaire dans ce chantier ; conserver leurs protections et leurs tests.
+Les correctifs de parcours P1/P2/P3 sont intégrés à `master` par la [PR #45](https://github.com/kameka22/pinas/pull/45), mergée le 17 novembre 2026 (squash `6b54347`). Détail, commits et validations : [historique de la revue UI](docs/archive/UI_WALKTHROUGH_PR45.md). Ne pas les refaire dans ce chantier ; conserver leurs protections et leurs tests.
 
 Le [plan historique de septembre](docs/archive/REMEDIATION_PLAN_2026-11-17.md) est conservé comme archive, avec ses décisions et descriptions datées, dont certaines sont désormais obsolètes. Il ne constitue plus une consigne de travail. La roadmap fonctionnelle à long terme reste dans [TODO.md](TODO.md).
 
 ## Cadre du chantier
 
-- Travailler sur une branche dédiée, jamais sur `master`. Push, merge et publication exigent l’accord explicite de Laurent.
+- Les sept phases R1–R7 se font sur une seule branche : `feature/ui-consistency`, jamais sur `master`. Push, merge et publication exigent l’accord explicite de Laurent.
 - Conserver le bureau à fenêtres. Une application = une fenêtre de travail ; listes, fiches et assistants dans cette fenêtre. Une seule confirmation courte à la fois.
 - Réutiliser les fonctions et les contrôles de sécurité existants. Aucun changement implicite des droits, des validations RAID, des chemins ou du comportement des opérations destructives.
 - Les maquettes utilisent des données fictives et ne font aucun appel à l’API. Elles proposent une disposition, pas de nouvelles capacités backend.
 - Référence détaillée et inventaire complet : [UI_REDESIGN_PROPOSAL.md](docs/UI_REDESIGN_PROPOSAL.md).
 
+## Objectif et ordre de travail retenu
+
+La priorité demandée par Laurent est la cohérence **partout** : structure, composants et comportements communs dans l’interface existante. Les premières maquettes ont été jugées insuffisantes ; elles restent une exploration non validée et ne sont pas la cible à reproduire. La direction sera examinée dans l’instance de développement réelle.
+
+Conserver l’identité et le bureau PiNAS. Réutiliser les composants existants quand ils conviennent et centraliser leurs variantes. Ne pas transformer tous les écrans en tableaux : synthèse, catalogue, explorateur et terminal gardent une structure adaptée à leur usage, avec des commandes cohérentes.
+
 ## Lots et critères de fin
 
-| Lot | Travail | État | Critère de fin |
+Les numéros R2–R4 sont réordonnés ici : le panneau complet vient avant les refontes de parcours détaillées. Décision de Laurent : une seule branche `feature/ui-consistency` pour les sept phases R1–R7, avec des commits distincts par phase et un état utilisable à chaque jalon. Ne pas créer une branche ou une PR par lot.
+
+| Lot | Travail et livrable | Dépendance | État / critère de fin |
 |---|---|---|---|
-| R0 | Audit et maquettes Partages / Utilisateurs / Disques | Première version produite, validation visuelle en attente | Laurent valide les styles, la densité, la navigation et les formulaires sur le prototype |
-| R1 | Socle commun : couleurs, typographie, espacements, boutons, champs, statuts, tableaux, en-têtes, onglets, formulaires et confirmations | À faire après R0 | Composants réutilisables, états focus/chargement/erreur/vide documentés, contraste et clavier vérifiés |
-| R2 | Partages et Utilisateurs/groupes : liste → fiche ; création et sélection de dossier intégrées | À faire après R1 | Plus de modales empilées ; retour préserve le contexte ; droits par défaut et refus explicite restent distincts ; SMB/NFS respectent le modèle existant |
-| R3 | Stockage : synthèse, listes et fiches disque/pool/volume ; assistants, SMART, alimentation, snapshots et maintenance intégrés | À faire après R1 | Aucun débordement à 900 px ; états matériel absent/non supporté explicites ; avertissements et confirmations destructives conservés |
-| R4 | Douze rubriques du panneau : en-têtes, sections, champs et barre Enregistrer/Annuler communs | À faire après R2 | Chaque rubrique et sous-vue de l’inventaire migrée ; réglages non enregistrés protégés lors de la navigation |
-| R5 | Fichiers, Dashboard, Docker, Centre d’applications, processus/services, Kodi, affichage externe et terminal | À faire après R1 | Cadre commun pour chaque écran et sous-vue ; aperçu/propriétés intégrés ; service indisponible distinct d’une liste vide |
-| R6 | Bureau, lanceur, dock, recherche, widgets, notifications, compte, connexion et sept étapes d’installation | À faire après R4/R5 | Cohérence complète de l’inventaire, affichage étroit et zoom, accès clavier, focus et mouvement réduit vérifiés |
-| R7 | Revue finale et validation de release | À faire après R2–R6 | Tous les parcours et états relus en français/anglais ; validations logicielles et matérielles consignées |
+| R0 | Audit global et cadrage | — | Audit fait ; premières maquettes exploratoires non retenues comme cible ; présent plan actualisé |
+| R1 | Socle commun : styles et composants d’en-tête, actions, boutons, champs, onglets, sections, statuts, tableaux et sauvegarde | R0 | À faire : composants réutilisables démontrés dans deux rubriques existantes ; conventions vérifiables et états clavier/chargement/erreur définis |
+| R2 | Harmonisation des douze rubriques du panneau, accueil et navigation compris | R1 | À faire : premier livrable global consultable en dev ; titres, espacements, contrôles et actions homogènes dans chaque rubrique et sous-vue |
+| R3 | Partages, Utilisateurs/groupes et permissions : listes, fiches, créations et choix de dossier intégrés | R2 | À faire : aucun empilement de formulaires/modales ; retour préserve le contexte ; accès par défaut et refus explicite distincts ; SMB/NFS respectent le modèle existant |
+| R4 | Stockage : synthèse, disques/pools/volumes, SMART, alimentation, snapshots, montage, maintenance et assistants | R3 | À faire : actions contenues à 900 px ; fiches et assistants dans la fenêtre ; confirmations destructives et validations RAID conservées |
+| R5 | Dashboard, Fichiers, Centre d’applications, Docker, processus/services, Kodi, affichage externe, terminal et cadres des apps tierces | R4 | À faire : styles et comportements communs sur toutes leurs sous-vues, fonctionnalités spécifiques préservées, service indisponible distinct d’une liste vide |
+| R6 | Bureau, fenêtres, dock, lanceur, recherche, widgets, notifications, compte, connexion et sept étapes d’installation | R5 | À faire : cohérence des éléments transversaux et parcours de première utilisation ; focus, zoom et mouvement réduit vérifiés |
+| R7 | Revue globale et validation de release | R6 | À faire : inventaire intégral contrôlé, comparaisons avant/après, FR/EN et tests logiciels ; validation VM/Pi tracée séparément |
 
-Le thème sombre est un chantier de produit à estimer séparément ; le prototype peut suivre le thème du lecteur sans annoncer son support dans PiNAS.
+Le socle R1 est développé avec deux cas réels (par exemple Réseau et Heure/langue), puis généralisé en R2. Les changements de structure des permissions et du stockage attendent R3/R4 ; R2 harmonise déjà leur présentation lorsqu’ils sont accessibles depuis le panneau.
 
-## Maquettes livrées (R0)
+## Règles communes à appliquer dès R1
 
-[Prototype interactif autonome](docs/mockups/ui-redesign/index.html) : changer d’application dans la barre latérale, rechercher, ouvrir une fiche et ses onglets, parcourir la création d’un partage en quatre étapes. Les commandes indiquent leur caractère simulé. Les options avancées SMB/NFS et le sélecteur de dossier restent des intentions de disposition à détailler pendant R2.
+- **En-tête** : titre, description courte et emplacement stable de l’action principale ; éviter les titres et boutons de création dupliqués.
+- **Commandes** : mêmes tailles, variantes, icônes, libellés et états désactivé/chargement ; actions dangereuses séparées.
+- **Formulaires** : alignements, aides et erreurs au même endroit ; barre Enregistrer/Annuler commune pour les modifications différées. Les actions immédiates restent identifiables et ne reçoivent pas un faux bouton Enregistrer.
+- **Navigation** : onglets et retours prévisibles ; filtre, sélection et position de liste conservés ; modifications en attente protégées lors d’un départ.
+- **États** : mêmes présentations de chargement, vide, erreur, accès refusé, service arrêté et matériel non supporté, avec une action utile quand elle existe.
+- **Densité et lisibilité** : palette et espacements centralisés, une famille d’icônes, statuts avec texte, tableaux sans débordement de la fenêtre.
 
-- [x] Listes et fiches Partages, Utilisateurs et Disques.
-- [x] Assistant de partage intégré : Emplacement → Accès → Options → Résumé.
-- [ ] Validation visuelle par Laurent et ajustements éventuels.
-- [ ] Implémentation Svelte des écrans validés.
+R3 et R4 appliqueront la règle : une application, une fenêtre de travail ; fiches et assistants intégrés ; une seule confirmation courte à la fois. Toute exception utile à un parcours est documentée.
+
+## Suivi écran par écran
+
+L’inventaire de [la proposition UI, section 6](docs/UI_REDESIGN_PROPOSAL.md#6-revue-de-toutes-les-familles-décrans) sert de liste de couverture. Pour chaque lot implémenté, consigner ses écrans et sous-vues, composants partagés adoptés, modales restantes, états vérifiés et captures avant/après. Ne pas déclarer une famille terminée après la seule migration de son écran d’accueil.
+
+## Hors périmètre
+
+Pas de nouvelle fonctionnalité backend, de changement des droits ou de nouveau modèle de stockage. Thème sombre complet, métriques historiques et roadmap fonctionnelle restent des chantiers distincts. Le prototype [historique](docs/mockups/ui-redesign/index.html) utilise des données fictives ; son thème et ses indicateurs ne constituent pas des fonctionnalités livrées.
 
 ## Validation de chaque lot implémenté
 

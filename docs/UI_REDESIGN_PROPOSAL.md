@@ -143,16 +143,19 @@ La suppression et l’effacement apparaissent dans un menu d’actions ou une zo
 
 Le même éditeur de règles est présenté depuis Partages ou Utilisateurs, avec le contexte approprié. Une création ne force pas à ouvrir une fenêtre supplémentaire pour choisir un dossier.
 
-## 8. Mise en œuvre proposée
+## 8. Mise en œuvre révisée après retour de Laurent
 
-1. **Maquettes et règles** : bureau, une liste, une fiche, un formulaire, un assistant et une confirmation. Valider d’abord Partages, Disques et Utilisateurs à 900 × 600 px et en fenêtre agrandie.
-2. **Composants communs** : cadre d’application, en-tête, navigation, barre d’outils, tableau, fiche, section de formulaire, barre de sauvegarde, statuts, états vide/erreur/chargement et confirmation. Les styles locaux de boutons et modales sont remplacés progressivement.
-3. **Parcours prioritaires** : Partages et permissions, Utilisateurs/groupes, puis Stockage et ses assistants. C’est là que le gain de cohérence et la réduction des modales sont les plus importants.
-4. **Panneau complet** : migrer les douze rubriques, rapprocher les réglages apparentés et uniformiser les sauvegardes explicites/immédiates.
-5. **Autres applications et bureau** : Dashboard, Fichiers, Centre d’applications, Docker, processus, Kodi, terminal, connexion et installation ; harmoniser les états transversaux.
-6. **Validation** : comparaison des captures, navigation clavier et focus, taille de fenêtre, zoom, traductions FR/EN et vérifications fonctionnelles ciblées. Thème sombre complet dans un lot ultérieur si souhaité.
+Le retour du 17 novembre privilégie la cohérence globale de PiNAS. Les premières maquettes ne sont pas une cible validée. Le [plan actif](../REMEDIATION_PLAN.md) fait autorité sur l’ordre des lots :
 
-Les changements d’architecture de navigation doivent être isolés des corrections backend et de l’image LibreELEC. Une branche/PR par lot permet de conserver un produit vérifiable à chaque étape.
+1. R1 : socle commun éprouvé dans deux rubriques réelles.
+2. R2 : harmonisation des douze rubriques du panneau, première livraison globale dans l’instance de développement.
+3. R3 : parcours Partages, Utilisateurs/groupes et permissions sans formulaires empilés.
+4. R4 : parcours Stockage, fiches et assistants.
+5. R5 : toutes les autres applications et sous-vues.
+6. R6 : bureau et éléments transversaux, connexion et installation.
+7. R7 : vérification de tout l’inventaire et validation de release.
+
+Les changements d’architecture de navigation restent séparés des corrections backend et de l’image LibreELEC. Une seule branche `feature/ui-consistency` regroupe les sept phases, selon la décision de Laurent ; des commits distincts et une validation par phase conservent un produit vérifiable à chaque étape. Les couleurs et dimensions de la section 3 restent des propositions : le rendu est évalué dans le produit existant.
 
 ## 9. Critères d’acceptation
 
@@ -171,4 +174,4 @@ Les changements d’architecture de navigation doivent être isolés des correct
 
 [Ouvrir le prototype interactif](mockups/ui-redesign/index.html). Trois applications avec leurs listes et fiches, et un assistant de partage dans la même fenêtre. Données fictives, sans API ni modification du NAS. Le sélecteur de dossiers et les options avancées de protocoles sont des intentions à préciser, pas des composants livrés.
 
-Le suivi actif est désormais [REMEDIATION_PLAN.md](../REMEDIATION_PLAN.md), lots R0–R7 ; les correctifs de la PR #45 sont archivés et ne font plus partie du travail à refaire. Cette série attend une validation visuelle avant son implémentation Svelte.
+Le suivi actif est désormais [REMEDIATION_PLAN.md](../REMEDIATION_PLAN.md), lots R0–R7 ; les correctifs de la PR #45 sont archivés et ne font plus partie du travail à refaire. Après retour de Laurent, cette série reste exploratoire et ne doit pas être reproduite comme cible Svelte. La priorité est le socle commun appliqué aux écrans réels.
