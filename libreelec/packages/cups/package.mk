@@ -42,8 +42,13 @@ PKG_TOOLCHAIN="configure"
 GUTENPRINT_VERSION="5.3.4"
 GUTENPRINT_URL="https://sourceforge.net/projects/gimp-print/files/gutenprint-${GUTENPRINT_VERSION}/gutenprint-${GUTENPRINT_VERSION}.tar.xz"
 
+# --host/--build: cross-compile (configure otherwise tries to run target binaries).
+# --libdir: CUPS defaults to /usr/lib64 when the *build* host is x86_64.
 PKG_CONFIGURE_OPTS_TARGET=" \
+  --host=${TARGET_NAME} \
+  --build=${HOST_NAME} \
   --prefix=/usr \
+  --libdir=/usr/lib \
   --sysconfdir=/usr/etc \
   --localstatedir=/var \
   --with-rundir=/run/cups \
@@ -78,8 +83,17 @@ make_target() {
 makeinstall_target() {
   cd ${PKG_BUILD}
 
-  # Install CUPS
-  make install DESTDIR="${INSTALL}"
+  # Install CUPS. The build runs unprivileged and cross-compiled:
+  # - CUPS_USER/CUPS_GROUP: `install -o lp -g lp` would need root; ownership
+  #   in the image is set when the image is assembled, not here.
+  # - INSTALL_BIN/INSTALL_LIB without -s: the host `strip` cannot handle target
+  #   binaries; LibreELEC strips them later with the cross toolchain.
+  make install DESTDIR="${INSTALL}" \
+    CUPS_USER="$(id -un)" \
+    CUPS_GROUP="$(id -gn)" \
+    CUPS_PRIMARY_SYSTEM_GROUP="$(id -gn)" \
+    INSTALL_BIN='$(INSTALL) -c -m 755' \
+    INSTALL_LIB='$(INSTALL) -c -m 755'
 
   # Install systemd service (disabled by default - no symlink in wants)
   # CUPS make install creates dirs with restrictive permissions, use install -D to bypass
