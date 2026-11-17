@@ -186,7 +186,23 @@ export default {
 	settingsUi: {
 		unsaved: 'Modifications non enregistrées',
 		timeDescription: 'Réglez l’horloge du NAS et vos préférences d’affichage.',
-		immediate: 'Les préférences d’affichage sont enregistrées immédiatement.'
+		immediate: 'Les préférences d’affichage sont enregistrées immédiatement.',
+		leaveTitle: 'Modifications non enregistrées',
+		leaveMessage: 'Quitter cette rubrique abandonnera les modifications en cours.',
+		leaveConfirm: 'Quitter sans enregistrer',
+		stay: 'Rester',
+		descriptions: {
+			about: 'Identité, matériel, stockage et services du NAS.',
+			users: 'Comptes, groupes et droits d’accès aux dossiers.',
+			files: 'Partage de fichiers sur le réseau via SMB et NFS.',
+			device: 'Adresses et ports pour accéder au NAS depuis vos appareils.',
+			terminal: 'Accès distant en ligne de commande via SSH.',
+			printer: 'Partage des imprimantes connectées au NAS.',
+			hardware: 'Processeur, planification et alimentation du NAS.',
+			security: 'Sessions, HTTPS et historique des connexions.',
+			personalization: 'Fond d’écran et widgets du bureau.',
+			update: 'Version installée et mises à jour de PiNAS.'
+		}
 	},
 
 	// Time & Language
@@ -315,7 +331,11 @@ export default {
 			noUsersFound: 'Aucun utilisateur trouvé',
 			noGroupsFound: 'Aucun groupe trouvé',
 			cannotChangeOwnRole: 'Vous ne pouvez pas modifier votre propre rôle',
-			systemGroupNameReadonly: 'Les noms des groupes système ne peuvent pas être modifiés'
+			systemGroupNameReadonly: 'Les noms des groupes système ne peuvent pas être modifiés',
+			credentialsRequired: 'Le nom d’utilisateur et le mot de passe sont obligatoires',
+			groupNameRequired: 'Le nom du groupe est obligatoire',
+			passwordMismatch: 'Les mots de passe ne correspondent pas',
+			passwordTooShort: 'Le mot de passe doit contenir au moins 8 caractères'
 		},
 		advancedSettings: {
 			saved: 'Politique de mots de passe enregistrée',
@@ -469,6 +489,7 @@ export default {
 		restarting: 'Redémarrage de PiNAS… la page se reconnecte dans quelques secondes.',
 		selfSigned: "Certificat auto-signé généré sur cet appareil ; votre navigateur demandera de l'approuver une fois.",
 		certGenerated: 'généré le',
+		certificate: 'Certificat',
 		regenerateCert: 'Régénérer le certificat au prochain démarrage',
 		certReset: 'Certificat supprimé ; un nouveau sera généré au prochain démarrage.',
 		devModeTls: 'HTTPS est désactivé en mode dev.',
@@ -1400,6 +1421,7 @@ export default {
 			passwordDescription: 'Ce mot de passe est utilisé pour se connecter via SSH en tant qu\'utilisateur root.',
 			passwordTooShort: 'Le mot de passe doit contenir au moins 8 caractères',
 			passwordMismatch: 'Les mots de passe ne correspondent pas',
+			passwordChanged: 'Mot de passe SSH modifié',
 			connectionInfo: 'Se connecter avec :'
 		},
 		smb: {
@@ -1425,6 +1447,7 @@ export default {
 		},
 		nfs: {
 			description: 'Network File System pour Linux, macOS et lecteurs multimédia',
+			enable: 'Activer NFS',
 			exports: 'Exports',
 			exportsCount: '{n} exports actifs',
 			addExport: 'Ajouter un export',
@@ -1438,6 +1461,8 @@ export default {
 			sync: 'Écritures synchrones (plus sûr)',
 			squash: 'Mappage de root',
 			notAvailable: "Le serveur NFS (nfsd) ne fait pas partie de cette image. Reconstruisez l'image avec le paquet pinas-nfs-server.",
+			deleteTitle: 'Supprimer l’export NFS',
+			deleteConfirm: 'Supprimer l’export « {name} » ? Les clients NFS perdront l’accès. Les fichiers du dossier ne sont pas supprimés.',
 			mountHint: 'Monter depuis un client :'
 		},
 		cups: {
@@ -1673,6 +1698,7 @@ export default {
 		restarting: 'Redémarrage du service...',
 		updateHistory: 'Historique des mises à jour',
 		noHistory: 'Aucun historique de mise à jour.',
+		failed: 'Échec',
 		failedToCheck: 'Échec de la vérification des mises à jour',
 		failedToInstall: 'Échec de l\'installation de la mise à jour',
 		modal: {

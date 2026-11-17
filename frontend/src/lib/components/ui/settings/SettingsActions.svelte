@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { t } from '#lib/i18n/index.js';
+	import { setUnsaved } from '#lib/stores/unsavedChanges.js';
 	let {
 		dirty,
 		saving = false,
@@ -15,6 +16,13 @@
 		onsave: () => void;
 		oncancel: () => void;
 	} = $props();
+
+	// Lets the surrounding navigation warn before pending changes are dropped.
+	const owner = Symbol('settings-actions');
+	$effect(() => {
+		setUnsaved(owner, dirty);
+		return () => setUnsaved(owner, false);
+	});
 </script>
 
 <div class="settings-actions" aria-busy={saving}>
