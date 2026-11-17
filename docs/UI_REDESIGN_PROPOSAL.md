@@ -166,3 +166,9 @@ Les changements d’architecture de navigation doivent être isolés des correct
 - Focus visible, ordre clavier cohérent, fermeture et retour prévisibles, contraste vérifié et mouvement réduit respecté.
 - Aucun contrôle pour une fonctionnalité absente ; aucune métrique inventée pour améliorer l’esthétique.
 - La validation matérielle et la sécurité des opérations destructives restent exigées indépendamment du rendu visuel.
+
+## 10. Première série de maquettes — 17 novembre 2026
+
+[Ouvrir le prototype interactif](mockups/ui-redesign/index.html). Trois applications avec leurs listes et fiches, et un assistant de partage dans la même fenêtre. Données fictives, sans API ni modification du NAS. Le sélecteur de dossiers et les options avancées de protocoles sont des intentions à préciser, pas des composants livrés.
+
+Le suivi actif est désormais [REMEDIATION_PLAN.md](../REMEDIATION_PLAN.md), lots R0–R7 ; les correctifs de la PR #45 sont archivés et ne font plus partie du travail à refaire. Cette série attend une validation visuelle avant son implémentation Svelte.
