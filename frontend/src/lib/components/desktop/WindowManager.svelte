@@ -1,7 +1,7 @@
 <script lang="ts">
-	import { windows, type WindowState } from '$stores/windows';
+	import { windows, type WindowState } from '#lib/stores/windows.js';
 	import Window from './Window.svelte';
-	import { getAppComponent } from '$components/apps';
+	import { getAppComponent } from '#lib/components/apps/index.js';
 
 	// Get component and prepare props for a window
 	function getComponentForWindow(window: WindowState) {

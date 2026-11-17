@@ -71,13 +71,11 @@ impl PasswordPolicy {
         if self.require_special && !password.chars().any(|c| !c.is_alphanumeric()) {
             return Some("Password must contain a special character".to_string());
         }
-        if self.forbid_username {
-            if let Some(u) = username.filter(|u| u.len() >= 3) {
-                if password.to_lowercase().contains(&u.to_lowercase()) {
+        if self.forbid_username
+            && let Some(u) = username.filter(|u| u.len() >= 3)
+                && password.to_lowercase().contains(&u.to_lowercase()) {
                     return Some("Password must not contain the username".to_string());
                 }
-            }
-        }
         None
     }
 }

@@ -117,29 +117,33 @@ RUST_LOG=pinas=info,tower_http=info
 
 ### Rust
 - **Authentification** : `main.rs` sépare un routeur public (`/api/health`, `/api/auth`, `/api/setup`, `/api/ws`) d'un routeur protégé par `require_auth` (JWT + session en base). Les routeurs purement administratifs (`storage`, `docker`, `packages`, `system/update`, `cups`, `terminal`, `display`) sont enveloppés par `require_admin`. Un nouveau routeur va dans le bloc protégé ; un handler destructif prend `AdminUser` en paramètre. Ne jamais ajouter de route hors du bloc protégé sans raison documentée.
+- **Permissions de dossiers** : `permission::most_specific_permission` (préfixe le plus long) décide ; sans permission explicite, un partage sans ACL est ouvert aux authentifiés, un média est refusé ; admin = accès total. Les noms d'utilisateur/groupe passent par `validate_username`/`validate_group_name`, tout ce qui finit dans `smb.conf` par les `validate*` de `models/share.rs`.
 - **Erreurs API** : un handler renvoie `Result<_, ApiError>` (`api/error.rs`, JSON `{error, code}`) ; les erreurs de service (`thiserror`) se convertissent avec `?` via un `impl From<XError> for ApiError` qui fixe status + code. Pas de `StatusCode` construit à la main dans les handlers.
 - `thiserror` pour les erreurs custom
 - Async/await partout (Tokio runtime)
 - Structs avec `#[derive(Debug, Serialize, Deserialize)]`
-- Tests dans le même fichier avec `#[cfg(test)]` ; les tests qui touchent la base utilisent `test_util::migrated_pool()` (SQLite mémoire + vraies migrations). CI : `cargo test --locked` et `cargo check` avec `-D warnings`.
+- Tests dans le même fichier avec `#[cfg(test)]` ; les tests qui touchent la base utilisent `test_util::migrated_pool()` (SQLite mémoire + vraies migrations). CI : `cargo test --locked`, `cargo check` avec `-D warnings` et `cargo clippy --all-targets -- -D warnings` (clippy doit rester propre).
 - Frontend servi depuis `/storage/.pinas/www/` via tower-http
 
 ### Svelte
-- **Un seul client HTTP** : `$stores/api` (`api.getX()` typés, `api.requestRaw()` quand le corps d'erreur doit être lu). Jamais de `fetch('/api/…')` dans un composant. Le client gère 401 → déconnexion, 403 → toast.
-- **Erreurs utilisateur** : `toasts.error(errorMessage(e, $t.common.errors.<clé>))` (`$stores/toasts`), jamais `alert()`. Aucune chaîne anglaise en dur : tout passe par `$t` (`en.ts`/`fr.ts` doivent rester strictement parallèles — un test l'impose).
+- **Un seul client HTTP** : `#lib/stores/api.js` (`api.getX()` typés, `api.requestRaw()` quand le corps d'erreur doit être lu). Jamais de `fetch('/api/…')` dans un composant. Le client gère 401 → déconnexion, 403 → toast.
+- **Erreurs utilisateur** : `toasts.error(errorMessage(e, $t.common.errors.<clé>))` (`#lib/stores/toasts.js`), jamais `alert()`. Aucune chaîne anglaise en dur : tout passe par `$t` (`en.ts`/`fr.ts` doivent rester strictement parallèles — un test l'impose).
 - Une app réservée aux admins porte `adminOnly: true` dans `stores/desktop.ts` (le backend l'impose aussi).
 - Pas de bouton sans handler : on retire ce qui n'est pas branché plutôt que d'afficher un placeholder.
 - Tests : Vitest (`npm test`), fichiers `*.test.ts` à côté des stores.
 - Composants en PascalCase : `DiskManager.svelte`
-- Stores dans `$lib/stores/`, composants apps dans `$lib/components/apps/`
+- Stores dans `src/lib/stores/`, composants apps dans `src/lib/components/apps/`
+- **Imports (SvelteKit 3)** : alias natif `#lib/*` déclaré dans `imports` de `package.json` (il n'y a plus de `$lib`, `$stores` ni `$components`), toujours avec l'extension : `#lib/stores/api.js`, `#lib/i18n/index.js`, `#lib/components/ui/X.svelte`. `$app/environment` s'appelle désormais `$app/env`.
+- Config SvelteKit (adapter static, preprocess) dans `vite.config.ts` : `svelte.config.js` n'existe plus ; `tsconfig.json` étend `$app/tsconfig`
+- **Tailwind 4** : plus de `tailwind.config.js` ni de PostCSS ; thème (`primary-*`, `surface-*`, `shadow-window`/`shadow-dock`) dans le bloc `@theme` de `src/app.css`, classes partagées (`btn-*`, `card`, `badge-*`…) en `@utility`, plugin `@tailwindcss/vite`. Une balise `<style>` de composant qui utilise `@apply` doit commencer par `@reference "../../app.css";` (chemin relatif)
 - Types partagés dans les stores
 - Adapter static pour SSG
-- i18n via `$lib/i18n/`
+- i18n via `#lib/i18n/index.js`
 
 ### Git
 - Commits conventionnels : `feat:`, `fix:`, `docs:`, `refactor:`
 - Branches : `feature/`, `fix/`, `release/`
-- **Version** : une seule source, le fichier `VERSION`. `scripts/sync-version.sh` la propage (Cargo.toml/lock, package.json/lock, package.mk) ; `--check` en CI refuse toute dérive ; `--set X.Y.Z` pour bumper. Release : `scripts/build-release.sh [--tag]` (notes générées depuis les commits conventionnels), validation Pi : `docs/RELEASE_CHECKLIST.md`.
+- **Version** : une seule source, le fichier `VERSION`. `scripts/sync-version.sh` la propage (Cargo.toml/lock, package.json/lock, package.mk) ; `--check` en CI refuse toute dérive ; `--set X.Y.Z` pour bumper. Release : `scripts/build-release.sh [--tag]` (signe chaque `.sha256` en Ed25519 → `.sha256.sig` avec la clé privée `~/.config/pinas/update-signing.pem` ou `PINAS_UPDATE_SIGNING_KEY` ; sa clé publique doit figurer dans `UPDATE_SIGNING_KEYS` de `services/update.rs` ; une release sans `.sig` est refusée par les Pi ; `scripts/signing-key.sh` gère la clé : `status`, `restore`, `remove`, `new` pour une rotation — une release qui introduit une nouvelle clé doit encore être signée par l'ancienne) (notes générées depuis les commits conventionnels), validation Pi : `docs/RELEASE_CHECKLIST.md`.
 
 ### Dev local
 - **Point d'entrée des scripts** : `./scripts/pinas.sh` (menu interactif ; `list` ; `<nom> [args]` pour lancer directement, ex. `./scripts/pinas.sh dev -d`, `./scripts/pinas.sh check`, `./scripts/pinas.sh release --arch all`)

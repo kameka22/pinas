@@ -56,11 +56,11 @@ async fn toggle_schedule(State(state): State<AppState>, Path(id): Path<String>, 
     PowerService::new(state.db.clone())
         .set_task_enabled(&id, body.enabled)
         .await
-        .map_err(|e| ApiError::not_found(e))?;
+        .map_err(ApiError::not_found)?;
     Ok(StatusCode::NO_CONTENT)
 }
 
 async fn delete_schedule(State(state): State<AppState>, Path(id): Path<String>) -> Result<impl IntoResponse, ApiError> {
-    PowerService::new(state.db.clone()).delete_task(&id).await.map_err(|e| ApiError::not_found(e))?;
+    PowerService::new(state.db.clone()).delete_task(&id).await.map_err(ApiError::not_found)?;
     Ok(StatusCode::NO_CONTENT)
 }

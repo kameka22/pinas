@@ -23,6 +23,11 @@ pub enum PermissionError {
 }
 
 /// Permission Service for managing folder access permissions
+/// Row of `list_all_grouped`: id, path, user_id, username, group_id, group_name, permission
+type GroupedPermissionRow = (String, String, Option<String>, Option<String>, Option<String>, Option<String>, String);
+/// Row of `list_by_folder`: id, user_id, username, group_id, group_name, permission
+type FolderPermissionRow = (String, Option<String>, Option<String>, Option<String>, Option<String>, String);
+
 pub struct PermissionService {
     db: SqlitePool,
 }
@@ -170,7 +175,7 @@ impl PermissionService {
 
     /// List all permissions grouped by folder
     pub async fn list_all_grouped(&self) -> Result<Vec<FolderPermissions>, PermissionError> {
-        let rows: Vec<(String, String, Option<String>, Option<String>, Option<String>, Option<String>, String)> = sqlx::query_as(
+        let rows: Vec<GroupedPermissionRow> = sqlx::query_as(
             r#"
             SELECT
                 fp.id,
@@ -213,7 +218,7 @@ impl PermissionService {
 
     /// List permissions for a specific folder
     pub async fn list_by_folder(&self, path: &str) -> Result<Vec<PermissionEntry>, PermissionError> {
-        let rows: Vec<(String, Option<String>, Option<String>, Option<String>, Option<String>, String)> = sqlx::query_as(
+        let rows: Vec<FolderPermissionRow> = sqlx::query_as(
             r#"
             SELECT
                 fp.id,
@@ -288,49 +293,26 @@ impl PermissionService {
         Ok(permissions)
     }
 
-    /// Get effective permission for a user on a path
-    /// Returns the highest permission level found (write > read > none)
-    pub async fn get_effective_permission(
+    /// Most specific permission granted to `user_id` (directly or through a
+    /// group) on `path` or one of its ancestors; `None` when no entry applies.
+    /// On equal specificity the highest level wins.
+    pub async fn explicit_permission(
         &self,
         user_id: &str,
         path: &str,
-    ) -> Result<PermissionLevel, PermissionError> {
-        // Get all permissions for this user
+    ) -> Result<Option<PermissionLevel>, PermissionError> {
         let all_perms = self.list_by_user(user_id).await?;
-
-        // Find the best matching permission for this path
-        // A permission matches if the path starts with the permission path
-        let mut best_permission = PermissionLevel::None;
-        let mut best_match_len = 0;
-
-        for perm in all_perms {
-            // Check if this permission applies to the path
-            // Path must start with the permission path
-            let perm_path = perm.path.trim_end_matches('/');
-            let check_path = path.trim_end_matches('/');
-
-            if check_path == perm_path || check_path.starts_with(&format!("{}/", perm_path)) {
-                let match_len = perm_path.len();
-
-                // Use the most specific (longest) matching permission
-                // If same length, use the highest permission level
-                if match_len > best_match_len
-                    || (match_len == best_match_len
-                        && perm.permission_level() as u8 > best_permission as u8)
-                {
-                    best_permission = perm.permission_level();
-                    best_match_len = match_len;
-                }
-            }
-        }
-
-        Ok(best_permission)
+        Ok(most_specific_permission(&all_perms, path))
     }
 
-    /// Check if user can access a path (read permission)
-    pub async fn can_read(&self, user_id: &str, path: &str) -> Result<bool, PermissionError> {
-        let perm = self.get_effective_permission(user_id, path).await?;
-        Ok(perm.can_read())
+    /// True when at least one user or group has read or write access configured
+    /// exactly on `path` (Samba then restricts the share to them).
+    pub async fn folder_has_acl(&self, path: &str) -> Result<bool, PermissionError> {
+        Ok(self
+            .list_by_folder(path)
+            .await?
+            .iter()
+            .any(|e| matches!(e.permission.as_str(), "read" | "write")))
     }
 
     /// Get list of all folders with permissions configured
@@ -376,6 +358,35 @@ impl PermissionService {
     }
 }
 
+/// Resolve `path` against a user's permission entries (see
+/// `PermissionService::list_by_user`): the entry on the longest matching
+/// ancestor wins, the highest level on a tie, `None` when nothing applies.
+pub fn most_specific_permission(perms: &[FolderPermission], path: &str) -> Option<PermissionLevel> {
+    let check_path = path.trim_end_matches('/');
+    let mut best: Option<(usize, PermissionLevel)> = None;
+    for perm in perms {
+        let perm_path = perm.path.trim_end_matches('/');
+        let applies = check_path == perm_path
+            || check_path
+                .strip_prefix(perm_path)
+                .is_some_and(|rest| rest.starts_with('/'));
+        if !applies {
+            continue;
+        }
+        let level = perm.permission_level();
+        let better = match best {
+            None => true,
+            Some((len, current)) => {
+                perm_path.len() > len || (perm_path.len() == len && level as u8 > current as u8)
+            }
+        };
+        if better {
+            best = Some((perm_path.len(), level));
+        }
+    }
+    best.map(|(_, level)| level)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -394,14 +405,31 @@ mod tests {
         svc.create("/srv/data/private", Some(&alice), None, PermissionLevel::Read).await.unwrap();
 
         // inherited from the group on the parent folder
-        assert_eq!(svc.get_effective_permission(&alice, "/srv/data/photos").await.unwrap(), PermissionLevel::Write);
+        assert_eq!(svc.explicit_permission(&alice, "/srv/data/photos").await.unwrap(), Some(PermissionLevel::Write));
         // the more specific user rule downgrades to read-only
-        assert_eq!(svc.get_effective_permission(&alice, "/srv/data/private/x").await.unwrap(), PermissionLevel::Read);
-        assert!(svc.can_read(&alice, "/srv/data/private").await.unwrap());
+        assert_eq!(svc.explicit_permission(&alice, "/srv/data/private/x").await.unwrap(), Some(PermissionLevel::Read));
+        assert_eq!(svc.explicit_permission(&alice, "/srv/data/private/").await.unwrap(), Some(PermissionLevel::Read));
         // unrelated path: nothing
-        assert_eq!(svc.get_effective_permission(&alice, "/srv/other").await.unwrap(), PermissionLevel::None);
+        assert_eq!(svc.explicit_permission(&alice, "/srv/other").await.unwrap(), None);
         // a folder that merely shares a prefix is not a child
-        assert_eq!(svc.get_effective_permission(&alice, "/srv/data2").await.unwrap(), PermissionLevel::None);
+        assert_eq!(svc.explicit_permission(&alice, "/srv/data2").await.unwrap(), None);
+    }
+
+    #[tokio::test]
+    async fn explicit_none_denies_and_acl_detection() {
+        let pool = migrated_pool().await;
+        let carol = insert_user(&pool, "carol", false).await;
+        let dave = insert_user(&pool, "dave", false).await;
+        let svc = PermissionService::new(pool.clone());
+
+        assert!(!svc.folder_has_acl("/srv/share").await.unwrap());
+        svc.create("/srv/share", Some(&carol), None, PermissionLevel::Write).await.unwrap();
+        svc.create("/srv/share/secret", Some(&carol), None, PermissionLevel::None).await.unwrap();
+        assert!(svc.folder_has_acl("/srv/share").await.unwrap());
+        // an explicit "none" on a sub-folder overrides the parent grant
+        assert_eq!(svc.explicit_permission(&carol, "/srv/share/secret/a").await.unwrap(), Some(PermissionLevel::None));
+        // another user has nothing explicit
+        assert_eq!(svc.explicit_permission(&dave, "/srv/share").await.unwrap(), None);
     }
 
     #[tokio::test]

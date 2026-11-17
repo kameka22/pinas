@@ -89,24 +89,21 @@ async fn update_user_service_access(
     let old_smb = svc.is_user_smb_enabled(&user_id).await.unwrap_or(false);
 
     // Update each service if provided
-    if let Some(smb) = payload.smb {
-        if let Err(e) = svc.set_user_access(&user_id, "smb", smb).await {
+    if let Some(smb) = payload.smb
+        && let Err(e) = svc.set_user_access(&user_id, "smb", smb).await {
             tracing::error!("Failed to set SMB access: {}", e);
             return ApiError::internal("Failed to update SMB access".to_string()).with_code("INTERNAL_ERROR".to_string()).into_response();
         }
-    }
 
-    if let Some(nfs) = payload.nfs {
-        if let Err(e) = svc.set_user_access(&user_id, "nfs", nfs).await {
+    if let Some(nfs) = payload.nfs
+        && let Err(e) = svc.set_user_access(&user_id, "nfs", nfs).await {
             tracing::error!("Failed to set NFS access: {}", e);
         }
-    }
 
-    if let Some(ftp) = payload.ftp {
-        if let Err(e) = svc.set_user_access(&user_id, "ftp", ftp).await {
+    if let Some(ftp) = payload.ftp
+        && let Err(e) = svc.set_user_access(&user_id, "ftp", ftp).await {
             tracing::error!("Failed to set FTP access: {}", e);
         }
-    }
 
     // Handle SMB user activation/deactivation
     let new_smb = payload.smb.unwrap_or(old_smb);

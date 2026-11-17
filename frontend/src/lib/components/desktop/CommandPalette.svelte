@@ -1,12 +1,12 @@
 <script lang="ts">
 	import Icon from '@iconify/svelte';
 	import { tick } from 'svelte';
-	import { t, translate } from '$lib/i18n';
-	import { auth, api, type BrowsableLocation } from '$stores/api';
-	import { allApps, type DesktopApp } from '$stores/desktop';
-	import { openWindow } from '$stores/windows';
-	import { paletteVisible, scoreMatch, type PaletteItem } from '$stores/palette';
-	import { widgetsVisible } from '$stores/widgets';
+	import { t, translate } from '#lib/i18n/index.js';
+	import { auth, api, type BrowsableLocation } from '#lib/stores/api.js';
+	import { allApps, type DesktopApp } from '#lib/stores/desktop.js';
+	import { openWindow } from '#lib/stores/windows.js';
+	import { paletteVisible, scoreMatch, type PaletteItem } from '#lib/stores/palette.js';
+	import { widgetsVisible } from '#lib/stores/widgets.js';
 
 	// Control Panel sections reachable from the palette (id -> i18n label key)
 	const SETTINGS: { id: string; labelKey: string; icon: string; adminOnly?: boolean }[] = [

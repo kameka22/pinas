@@ -1,7 +1,7 @@
 <script lang="ts">
 	import Icon from '@iconify/svelte';
 	import { fly } from 'svelte/transition';
-	import { toasts, type ToastKind } from '$stores/toasts';
+	import { toasts, type ToastKind } from '#lib/stores/toasts.js';
 
 	const icons: Record<ToastKind, string> = {
 		success: 'mdi:check-circle',

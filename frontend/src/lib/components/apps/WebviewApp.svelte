@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 	import Icon from '@iconify/svelte';
-	import { t } from '$lib/i18n';
-	import { gradientStyle } from '$lib/utils/gradient';
+	import { t } from '#lib/i18n/index.js';
+	import { gradientStyle } from '#lib/utils/gradient.js';
 
 	// Config passed from manifest
 	export let config: {

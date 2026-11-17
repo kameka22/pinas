@@ -9,9 +9,9 @@
 		completeSetup,
 		setupError,
 		clearError
-	} from '$stores/onboarding';
-	import { t, locale, languages, type Locale } from '$lib/i18n';
-	import PasswordRules from '$lib/components/ui/PasswordRules.svelte';
+	} from '#lib/stores/onboarding.js';
+	import { t, locale, languages, type Locale } from '#lib/i18n/index.js';
+	import PasswordRules from '#lib/components/ui/PasswordRules.svelte';
 
 	// Local form values
 	let selectedLanguage: Locale = $locale;

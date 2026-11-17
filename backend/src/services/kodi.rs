@@ -800,8 +800,8 @@ impl KodiService {
         let mut current_title: Option<String> = None;
         let mut current_type: Option<String> = None;
 
-        if active_players > 0 {
-            if let Some(player) = players.as_array().and_then(|a| a.first()) {
+        if active_players > 0
+            && let Some(player) = players.as_array().and_then(|a| a.first()) {
                 let playerid = player["playerid"].as_i64().unwrap_or(1);
                 let ptype = player["type"].as_str().unwrap_or("video").to_string();
 
@@ -857,7 +857,6 @@ impl KodiService {
                     );
                 }
             }
-        }
 
         Ok(KodiStatus {
             connected: true,

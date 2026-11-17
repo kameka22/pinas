@@ -9,6 +9,7 @@ use axum::{
 };
 use serde::Serialize;
 use tokio::sync::{broadcast, Mutex, RwLock};
+use anyhow::Context;
 use sysinfo::{Networks, ProcessesToUpdate, System};
 use axum::http::{header, Method};
 use tower_http::cors::CorsLayer;
@@ -118,14 +119,22 @@ async fn main() -> anyhow::Result<()> {
         .unwrap_or(false);
 
     // Shared system snapshot + refresher (CPU, memory, processes, network throughput)
-    let system = Arc::new(RwLock::new(System::new_all()));
+    let system = Arc::new(RwLock::new(
+        System::new_all().context("system information (sysinfo) is not supported on this platform")?,
+    ));
     let net_rates = Arc::new(RwLock::new(NetRates::default()));
     {
         let system = system.clone();
         let net_rates = net_rates.clone();
         tokio::spawn(async move {
             const PERIOD_SECS: u64 = 2;
-            let mut networks = Networks::new_with_refreshed_list();
+            let mut networks = match Networks::new_with_refreshed_list() {
+                Ok(networks) => Some(networks),
+                Err(e) => {
+                    tracing::warn!("network statistics unavailable, throughput will stay at 0: {e}");
+                    None
+                }
+            };
             let mut ticker = tokio::time::interval(std::time::Duration::from_secs(PERIOD_SECS));
             ticker.tick().await; // first tick fires immediately; the delta below needs a full period
             loop {
@@ -136,10 +145,11 @@ async fn main() -> anyhow::Result<()> {
                     sys.refresh_memory();
                     sys.refresh_processes(ProcessesToUpdate::All, true);
                 }
+                let Some(networks) = networks.as_mut() else { continue };
                 networks.refresh(true);
                 let (rx, tx) = networks
                     .iter()
-                    .filter(|(name, _)| *name != "lo")
+                    .filter(|(name, _)| name.as_os_str() != "lo")
                     .fold((0u64, 0u64), |(rx, tx), (_, data)| (rx + data.received(), tx + data.transmitted()));
                 *net_rates.write().await = NetRates {
                     rx_bytes_per_sec: rx / PERIOD_SECS,

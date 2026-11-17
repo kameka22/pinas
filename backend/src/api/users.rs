@@ -95,8 +95,8 @@ async fn create_user(
     Json(payload): Json<CreateUserRequest>,
 ) -> impl IntoResponse {
     // Validate input
-    if payload.username.trim().is_empty() {
-        return ApiError::bad_request("Username is required".to_string()).with_code("VALIDATION_ERROR".to_string()).into_response();
+    if let Err(e) = crate::services::user::validate_username(&payload.username) {
+        return ApiError::from(e).into_response();
     }
 
     let policy = crate::services::password_policy::PasswordPolicy::load(&state.db).await.unwrap_or_default();
@@ -179,7 +179,6 @@ async fn update_user(
         UserUpdate {
             email: payload.email.map(Some),
             is_admin: payload.is_admin,
-            ..Default::default()
         }
     } else {
         UserUpdate {

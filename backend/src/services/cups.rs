@@ -115,7 +115,7 @@ impl CupsService {
         if self.dev_mode {
             let enabled = DEV_CUPS_ENABLED.load(Ordering::Relaxed);
             let printer_count = if enabled {
-                dev_printers().lock().unwrap().len() as u32
+                dev_printers().lock().unwrap_or_else(std::sync::PoisonError::into_inner).len() as u32
             } else {
                 0
             };
@@ -321,7 +321,7 @@ impl CupsService {
             if !enabled {
                 anyhow::bail!("CUPS service is not enabled");
             }
-            return Ok(dev_printers().lock().unwrap().clone());
+            return Ok(dev_printers().lock().unwrap_or_else(std::sync::PoisonError::into_inner).clone());
         }
 
         let output = AsyncCommand::new("lpstat")
@@ -406,7 +406,7 @@ impl CupsService {
             let model = Self::uri_to_model(uri);
             return Ok(vec![
                 PrinterDriver {
-                    id: format!("drv:///sample.drv/generic.ppd"),
+                    id: "drv:///sample.drv/generic.ppd".to_string(),
                     name: format!("{} - Generic PostScript", model),
                 },
                 PrinterDriver {
@@ -474,12 +474,12 @@ impl CupsService {
                 state: "idle".to_string(),
                 state_message: String::new(),
                 shared: req.shared.unwrap_or(true),
-                is_default: dev_printers().lock().unwrap().is_empty(),
+                is_default: dev_printers().lock().unwrap_or_else(std::sync::PoisonError::into_inner).is_empty(),
                 model: Self::uri_to_model(&req.uri),
                 location: req.location.clone().unwrap_or_default(),
             };
 
-            dev_printers().lock().unwrap().push(printer);
+            dev_printers().lock().unwrap_or_else(std::sync::PoisonError::into_inner).push(printer);
             tracing::info!("[DEV MODE] Added printer: {}", req.name);
             return Ok(());
         }
@@ -522,7 +522,7 @@ impl CupsService {
     /// Remove a printer
     pub async fn remove_printer(&self, name: &str) -> anyhow::Result<()> {
         if self.dev_mode {
-            let mut printers = dev_printers().lock().unwrap();
+            let mut printers = dev_printers().lock().unwrap_or_else(std::sync::PoisonError::into_inner);
             printers.retain(|p| p.name != name);
             tracing::info!("[DEV MODE] Removed printer: {}", name);
             return Ok(());
@@ -545,7 +545,7 @@ impl CupsService {
     /// Update printer settings
     pub async fn update_printer(&self, name: &str, req: &UpdatePrinterRequest) -> anyhow::Result<()> {
         if self.dev_mode {
-            let mut printers = dev_printers().lock().unwrap();
+            let mut printers = dev_printers().lock().unwrap_or_else(std::sync::PoisonError::into_inner);
             let found = printers.iter().any(|p| p.name == name);
             if !found {
                 anyhow::bail!("Printer not found: {}", name);
@@ -599,7 +599,7 @@ impl CupsService {
             if !enabled {
                 anyhow::bail!("CUPS service is not enabled");
             }
-            let jobs = dev_jobs().lock().unwrap();
+            let jobs = dev_jobs().lock().unwrap_or_else(std::sync::PoisonError::into_inner);
             let filtered: Vec<PrintJob> = if let Some(name) = printer_name {
                 jobs.iter().filter(|j| j.printer == name).cloned().collect()
             } else {
@@ -657,7 +657,7 @@ impl CupsService {
     /// Cancel a print job
     pub async fn cancel_job(&self, job_id: u32) -> anyhow::Result<()> {
         if self.dev_mode {
-            let mut jobs = dev_jobs().lock().unwrap();
+            let mut jobs = dev_jobs().lock().unwrap_or_else(std::sync::PoisonError::into_inner);
             jobs.retain(|j| j.id != job_id);
             tracing::info!("[DEV MODE] Cancelled job: {}", job_id);
             return Ok(());
@@ -686,11 +686,11 @@ impl CupsService {
             }
 
             // Simulate adding a job
-            let mut counter = dev_job_counter().lock().unwrap();
+            let mut counter = dev_job_counter().lock().unwrap_or_else(std::sync::PoisonError::into_inner);
             *counter += 1;
             let job_id = *counter;
 
-            dev_jobs().lock().unwrap().push(PrintJob {
+            dev_jobs().lock().unwrap_or_else(std::sync::PoisonError::into_inner).push(PrintJob {
                 id: job_id,
                 printer: printer_name.to_string(),
                 title: "Test Page".to_string(),

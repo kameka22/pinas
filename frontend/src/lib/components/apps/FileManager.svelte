@@ -1,12 +1,12 @@
 <script lang="ts">
 	import Icon from '@iconify/svelte';
-	import { t, locale } from '$lib/i18n';
+	import { t, locale } from '#lib/i18n/index.js';
 	import { onMount } from 'svelte';
-	import { api, type FileItem as ApiFileItem, type BrowsableLocation } from '$lib/stores/api';
-	import { fileTasks } from '$stores/taskManager';
-	import ContextMenu from '$lib/components/ui/ContextMenu.svelte';
-	import FilePreview from '$lib/components/ui/FilePreview.svelte';
-	import { toasts, errorMessage } from '$stores/toasts';
+	import { api, type FileItem as ApiFileItem, type BrowsableLocation } from '#lib/stores/api.js';
+	import { fileTasks } from '#lib/stores/taskManager.js';
+	import ContextMenu from '#lib/components/ui/ContextMenu.svelte';
+	import FilePreview from '#lib/components/ui/FilePreview.svelte';
+	import { toasts, errorMessage } from '#lib/stores/toasts.js';
 
 	// Types for display (extends API type with icon)
 	interface FileItem {

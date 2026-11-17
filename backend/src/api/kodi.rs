@@ -7,7 +7,7 @@ use axum::{
 };
 use serde::Deserialize;
 
-use crate::api::middleware::AuthUser;
+use crate::api::middleware::{AdminUser, AuthUser};
 use crate::services::kodi::{KodiService, MediaSource};
 use crate::AppState;
 use crate::api::error::ApiError;
@@ -195,7 +195,7 @@ struct AddSourceRequest {
 
 async fn add_source(
     State(state): State<AppState>,
-    _user: AuthUser,
+    _admin: AdminUser,
     Json(body): Json<AddSourceRequest>,
 ) -> impl IntoResponse {
     let kodi = KodiService::new(state.config.dev_mode, state.config.kodi_username.clone(), state.config.kodi_password.clone());
@@ -225,7 +225,7 @@ async fn add_source(
 
 async fn remove_source(
     State(state): State<AppState>,
-    _user: AuthUser,
+    _admin: AdminUser,
     Path(source_id): Path<String>,
 ) -> impl IntoResponse {
     let kodi = KodiService::new(state.config.dev_mode, state.config.kodi_username.clone(), state.config.kodi_password.clone());
@@ -245,7 +245,7 @@ struct SettingsQuery {
 
 async fn get_settings(
     State(state): State<AppState>,
-    _user: AuthUser,
+    _admin: AdminUser,
     Query(query): Query<SettingsQuery>,
 ) -> impl IntoResponse {
     let kodi = KodiService::new(state.config.dev_mode, state.config.kodi_username.clone(), state.config.kodi_password.clone());
@@ -263,7 +263,7 @@ struct SetSettingRequest {
 
 async fn set_setting(
     State(state): State<AppState>,
-    _user: AuthUser,
+    _admin: AdminUser,
     Path(setting_id): Path<String>,
     Json(body): Json<SetSettingRequest>,
 ) -> impl IntoResponse {
@@ -279,7 +279,7 @@ async fn set_setting(
 
 async fn get_addons(
     State(state): State<AppState>,
-    _user: AuthUser,
+    _admin: AdminUser,
 ) -> impl IntoResponse {
     let kodi = KodiService::new(state.config.dev_mode, state.config.kodi_username.clone(), state.config.kodi_password.clone());
 
@@ -291,7 +291,7 @@ async fn get_addons(
 
 async fn enable_addon(
     State(state): State<AppState>,
-    _user: AuthUser,
+    _admin: AdminUser,
     Path(addon_id): Path<String>,
 ) -> impl IntoResponse {
     let kodi = KodiService::new(state.config.dev_mode, state.config.kodi_username.clone(), state.config.kodi_password.clone());
@@ -304,7 +304,7 @@ async fn enable_addon(
 
 async fn disable_addon(
     State(state): State<AppState>,
-    _user: AuthUser,
+    _admin: AdminUser,
     Path(addon_id): Path<String>,
 ) -> impl IntoResponse {
     let kodi = KodiService::new(state.config.dev_mode, state.config.kodi_username.clone(), state.config.kodi_password.clone());
@@ -332,7 +332,7 @@ async fn scan_library(
 
 async fn clean_library(
     State(state): State<AppState>,
-    _user: AuthUser,
+    _admin: AdminUser,
     Path(library_type): Path<String>,
 ) -> impl IntoResponse {
     let kodi = KodiService::new(state.config.dev_mode, state.config.kodi_username.clone(), state.config.kodi_password.clone());
@@ -366,12 +366,8 @@ async fn send_notification(
 
 async fn reboot(
     State(state): State<AppState>,
-    user: AuthUser,
+    _admin: AdminUser,
 ) -> impl IntoResponse {
-    // Only admin can reboot
-    if !user.is_admin {
-        return ApiError::forbidden("Admin permission required").into_response();
-    }
 
     let kodi = KodiService::new(state.config.dev_mode, state.config.kodi_username.clone(), state.config.kodi_password.clone());
 
@@ -383,12 +379,8 @@ async fn reboot(
 
 async fn shutdown(
     State(state): State<AppState>,
-    user: AuthUser,
+    _admin: AdminUser,
 ) -> impl IntoResponse {
-    // Only admin can shutdown
-    if !user.is_admin {
-        return ApiError::forbidden("Admin permission required").into_response();
-    }
 
     let kodi = KodiService::new(state.config.dev_mode, state.config.kodi_username.clone(), state.config.kodi_password.clone());
 

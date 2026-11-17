@@ -1,11 +1,11 @@
 <script lang="ts">
 	import Icon from '@iconify/svelte';
-	import { openWindow } from '$stores/windows';
-	import { allApps, addToDesktop, removeFromDesktop, pinnedAppIds, dockPinnedIds, addToDock, removeFromDock, type DesktopApp } from '$stores/desktop';
+	import { openWindow } from '#lib/stores/windows.js';
+	import { allApps, addToDesktop, removeFromDesktop, pinnedAppIds, dockPinnedIds, addToDock, removeFromDock, type DesktopApp } from '#lib/stores/desktop.js';
 	import { createEventDispatcher, tick } from 'svelte';
-	import ContextMenu from '$lib/components/ui/ContextMenu.svelte';
-	import { t } from '$lib/i18n';
-	import { gradientStyle } from '$lib/utils/gradient';
+	import ContextMenu from '#lib/components/ui/ContextMenu.svelte';
+	import { t } from '#lib/i18n/index.js';
+	import { gradientStyle } from '#lib/utils/gradient.js';
 
 	export let visible = false;
 

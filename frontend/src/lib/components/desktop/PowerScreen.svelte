@@ -1,9 +1,9 @@
 <script lang="ts">
 	import Icon from '@iconify/svelte';
 	import { onMount, onDestroy } from 'svelte';
-	import { powerScreen } from '$stores/power';
-	import { api } from '$stores/api';
-	import { t } from '$lib/i18n';
+	import { powerScreen } from '#lib/stores/power.js';
+	import { api } from '#lib/stores/api.js';
+	import { t } from '#lib/i18n/index.js';
 
 	type Phase = 'waiting' | 'back' | 'off';
 

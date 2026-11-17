@@ -37,7 +37,7 @@ PiNAS transforms your Raspberry Pi into a full-featured NAS with a modern web in
 | Backend | Rust (Axum + Tokio) |
 | Frontend | SvelteKit + Svelte 5 (SSG) |
 | Database | SQLite |
-| Style | TailwindCSS 3.4 |
+| Style | TailwindCSS 4 |
 | Icons | Iconify (MDI) |
 | Target | Raspberry Pi 5 (ARM64) · x86_64 PC / virtual machine (`.ova`) — ARM64 VM: experimental, not bootable yet |
 
@@ -66,7 +66,7 @@ PiNAS transforms your Raspberry Pi into a full-featured NAS with a modern web in
 ### Prerequisites
 
 - Docker (for building — no local Rust/cargo needed)
-- Node.js 22+ / npm (for frontend dev)
+- Node.js 26+ / npm (for frontend dev)
 
 ### Frontend Dev
 

@@ -113,6 +113,8 @@ pub struct InstallConfig {
 /// Installation step
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "action", rename_all = "snake_case")]
+// Deserialized from app manifests, a handful per install: the size gap is irrelevant.
+#[allow(clippy::large_enum_variant)]
 pub enum InstallStep {
     Download {
         url: String,

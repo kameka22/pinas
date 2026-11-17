@@ -104,30 +104,27 @@ impl ServiceManager {
                 if let Some((key, value)) = line.split_once('=') {
                     match key {
                         "MainPID" => {
-                            if let Ok(p) = value.parse::<u32>() {
-                                if p > 0 {
+                            if let Ok(p) = value.parse::<u32>()
+                                && p > 0 {
                                     pid = Some(p);
                                 }
-                            }
                         }
                         "MemoryCurrent" => {
-                            if let Ok(m) = value.parse::<u64>() {
-                                if m < u64::MAX {
+                            if let Ok(m) = value.parse::<u64>()
+                                && m < u64::MAX {
                                     memory_usage = Some(m);
                                 }
-                            }
                         }
                         "Description" => {
                             if !value.is_empty() {
                                 description = Some(value.to_string());
                             }
                         }
-                        "ActiveEnterTimestamp" => {
+                        "ActiveEnterTimestamp"
                             // Parse timestamp and calculate uptime
-                            if !value.is_empty() && value != "n/a" {
+                            if !value.is_empty() && value != "n/a" => {
                                 uptime = parse_uptime_from_timestamp(value);
                             }
-                        }
                         _ => {}
                     }
                 }
@@ -346,14 +343,13 @@ impl ServiceManager {
                 let unit = parts[0];
                 if let Some(name) = unit.strip_suffix(".service") {
                     // Filter to show only pinas-managed services or common ones
-                    if name.starts_with("pinas-") ||
+                    if (name.starts_with("pinas-") ||
                        name == "docker" ||
                        name == "smbd" ||
-                       name == "nmbd" {
-                        if let Ok(status) = self.get_status(name).await {
+                       name == "nmbd")
+                        && let Ok(status) = self.get_status(name).await {
                             services.push(status);
                         }
-                    }
                 }
             }
         }
@@ -374,12 +370,8 @@ fn sanitize_service_name(name: &str) -> anyhow::Result<String> {
         anyhow::bail!("Invalid service name: {}", name);
     }
 
-    // Add .service suffix if not present
-    if sanitized.ends_with(".service") {
-        Ok(sanitized)
-    } else {
-        Ok(sanitized)
-    }
+    // systemctl accepts the unit name with or without its .service suffix
+    Ok(sanitized)
 }
 
 /// Parse uptime from ActiveEnterTimestamp

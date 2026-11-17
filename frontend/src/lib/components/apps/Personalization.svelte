@@ -1,10 +1,10 @@
 <script lang="ts">
 	import Icon from '@iconify/svelte';
 	import { onMount } from 'svelte';
-	import { t } from '$lib/i18n';
-	import { auth } from '$stores/api';
-	import { wallpaper, WALLPAPERS, setWallpaper, loadWallpaper } from '$stores/wallpaper';
-	import { ALL_WIDGETS, enabledWidgets, toggleWidget, loadWidgetPreferences, type WidgetId } from '$stores/widgets';
+	import { t } from '#lib/i18n/index.js';
+	import { auth } from '#lib/stores/api.js';
+	import { wallpaper, WALLPAPERS, setWallpaper, loadWallpaper } from '#lib/stores/wallpaper.js';
+	import { ALL_WIDGETS, enabledWidgets, toggleWidget, loadWidgetPreferences, type WidgetId } from '#lib/stores/widgets.js';
 
 	$: isAdmin = $auth.user?.role === 'admin';
 	const widgetIcons: Record<WidgetId, string> = { system: 'mdi:chip', storage: 'mdi:harddisk', services: 'mdi:cog-outline', notifications: 'mdi:bell-outline', docker: 'mdi:docker' };

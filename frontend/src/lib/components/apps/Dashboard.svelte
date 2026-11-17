@@ -1,11 +1,11 @@
 <script lang="ts">
 	import Icon from '@iconify/svelte';
 	import { onMount } from 'svelte';
-	import { t, locale } from '$lib/i18n';
-	import { systemStats, formatBytes } from '$stores/system';
-	import { api } from '$stores/api';
-	import type { StoragePool, SystemServiceSummary } from '$stores/api';
-	import { notifications, loadNotifications, timeAgo, notificationVisual } from '$stores/notifications';
+	import { t, locale } from '#lib/i18n/index.js';
+	import { systemStats, formatBytes } from '#lib/stores/system.js';
+	import { api } from '#lib/stores/api.js';
+	import type { StoragePool, SystemServiceSummary } from '#lib/stores/api.js';
+	import { notifications, loadNotifications, timeAgo, notificationVisual } from '#lib/stores/notifications.js';
 
 	let pools: StoragePool[] = [];
 	let diskCount = 0;

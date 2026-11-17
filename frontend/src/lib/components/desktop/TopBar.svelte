@@ -1,16 +1,16 @@
 <script lang="ts">
 	import Icon from '@iconify/svelte';
-	import { systemStats, systemInfo, formatRate } from '$stores/system';
-	import { widgetsVisible } from '$stores/widgets';
-	import { paletteVisible } from '$stores/palette';
-	import { unreadCount, loadNotifications } from '$stores/notifications';
-	import { hasActiveTask, activeTaskCount } from '$stores/taskManager';
-	import { auth, api } from '$stores/api';
-	import { openWindow } from '$stores/windows';
+	import { systemStats, systemInfo, formatRate } from '#lib/stores/system.js';
+	import { widgetsVisible } from '#lib/stores/widgets.js';
+	import { paletteVisible } from '#lib/stores/palette.js';
+	import { unreadCount, loadNotifications } from '#lib/stores/notifications.js';
+	import { hasActiveTask, activeTaskCount } from '#lib/stores/taskManager.js';
+	import { auth, api } from '#lib/stores/api.js';
+	import { openWindow } from '#lib/stores/windows.js';
 	import { createEventDispatcher, onMount, onDestroy } from 'svelte';
-	import { t, locale } from '$lib/i18n';
+	import { t, locale } from '#lib/i18n/index.js';
 	import { get } from 'svelte/store';
-	import { powerScreen } from '$stores/power';
+	import { powerScreen } from '#lib/stores/power.js';
 
 	const dispatch = createEventDispatcher();
 

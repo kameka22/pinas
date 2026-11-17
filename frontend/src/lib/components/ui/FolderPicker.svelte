@@ -1,9 +1,9 @@
 <script lang="ts">
 	import { createEventDispatcher } from 'svelte';
 	import Icon from '@iconify/svelte';
-	import { t } from '$lib/i18n';
-	import { api } from '$lib/stores/api';
-	import type { BrowsableLocation } from '$lib/stores/api';
+	import { t } from '#lib/i18n/index.js';
+	import { api } from '#lib/stores/api.js';
+	import type { BrowsableLocation } from '#lib/stores/api.js';
 
 	// Props
 	export let value: string = '';

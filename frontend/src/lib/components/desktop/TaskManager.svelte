@@ -1,8 +1,8 @@
 <script lang="ts">
 	import Icon from '@iconify/svelte';
-	import { fileTasks, hasActiveTask, activeTaskCount } from '$stores/taskManager';
-	import type { FileTask, FileTaskType } from '$stores/taskManager';
-	import { t } from '$lib/i18n';
+	import { fileTasks, hasActiveTask, activeTaskCount } from '#lib/stores/taskManager.js';
+	import type { FileTask, FileTaskType } from '#lib/stores/taskManager.js';
+	import { t } from '#lib/i18n/index.js';
 	import { createEventDispatcher } from 'svelte';
 
 	export let visible = false;

@@ -1,10 +1,10 @@
 <script lang="ts">
 	import Icon from '@iconify/svelte';
 	import { onMount } from 'svelte';
-	import { t } from '$lib/i18n';
-	import { api } from '$lib/stores/api';
-	import type { ShareInfo, SmbShareConfig, CreateShareRequest, UpdateShareRequest } from '$lib/stores/api';
-	import FolderPicker from '$lib/components/ui/FolderPicker.svelte';
+	import { t } from '#lib/i18n/index.js';
+	import { api } from '#lib/stores/api.js';
+	import type { ShareInfo, SmbShareConfig, CreateShareRequest, UpdateShareRequest } from '#lib/stores/api.js';
+	import FolderPicker from '#lib/components/ui/FolderPicker.svelte';
 
 	// State
 	let shares: ShareInfo[] = [];

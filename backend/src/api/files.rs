@@ -17,7 +17,8 @@ use tokio::io::AsyncWriteExt;
 use crate::api::middleware::AuthUser;
 use crate::api::ws::FileTaskEvent;
 use crate::services::home::HomeService;
-use crate::services::permission::PermissionService;
+use crate::models::permission::PermissionLevel;
+use crate::services::permission::{most_specific_permission, PermissionService};
 use crate::services::user::get_user_by_id;
 use crate::AppState;
 use crate::api::error::ApiError;
@@ -160,41 +161,83 @@ enum AccessMode {
     Write,
 }
 
-/// Enforce folder permissions for non-admin users on shared locations.
-/// Permissive default: a user with no permission configured anywhere sees
-/// everything (same rule as `list_files`); as soon as permissions exist for the
-/// user, the effective level on `path` must allow the requested access.
+/// Whether `level` allows `mode`
+fn level_allows(level: PermissionLevel, mode: AccessMode) -> bool {
+    match mode {
+        AccessMode::Read => level.can_read(),
+        AccessMode::Write => level.can_write(),
+    }
+}
+
+/// Enforce folder permissions for non-admin users on the root of a location.
+/// An explicit permission (user or group, on `path` or an ancestor) always
+/// decides. Without one, access is granted only when `open_without_acl` is set
+/// and no one has permissions configured on `path` — the rule Samba applies to
+/// a share (no `valid users` = every account). Anything else is denied.
 async fn check_folder_access(
     state: &AppState,
     user: &AuthUser,
     path: &str,
     mode: AccessMode,
+    open_without_acl: bool,
 ) -> Result<(), String> {
     if user.is_admin {
         return Ok(());
     }
     let permission_service = PermissionService::new(state.db.clone());
-    let has_any = permission_service
-        .list_by_user(&user.id)
-        .await
-        .map(|perms| !perms.is_empty())
-        .map_err(|e| format!("Permission check error: {}", e))?;
-    if !has_any {
-        return Ok(());
-    }
-    let level = permission_service
-        .get_effective_permission(&user.id, path)
+    let explicit = permission_service
+        .explicit_permission(&user.id, path)
         .await
         .map_err(|e| format!("Permission check error: {}", e))?;
-    let allowed = match mode {
-        AccessMode::Read => level.can_read(),
-        AccessMode::Write => level.can_write(),
+    let allowed = match explicit {
+        Some(level) => level_allows(level, mode),
+        None if open_without_acl => !permission_service
+            .folder_has_acl(path)
+            .await
+            .map_err(|e| format!("Permission check error: {}", e))?,
+        None => false,
     };
     if allowed {
         Ok(())
     } else {
         Err("Access denied".to_string())
     }
+}
+
+/// Resolve `requested` inside `base` (see `validate_path`) and, for non-admin
+/// users, apply any explicit permission set on the target or one of its
+/// ancestors below the location root (an explicit `none` on a sub-folder hides
+/// it in listings and must also block direct access).
+async fn checked_path(
+    state: &AppState,
+    user: &AuthUser,
+    base: &Path,
+    requested: &str,
+    mode: AccessMode,
+) -> Result<PathBuf, String> {
+    let full_path = validate_path(base, requested)?;
+    if user.is_admin {
+        return Ok(full_path);
+    }
+    let explicit = PermissionService::new(state.db.clone())
+        .explicit_permission(&user.id, &full_path.to_string_lossy())
+        .await
+        .map_err(|e| format!("Permission check error: {}", e))?;
+    match explicit {
+        Some(level) if !level_allows(level, mode) => Err("Access denied".to_string()),
+        _ => Ok(full_path),
+    }
+}
+
+/// Name of a removable medium as listed by `/api/locations`: one path
+/// component under `/var/media`, nothing that could walk out of it.
+fn is_valid_media_name(name: &str) -> bool {
+    !name.is_empty()
+        && name != "."
+        && name != ".."
+        && !name.contains('/')
+        && !name.contains('\\')
+        && !name.contains('\0')
 }
 
 /// Resolve a location_id to its base path, enforcing access for `mode`
@@ -206,7 +249,7 @@ async fn resolve_location_path(
 ) -> Result<PathBuf, String> {
     if location_id.starts_with("home-") {
         // User home directory
-        let home_user_id = location_id.strip_prefix("home-").unwrap();
+        let home_user_id = location_id.strip_prefix("home-").unwrap_or_default();
 
         // User can only access their own home (unless admin)
         if home_user_id != user.id && !user.is_admin {
@@ -220,10 +263,12 @@ async fn resolve_location_path(
             .ok_or_else(|| "User not found".to_string())?;
 
         let home_service = HomeService::new(&state.config);
-        Ok(home_service.get_home_path(&target_user.username))
+        home_service
+            .get_home_path(&target_user.username)
+            .map_err(|e| e.to_string())
     } else if location_id.starts_with("share-") {
         // Shared folder
-        let share_id = location_id.strip_prefix("share-").unwrap();
+        let share_id = location_id.strip_prefix("share-").unwrap_or_default();
 
         // Get share from database
         let share: Option<(String,)> = sqlx::query_as(
@@ -236,14 +281,14 @@ async fn resolve_location_path(
 
         match share {
             Some((path,)) => {
-                check_folder_access(state, user, &path, mode).await?;
+                check_folder_access(state, user, &path, mode, true).await?;
                 Ok(PathBuf::from(path))
             }
             None => Err("Share not found or disabled".to_string()),
         }
     } else if location_id.starts_with("volume-") {
         // Mounted volume
-        let volume_id = location_id.strip_prefix("volume-").unwrap();
+        let volume_id = location_id.strip_prefix("volume-").unwrap_or_default();
 
         // Only admin can access volumes directly
         if !user.is_admin {
@@ -270,7 +315,7 @@ async fn resolve_location_path(
         }
     } else if location_id.starts_with("perm-") {
         // Permission-based folder access
-        let perm_id = location_id.strip_prefix("perm-").unwrap();
+        let perm_id = location_id.strip_prefix("perm-").unwrap_or_default();
         let permission_service = PermissionService::new(state.db.clone());
 
         // Look up the permission record to get the path
@@ -281,19 +326,25 @@ async fn resolve_location_path(
             .ok_or_else(|| "Permission not found".to_string())?;
 
         // Verify the user actually has the requested access to this path
-        check_folder_access(state, user, &perm.path, mode).await?;
+        check_folder_access(state, user, &perm.path, mode, false).await?;
 
         Ok(PathBuf::from(&perm.path))
     } else if location_id.starts_with("media-") {
         // Auto-mounted removable media (USB drives)
-        let media_name = location_id.strip_prefix("media-").unwrap();
-        let mount_point = format!("/var/media/{}", media_name);
-
-        // Verify it's actually mounted
-        if !Path::new(&mount_point).exists() {
-            return Err("Media not mounted".to_string());
+        let media_name = location_id.strip_prefix("media-").unwrap_or_default();
+        if !is_valid_media_name(media_name) {
+            return Err("Invalid media name".to_string());
         }
-        check_folder_access(state, user, &mount_point, mode).await?;
+
+        // Only an actual mount under /var/media (the list shown to the user) is accepted
+        let mounted = crate::api::locations::get_mounted_media()
+            .await
+            .map_err(|e| format!("Failed to scan mounted media: {}", e))?;
+        let Some(medium) = mounted.into_iter().find(|m| m.name == media_name) else {
+            return Err("Media not mounted".to_string());
+        };
+        let mount_point = medium.mount_point;
+        check_folder_access(state, user, &mount_point, mode, false).await?;
 
         Ok(PathBuf::from(mount_point))
     } else {
@@ -378,29 +429,30 @@ async fn list_files(
     } else {
         // Default to user's home directory
         let home_service = HomeService::new(&state.config);
-        let home_path = home_service.get_home_path(&user.username);
+        let home_path = match home_service.get_home_path(&user.username) {
+            Ok(p) => p,
+            Err(e) => return ApiError::from(e).into_response(),
+        };
 
         // Create home if it doesn't exist
-        if !home_path.exists() {
-            if let Err(e) = home_service.create_home(&user.username).await {
+        if !home_path.exists()
+            && let Err(e) = home_service.create_home(&user.username).await {
                 tracing::warn!("Failed to create home directory: {}", e);
             }
-        }
 
         home_path
     };
 
     // Ensure base directory exists
-    if !base_path.exists() {
-        if let Err(e) = tokio::fs::create_dir_all(&base_path).await {
+    if !base_path.exists()
+        && let Err(e) = tokio::fs::create_dir_all(&base_path).await {
             return ApiError::internal(format!("Failed to create files directory: {}", e)).into_response();
         }
-    }
 
     let rel_path = query.path.unwrap_or_default();
 
     // Validate path
-    let full_path = match validate_path(&base_path, &rel_path) {
+    let full_path = match checked_path(&state, &user, &base_path, &rel_path, AccessMode::Read).await {
         Ok(p) => p,
         Err(e) => {
             return ApiError::bad_request(e).into_response();
@@ -424,8 +476,15 @@ async fn list_files(
         }
     };
 
-    // Get permission service for filtering
-    let permission_service = PermissionService::new(state.db.clone());
+    // Permission entries of a non-admin user, loaded once for the whole listing
+    let user_perms = if user.is_admin {
+        None
+    } else {
+        match PermissionService::new(state.db.clone()).list_by_user(&user.id).await {
+            Ok(perms) => Some(perms),
+            Err(e) => return ApiError::internal(format!("Permission check error: {}", e)).into_response(),
+        }
+    };
 
     let mut files: Vec<FileItem> = Vec::new();
 
@@ -457,35 +516,15 @@ async fn list_files(
             format!("{}/{}", rel_path.trim_end_matches('/'), name)
         };
 
-        // Check permissions for this item (only for non-admin users)
-        // Admin users see everything, regular users are filtered by permissions
-        if !user.is_admin {
-            // Build full path for permission check
+        // Non-admin users: an explicit permission on the item (or a sub-folder
+        // between it and the location root) decides; otherwise the item
+        // inherits the access already granted on the location.
+        if let Some(perms) = &user_perms {
             let full_item_path = base_path.join(&item_rel_path);
-            let path_str = full_item_path.to_string_lossy().to_string();
-
-            // Check if user has read permission
-            let can_read = permission_service.can_read(&user.id, &path_str).await.unwrap_or(false);
-
-            // For files/folders without explicit permissions, check parent folder
-            // If no permissions are set at all, allow access (permissive default)
-            let has_any_permissions = permission_service
-                .list_by_user(&user.id)
-                .await
-                .map(|perms| !perms.is_empty())
-                .unwrap_or(false);
-
-            // If permissions are configured but user can't read, skip this entry
-            if has_any_permissions && !can_read {
-                // Check if there's a more specific permission for this exact path
-                let exact_perm = permission_service
-                    .get_effective_permission(&user.id, &path_str)
-                    .await
-                    .unwrap_or(crate::models::permission::PermissionLevel::None);
-
-                if !exact_perm.can_read() {
-                    continue;
-                }
+            if most_specific_permission(perms, &full_item_path.to_string_lossy())
+                .is_some_and(|level| !level.can_read())
+            {
+                continue;
             }
         }
 
@@ -529,11 +568,14 @@ async fn create_folder(
         }
     } else {
         let home_service = HomeService::new(&state.config);
-        home_service.get_home_path(&user.username)
+        match home_service.get_home_path(&user.username) {
+            Ok(p) => p,
+            Err(e) => return ApiError::from(e).into_response(),
+        }
     };
 
     // Validate parent path
-    let parent_path = match validate_path(&base_path, &payload.path) {
+    let parent_path = match checked_path(&state, &user, &base_path, &payload.path, AccessMode::Write).await {
         Ok(p) => p,
         Err(e) => {
             return ApiError::bad_request(e).into_response();
@@ -595,11 +637,14 @@ async fn delete_file(
         }
     } else {
         let home_service = HomeService::new(&state.config);
-        home_service.get_home_path(&user.username)
+        match home_service.get_home_path(&user.username) {
+            Ok(p) => p,
+            Err(e) => return ApiError::from(e).into_response(),
+        }
     };
 
     // Validate path
-    let full_path = match validate_path(&base_path, &query.path) {
+    let full_path = match checked_path(&state, &user, &base_path, &query.path, AccessMode::Write).await {
         Ok(p) => p,
         Err(e) => {
             return ApiError::bad_request(e).into_response();
@@ -645,11 +690,14 @@ async fn rename_file(
         }
     } else {
         let home_service = HomeService::new(&state.config);
-        home_service.get_home_path(&user.username)
+        match home_service.get_home_path(&user.username) {
+            Ok(p) => p,
+            Err(e) => return ApiError::from(e).into_response(),
+        }
     };
 
     // Validate original path
-    let full_path = match validate_path(&base_path, &payload.path) {
+    let full_path = match checked_path(&state, &user, &base_path, &payload.path, AccessMode::Write).await {
         Ok(p) => p,
         Err(e) => {
             return ApiError::bad_request(e).into_response();
@@ -732,11 +780,14 @@ async fn create_file(
         }
     } else {
         let home_service = HomeService::new(&state.config);
-        home_service.get_home_path(&user.username)
+        match home_service.get_home_path(&user.username) {
+            Ok(p) => p,
+            Err(e) => return ApiError::from(e).into_response(),
+        }
     };
 
     // Validate parent path
-    let parent_path = match validate_path(&base_path, &payload.path) {
+    let parent_path = match checked_path(&state, &user, &base_path, &payload.path, AccessMode::Write).await {
         Ok(p) => p,
         Err(e) => {
             return ApiError::bad_request(e).into_response();
@@ -838,11 +889,14 @@ async fn upload_file(
         }
     } else {
         let home_service = HomeService::new(&state.config);
-        home_service.get_home_path(&user.username)
+        match home_service.get_home_path(&user.username) {
+            Ok(p) => p,
+            Err(e) => return ApiError::from(e).into_response(),
+        }
     };
 
     // Validate destination directory
-    let dir_path = match validate_path(&base_path, &dest_path) {
+    let dir_path = match checked_path(&state, &user, &base_path, &dest_path, AccessMode::Write).await {
         Ok(p) => p,
         Err(e) => {
             return ApiError::bad_request(e).into_response();
@@ -945,11 +999,14 @@ async fn copy_files(
         }
     } else {
         let home_service = HomeService::new(&state.config);
-        home_service.get_home_path(&user.username)
+        match home_service.get_home_path(&user.username) {
+            Ok(p) => p,
+            Err(e) => return ApiError::from(e).into_response(),
+        }
     };
 
     // Validate destination
-    let dest_path = match validate_path(&base_path, &payload.destination) {
+    let dest_path = match checked_path(&state, &user, &base_path, &payload.destination, AccessMode::Write).await {
         Ok(p) => p,
         Err(e) => {
             return ApiError::bad_request(e).into_response();
@@ -963,7 +1020,7 @@ async fn copy_files(
     // Validate all source paths upfront
     let mut resolved_sources: Vec<(PathBuf, String)> = Vec::new();
     for source in &payload.sources {
-        let source_path = match validate_path(&base_path, source) {
+        let source_path = match checked_path(&state, &user, &base_path, source, AccessMode::Read).await {
             Ok(p) => p,
             Err(e) => {
                 return ApiError::bad_request(format!("Invalid source path '{}': {}", source, e)).into_response();
@@ -1053,11 +1110,14 @@ async fn move_files(
         }
     } else {
         let home_service = HomeService::new(&state.config);
-        home_service.get_home_path(&user.username)
+        match home_service.get_home_path(&user.username) {
+            Ok(p) => p,
+            Err(e) => return ApiError::from(e).into_response(),
+        }
     };
 
     // Validate destination
-    let dest_path = match validate_path(&base_path, &payload.destination) {
+    let dest_path = match checked_path(&state, &user, &base_path, &payload.destination, AccessMode::Write).await {
         Ok(p) => p,
         Err(e) => {
             return ApiError::bad_request(e).into_response();
@@ -1071,7 +1131,7 @@ async fn move_files(
     // Validate all source paths upfront
     let mut resolved_sources: Vec<(PathBuf, String)> = Vec::new();
     for source in &payload.sources {
-        let source_path = match validate_path(&base_path, source) {
+        let source_path = match checked_path(&state, &user, &base_path, source, AccessMode::Write).await {
             Ok(p) => p,
             Err(e) => {
                 return ApiError::bad_request(format!("Invalid source path '{}': {}", source, e)).into_response();
@@ -1262,10 +1322,13 @@ async fn download_file(
         }
     } else {
         let home_service = HomeService::new(&state.config);
-        home_service.get_home_path(&user.username)
+        match home_service.get_home_path(&user.username) {
+            Ok(p) => p,
+            Err(e) => return ApiError::from(e).into_response(),
+        }
     };
 
-    let full_path = match validate_path(&base_path, &query.path) {
+    let full_path = match checked_path(&state, &user, &base_path, &query.path, AccessMode::Read).await {
         Ok(p) => p,
         Err(e) => return ApiError::bad_request(e).into_response(),
     };
@@ -1398,15 +1461,41 @@ async fn search_files(
         }
     } else {
         let home_service = HomeService::new(&state.config);
-        home_service.get_home_path(&user.username)
+        match home_service.get_home_path(&user.username) {
+            Ok(p) => p,
+            Err(e) => return ApiError::from(e).into_response(),
+        }
     };
     if !base_path.exists() {
         return Json(Vec::<FileItem>::new()).into_response();
     }
+    // Non-admins must not find items hidden by an explicit permission
+    // below the location root (same rule as list_files).
+    let user_perms = if user.is_admin {
+        None
+    } else {
+        match PermissionService::new(state.db.clone()).list_by_user(&user.id).await {
+            Ok(perms) => Some(perms),
+            Err(e) => return ApiError::internal(format!("Permission check error: {}", e)).into_response(),
+        }
+    };
     let limit = query.limit.clamp(1, 200);
     let base = base_path.clone();
     match tokio::task::spawn_blocking(move || search_tree(&base, &needle, limit, 50_000, std::time::Duration::from_secs(3))).await {
-        Ok(items) => Json(items).into_response(),
+        Ok(items) => {
+            let items: Vec<FileItem> = match user_perms {
+                None => items,
+                Some(perms) => items
+                    .into_iter()
+                    .filter(|item| {
+                        let full = base_path.join(&item.path);
+                        most_specific_permission(&perms, &full.to_string_lossy())
+                            .is_none_or(|level| level.can_read())
+                    })
+                    .collect(),
+            };
+            Json(items).into_response()
+        }
         Err(e) => ApiError::internal(format!("Search failed: {}", e)).into_response(),
     }
 }
@@ -1463,7 +1552,7 @@ mod tests {
         let size = zip_directory(&root, &out).unwrap();
         assert!(size > 0);
         let mut archive = zip::ZipArchive::new(std::fs::File::open(&out).unwrap()).unwrap();
-        let names: Vec<String> = (0..archive.len()).map(|i| archive.by_index(i).unwrap().name().to_string()).collect();
+        let names: Vec<String> = (0..archive.len()).map(|i| archive.by_index(i).unwrap().name().unwrap().to_string()).collect();
         assert!(names.contains(&"photos/a.txt".to_string()), "{names:?}");
         assert!(names.contains(&"photos/2026/summer/b.txt".to_string()), "{names:?}");
         assert!(!names.iter().any(|n| n.contains("leak")), "{names:?}");
