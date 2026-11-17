@@ -12,7 +12,7 @@
 	import DeviceConnection from './DeviceConnection.svelte';
 	import Personalization from './Personalization.svelte';
 	import { onMount } from 'svelte';
-	import { t } from '#lib/i18n/index.js';
+	import { t, locale } from '#lib/i18n/index.js';
 	import { systemInfo as systemInfoStore, formatBytes, formatUptime } from '#lib/stores/system.js';
 
 	let aboutPools: StoragePool[] = [];
@@ -131,26 +131,30 @@
 	let activeTab = 'general';
 
 	// Primary network interface for the "About" card
+	let networkHostname = '';
 	let primaryInterface: NetworkInterface | null = null;
-	onMount(async () => {
+	async function refreshNetworkIdentity() {
 		try {
 			const status = await api.getNetworkStatus();
+			networkHostname = status.hostname;
 			primaryInterface =
 				status.interfaces.find((i) => i.ip_address) ?? status.interfaces[0] ?? null;
 		} catch {
 			// Network card simply stays empty
 		}
-	});
+	}
+	onMount(refreshNetworkIdentity);
+	$: if (selectedItem === 'about') refreshNetworkIdentity();
 
 	const NA = '—';
 	$: systemInfo = {
-		deviceName: $systemInfoStore?.hostname ?? NA,
+		deviceName: networkHostname || $systemInfoStore?.hostname || NA,
 		systemVersion: $systemInfoStore?.version ?? NA,
 		deviceOwner: $auth.user?.username ?? NA,
 		model: $systemInfoStore?.model ?? NA,
 		serialNumber: $systemInfoStore?.serial ?? NA,
 		lastStartup: $systemInfoStore ? new Date($systemInfoStore.bootTime * 1000).toLocaleString() : NA,
-		powerTime: $systemInfoStore ? formatUptime($systemInfoStore.uptime) : NA,
+		powerTime: $systemInfoStore ? formatUptime($systemInfoStore.uptime, $locale) : NA,
 		cpu: {
 			model: $systemInfoStore?.cpu.model || NA,
 			freq: $systemInfoStore?.cpu.frequencyMhz ? `${$systemInfoStore.cpu.frequencyMhz} MHz` : null,

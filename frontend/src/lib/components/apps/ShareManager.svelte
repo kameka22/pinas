@@ -6,6 +6,9 @@
 	import type { ShareInfo, SmbShareConfig, CreateShareRequest, UpdateShareRequest } from '#lib/stores/api.js';
 	import FolderPicker from '#lib/components/ui/FolderPicker.svelte';
 
+	import FolderPermissionsEditor from '#lib/components/ui/FolderPermissionsEditor.svelte';
+	let permissionsPath: string | null = null;
+
 	// State
 	let shares: ShareInfo[] = [];
 	let loading = true;
@@ -285,7 +288,7 @@
 							</div>
 							<div class="meta-item">
 								<Icon icon="mdi:account-group" class="w-4 h-4" />
-								<span>{share.permissions.length} permissions</span>
+								<button class="btn-secondary" on:click={() => permissionsPath = share.path}>{$t.walkthrough.editPermissions}</button>
 							</div>
 						</div>
 
@@ -296,7 +299,7 @@
 								on:click={() => handleToggle(share)}
 								title={share.enabled ? ($t.shareManager?.toggleDisabled || 'Disable') : ($t.shareManager?.toggleEnabled || 'Enable')}
 							>
-								{share.enabled ? 'Active' : 'Disabled'}
+								{share.enabled ? $t.userManager.statuses.normal : $t.userManager.statuses.disabled}
 							</button>
 							<div class="action-btns">
 								<button class="action-btn" title={$t.shareManager?.editShare || 'Edit'} on:click={() => openEditModal(share)}>
@@ -344,7 +347,7 @@
 					<FolderPicker
 						bind:value={newShare.path}
 						label={$t.shareManager?.fields?.path || 'Path'}
-						placeholder="/storage/shares/"
+						placeholder="/storage/pools/"
 					/>
 				</div>
 				<div class="form-group">
@@ -1031,3 +1034,7 @@
 	.btn-danger:hover { background: #b91c1c; }
 	.btn-danger:disabled { opacity: 0.5; cursor: not-allowed; }
 </style>
+
+{#if permissionsPath}
+ <FolderPermissionsEditor path={permissionsPath} onclose={() => { permissionsPath = null; loadShares(); }} />
+{/if}

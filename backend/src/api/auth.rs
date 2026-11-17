@@ -271,7 +271,7 @@ async fn change_password(
     // Validate against the configured password policy
     let policy = crate::services::password_policy::PasswordPolicy::load(&state.db).await.unwrap_or_default();
     if let Some(reason) = policy.violation(&payload.new_password, Some(&user.username)) {
-        return ApiError::bad_request(reason).with_code("VALIDATION_ERROR").into_response();
+        return ApiError::bad_request(reason).with_code("PASSWORD_POLICY").into_response();
     }
 
     // Change password

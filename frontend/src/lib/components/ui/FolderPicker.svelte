@@ -7,11 +7,12 @@
 
 	// Props
 	export let value: string = '';
-	export let placeholder: string = '/storage/shares/documents';
+	export let placeholder: string = '/storage/pools/';
 	export let label: string = '';
 	export let hint: string = '';
 	export let disabled: boolean = false;
 
+	const inputId = `folder-picker-${crypto.randomUUID()}`;
 	const dispatch = createEventDispatcher<{ change: string }>();
 
 	// State
@@ -21,6 +22,7 @@
 	let currentPath = '';
 	let folders: { name: string; path: string }[] = [];
 	let loading = false;
+	let requestId = 0;
 	let locationsLoading = false;
 	let error: string | null = null;
 	let breadcrumbs: { name: string; path: string }[] = [];
@@ -46,6 +48,8 @@
 	function selectLocation(loc: BrowsableLocation) {
 		selectedLocation = loc;
 		currentPath = '';
+		folders = [];
+		buildBreadcrumbs('');
 		loadFolders('');
 	}
 
@@ -57,21 +61,18 @@
 	}
 
 	// Get the full path for display
-	function getFullPath(): string {
-		if (!selectedLocation) return '';
-		const basePath = selectedLocation.path;
-		if (!currentPath) return basePath;
-		return `${basePath}/${currentPath}`.replace(/\/+/g, '/');
-	}
+	$: fullPath = selectedLocation ? `${selectedLocation.path}/${currentPath}`.replace(/\/+/g, '/').replace(/\/$/, '') || '/' : '';
 
 	// Load folders for current path
 	async function loadFolders(path: string) {
 		loading = true;
 		error = null;
+		const request = ++requestId;
 
 		try {
 			const locationId = getLocationId();
 			const files = await api.getFiles(path, locationId);
+			if (request !== requestId) return;
 			folders = files
 				.filter((f) => f.type === 'folder')
 				.filter((f) => !f.name.startsWith('.'))
@@ -84,16 +85,17 @@
 			currentPath = path;
 			buildBreadcrumbs(path);
 		} catch (e) {
+			if (request !== requestId) return;
 			console.error('FolderPicker: Error loading folders', e);
 			error = e instanceof Error ? e.message : $t.common.errors.loadFolders;
 			folders = [];
 		} finally {
-			loading = false;
+			if (request === requestId) loading = false;
 		}
 	}
 
 	function buildBreadcrumbs(path: string) {
-		breadcrumbs = [{ name: selectedLocation?.name || 'Root', path: '' }];
+		breadcrumbs = [{ name: selectedLocation?.type === 'home' ? $t.walkthrough.myFiles : selectedLocation?.name || '/', path: '' }];
 
 		if (path) {
 			const parts = path.split('/').filter(Boolean);
@@ -116,6 +118,7 @@
 
 	function closeModal() {
 		showModal = false;
+		requestId++;
 	}
 
 	function navigateTo(path: string) {
@@ -133,7 +136,7 @@
 	}
 
 	function confirmSelection() {
-		value = getFullPath();
+		value = fullPath;
 		dispatch('change', value);
 		closeModal();
 	}
@@ -153,12 +156,14 @@
 
 <div class="folder-picker">
 	{#if label}
-		<label class="picker-label">{label}</label>
+		<label for={inputId} class="picker-label">{label}</label>
 	{/if}
 
 	<div class="picker-input-group">
 		<input
 			type="text"
+			id={inputId}
+			aria-label={label || $t.folderPicker.title}
 			class="picker-input"
 			bind:value
 			on:input={handleInputChange}
@@ -209,7 +214,7 @@
 				{:else}
 					<!-- Location selector -->
 					<div class="location-selector">
-						<label>{$t.folderPicker?.location || 'Location'}:</label>
+						<label>{$t.folderPicker?.location || 'Location'}{$t.common.labelSeparator}</label>
 						<div class="location-chips">
 							{#each locations as loc}
 								<button
@@ -218,7 +223,7 @@
 									on:click={() => selectLocation(loc)}
 								>
 									<Icon icon={getLocationIcon(loc)} class="w-4 h-4" />
-									<span>{loc.name}</span>
+									<span>{loc.type === 'home' ? $t.walkthrough.myFiles : loc.name}</span>
 								</button>
 							{/each}
 						</div>
@@ -247,7 +252,7 @@
 						<!-- Current path display -->
 						<div class="current-path">
 							<Icon icon="mdi:folder" class="w-4 h-4 folder-icon" />
-							<span>{getFullPath()}</span>
+							<span>{fullPath}</span>
 						</div>
 
 						<!-- Folder list -->
@@ -298,14 +303,14 @@
 
 			<div class="modal-footer">
 				<div class="selected-path">
-					<span class="selected-label">{$t.folderPicker?.selected || 'Selected'}:</span>
-					<code>{getFullPath() || '-'}</code>
+					<span class="selected-label">{$t.folderPicker?.selected || 'Selected'}{$t.common.labelSeparator}</span>
+					<code>{fullPath || '-'}</code>
 				</div>
 				<div class="footer-buttons">
 					<button class="btn-secondary" on:click={closeModal}>
 						{$t.common.cancel}
 					</button>
-					<button class="btn-primary" on:click={confirmSelection} disabled={!selectedLocation}>
+					<button class="btn-primary" on:click={confirmSelection} disabled={!selectedLocation || loading || !!error}>
 						{$t.folderPicker?.select || 'Select'}
 					</button>
 				</div>

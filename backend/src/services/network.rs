@@ -205,20 +205,7 @@ impl NetworkService {
     }
 
     pub async fn update_hostname(&self, hostname: &str) -> anyhow::Result<()> {
-        if hostname.is_empty() || hostname.len() > 63 {
-            anyhow::bail!("Hostname must be between 1 and 63 characters");
-        }
-
-        // Validate hostname characters
-        if !hostname
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '-')
-        {
-            anyhow::bail!("Hostname can only contain letters, numbers and hyphens");
-        }
-        if hostname.starts_with('-') || hostname.ends_with('-') {
-            anyhow::bail!("Hostname cannot start or end with a hyphen");
-        }
+        validate_hostname(hostname)?;
 
         if self.dev_mode {
             tracing::info!("[DEV MODE] Would set hostname to: {}", hostname);
@@ -237,7 +224,7 @@ impl NetworkService {
         }
 
         // Persist hostname
-        let _ = tokio::fs::write("/storage/.cache/hostname", hostname).await;
+        tokio::fs::write("/storage/.cache/hostname", hostname).await?;
 
         tracing::info!("Hostname changed to: {}", hostname);
         Ok(())
@@ -644,4 +631,38 @@ fn cidr_to_mask(prefix: u32) -> String {
         (mask >> 8) & 0xFF,
         mask & 0xFF
     )
+}
+
+/// Validate without changing the host, including during initial setup.
+pub fn validate_hostname(hostname: &str) -> anyhow::Result<()> {
+    if hostname.is_empty() || hostname.len() > 63 {
+        anyhow::bail!("Hostname must be between 1 and 63 characters");
+    }
+
+    // Validate hostname characters
+    if !hostname
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '-')
+    {
+        anyhow::bail!("Hostname can only contain letters, numbers and hyphens");
+    }
+    if hostname.starts_with('-') || hostname.ends_with('-') {
+        anyhow::bail!("Hostname cannot start or end with a hyphen");
+    }
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod hostname_tests {
+    use super::validate_hostname;
+    #[test]
+    fn rejects_invalid_hostnames_before_system_changes() {
+        for name in ["", "-bad", "bad-", "two words", "a.b", "é", &"x".repeat(64)] {
+            assert!(validate_hostname(name).is_err(), "{name}");
+        }
+        for name in ["x", "pinas", "PiNAS-5", &"x".repeat(63)] {
+            assert!(validate_hostname(name).is_ok(), "{name}");
+        }
+    }
 }

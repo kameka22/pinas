@@ -235,7 +235,7 @@
 							<div class="status-info">
 								<span class="status-dot" class:running={sambaStatus.running}></span>
 								<span class="status-label">
-									{$t.fileService?.smb?.status || 'Status'}:
+									{$t.fileService?.smb?.status || 'Status'}{$t.common.labelSeparator}
 									<strong>{sambaStatus.running ? ($t.fileService?.smb?.running || 'Running') : ($t.fileService?.smb?.stopped || 'Stopped')}</strong>
 								</span>
 							</div>

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { validHostname, validSetupUsername } from '#lib/utils/setupValidation.js';
 	import Icon from '@iconify/svelte';
 	import {
 		currentStep,
@@ -56,11 +57,7 @@
 			machineNameError = $t.onboarding.validation.machineNameRequired;
 			return false;
 		}
-		if (machineName.length < 2) {
-			machineNameError = $t.onboarding.validation.machineNameMinLength;
-			return false;
-		}
-		if (!/^[a-zA-Z0-9-]+$/.test(machineName)) {
+		if (!validHostname(machineName)) {
 			machineNameError = $t.onboarding.validation.machineNameInvalid;
 			return false;
 		}
@@ -77,7 +74,7 @@
 			usernameError = $t.onboarding.validation.usernameMinLength;
 			return false;
 		}
-		if (!/^[a-zA-Z0-9_]+$/.test(adminUsername)) {
+		if (!validSetupUsername(adminUsername)) {
 			usernameError = $t.onboarding.validation.usernameInvalid;
 			return false;
 		}
@@ -90,8 +87,12 @@
 			passwordError = $t.onboarding.validation.passwordRequired;
 			return false;
 		}
-		if (adminPassword.length < 8) {
+		if (Array.from(adminPassword).length < 8) {
 			passwordError = $t.onboarding.validation.passwordMinLength;
+			return false;
+		}
+		if (adminUsername.length >= 3 && adminPassword.toLowerCase().includes(adminUsername.toLowerCase())) {
+			passwordError = $t.onboarding.validation.passwordContainsUsername;
 			return false;
 		}
 		if (adminPassword !== confirmPassword) {
@@ -382,13 +383,6 @@
 			{:else if $currentStep === 7}
 				<!-- Step 7: Features Tour -->
 				<div class="step-panel">
-					{#if $setupError}
-						<div class="setup-error">
-							<Icon icon="mdi:alert-circle" class="w-5 h-5" />
-							<span>{$setupError}</span>
-						</div>
-					{/if}
-
 					<div class="features-header">
 						<Icon icon="mdi:party-popper" class="w-10 h-10" style="color: #f59e0b" />
 						<h2>{$t.onboarding.features.title}</h2>
@@ -414,6 +408,13 @@
 			{/key}
 		</div>
 
+		{#if $setupError}
+			<div class="setup-error">
+				<Icon icon="mdi:alert-circle" class="w-5 h-5" />
+				<span>{$setupError}</span>
+			</div>
+		{/if}
+
 		<!-- Footer with buttons -->
 		<div class="onboarding-footer">
 			{#if $currentStep > 1}
@@ -428,7 +429,7 @@
 			<button class="btn-primary" on:click={handleNext} disabled={isSubmitting}>
 				{#if isSubmitting}
 					<Icon icon="mdi:loading" class="w-4 h-4 spinning" />
-					Setting up...
+					{$t.onboarding.buttons.settingUp}
 				{:else if $currentStep === TOTAL_STEPS}
 					{$t.onboarding.buttons.complete}
 					<Icon icon="mdi:rocket-launch" class="w-4 h-4" />

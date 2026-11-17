@@ -5,6 +5,7 @@
 	import { t } from '#lib/i18n/index.js';
 	import { api, auth } from '#lib/stores/api.js';
 	import type { FolderPermissions, PermissionLevel, PermissionEntry, UserServiceAccess } from '#lib/stores/api.js';
+	import { setFolderPermission, type PermissionChoice } from '#lib/utils/permissions.js';
 	import FolderPicker from '#lib/components/ui/FolderPicker.svelte';
 	import PasswordRules from '#lib/components/ui/PasswordRules.svelte';
 
@@ -444,7 +445,15 @@
 	async function loadPermissions() {
 		permissionsLoading = true;
 		try {
-			folderPermissions = await api.getPermissions();
+			const saved = await api.getPermissions();
+			folderPermissions = [
+				...saved,
+				...folderPermissions.filter(
+					(folder) =>
+						folder.permissions.length === 0 &&
+						!saved.some((item) => item.path === folder.path),
+				),
+			];
 		} catch (e) {
 			console.error('Failed to load permissions:', e);
 		} finally {
@@ -452,23 +461,20 @@
 		}
 	}
 
-	async function handlePermissionChange(folderId: string, userId: string | undefined, groupId: string | undefined, oldPermId: string | undefined, newPermission: PermissionLevel) {
+	async function handlePermissionChange(
+		folderId: string,
+		userId: string | undefined,
+		groupId: string | undefined,
+		oldPermId: string | undefined,
+		newPermission: PermissionChoice,
+	) {
 		try {
-			if (newPermission === 'none' && oldPermId) {
-				// Delete the permission
-				await api.deletePermission(oldPermId);
-			} else if (oldPermId) {
-				// Update existing
-				await api.updatePermission(oldPermId, newPermission);
-			} else {
-				// Create new
-				await api.createPermission({
-					path: folderId,
-					user_id: userId,
-					group_id: groupId,
-					permission: newPermission
-				});
-			}
+			await setFolderPermission(
+				folderId,
+				{ user_id: userId, group_id: groupId },
+				oldPermId,
+				newPermission,
+			);
 			await loadPermissions();
 		} catch (e) {
 			console.error('Failed to update permission:', e);
@@ -476,38 +482,35 @@
 		}
 	}
 
-	async function addFolderForPermissions() {
-		if (!newFolderPath.trim()) return;
-
-		// Create a default permission to establish the folder
-		try {
-			// Add to the first user as no-access to create the folder entry
-			if (users.length > 0) {
-				await api.createPermission({
-					path: newFolderPath.trim(),
-					user_id: users[0].id,
-					permission: 'none'
-				});
-			}
-			showAddFolderModal = false;
-			newFolderPath = '';
-			await loadPermissions();
-		} catch (e) {
-			console.error('Failed to add folder:', e);
-			toasts.error(errorMessage(e, $t.common.errors.addFolder));
+	function addFolderForPermissions() {
+		const path = newFolderPath.trim();
+		if (!path) return;
+		if (!folderPermissions.some((folder) => folder.path === path)) {
+			folderPermissions = [...folderPermissions, { path, permissions: [] }];
 		}
+		showAddFolderModal = false;
+		newFolderPath = '';
 	}
 
 	async function removeFolderPermissions(path: string) {
-		if (!confirm($t.userManager.permissions.confirmRemoveFolder?.replace('{path}', path) || `Remove all permissions for ${path}?`)) return;
+		if (
+			!confirm(
+				$t.userManager.permissions.confirmRemoveFolder?.replace('{path}', path) ||
+					`Remove all permissions for ${path}?`,
+			)
+		)
+			return;
 
-		const folder = folderPermissions.find(f => f.path === path);
+		const folder = folderPermissions.find((f) => f.path === path);
 		if (!folder) return;
 
 		try {
 			for (const perm of folder.permissions) {
 				await api.deletePermission(perm.id);
 			}
+			folderPermissions = folderPermissions.filter(
+				(folder) => folder.path !== path,
+			);
 			await loadPermissions();
 		} catch (e) {
 			console.error('Failed to remove folder permissions:', e);
@@ -644,7 +647,7 @@
 									</div>
 								</td>
 								<td class="text-secondary">{user.email}</td>
-								<td>{user.role}</td>
+								<td>{user.role === 'Administrator' ? $t.userManager.roles.administrator : $t.userManager.roles.user}</td>
 								<td>
 									<div class="service-toggles">
 										<label class="service-toggle" title={$t.userManager.serviceAccess.smb}>
@@ -746,13 +749,13 @@
 							<tr>
 								<td>
 									<div class="group-cell">
-										<span class="group-name">{group.name}</span>
+										<span class="group-name">{group.name === 'administrators' ? $t.walkthrough.groupAdmins : group.name === 'users' ? $t.walkthrough.groupUsers : group.name}</span>
 										{#if group.isSystem}
 											<span class="badge-system">{$t.userManager.badges.system}</span>
 										{/if}
 									</div>
 								</td>
-								<td class="text-secondary">{group.description || '-'}</td>
+								<td class="text-secondary">{group.name === 'administrators' ? $t.walkthrough.groupAdminsDesc : group.name === 'users' ? $t.walkthrough.groupUsersDesc : group.description || '-'}</td>
 								<td>{group.memberCount}</td>
 								<td>
 									<div class="action-cell">
@@ -915,10 +918,11 @@
 														</div>
 														<select
 															class="permission-select"
-															value={perm?.permission || 'none'}
-															on:change={(e) => handlePermissionChange(folder.path, user.id, undefined, perm?.id, e.currentTarget.value as PermissionLevel)}
+															value={perm?.permission || 'default'}
+															on:change={(e) => handlePermissionChange(folder.path, user.id, undefined, perm?.id, e.currentTarget.value as PermissionChoice)}
 														>
-															<option value="none">{$t.userManager.permissions.noAccess}</option>
+															<option value="default">{$t.walkthrough.defaultAccess}</option>
+													<option value="none">{$t.userManager.permissions.noAccess}</option>
 															<option value="read">{$t.userManager.permissions.readOnly}</option>
 															<option value="write">{$t.userManager.permissions.readWrite}</option>
 														</select>
@@ -939,14 +943,15 @@
 																<div class="avatar-sm group-avatar">
 																	<Icon icon="mdi:account-group" class="w-3 h-3" />
 																</div>
-																<span>{group.name}</span>
+																<span>{group.name === 'administrators' ? $t.walkthrough.groupAdmins : group.name === 'users' ? $t.walkthrough.groupUsers : group.name}</span>
 															</div>
 															<select
 																class="permission-select"
-																value={perm?.permission || 'none'}
-																on:change={(e) => handlePermissionChange(folder.path, undefined, group.id, perm?.id, e.currentTarget.value as PermissionLevel)}
+																value={perm?.permission || 'default'}
+																on:change={(e) => handlePermissionChange(folder.path, undefined, group.id, perm?.id, e.currentTarget.value as PermissionChoice)}
 															>
-																<option value="none">{$t.userManager.permissions.noAccess}</option>
+																<option value="default">{$t.walkthrough.defaultAccess}</option>
+													<option value="none">{$t.userManager.permissions.noAccess}</option>
 																<option value="read">{$t.userManager.permissions.readOnly}</option>
 																<option value="write">{$t.userManager.permissions.readWrite}</option>
 															</select>
@@ -981,7 +986,7 @@
 					bind:value={newFolderPath}
 					label={$t.userManager.permissions.folderPath}
 					hint={$t.userManager.permissions.folderPathHint}
-					placeholder="/storage/shares/documents"
+					placeholder="/storage/pools/"
 				/>
 			</div>
 			<div class="modal-footer">

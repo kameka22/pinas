@@ -65,8 +65,8 @@ export const formattedMemory = derived(systemStats, ($stats) => {
 function formatBytes(bytes: number): string {
 	if (bytes === 0) return '0 B';
 	const k = 1024;
-	const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-	const i = Math.floor(Math.log(bytes) / Math.log(k));
+	const sizes = ['B', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB'];
+	const i = Math.min(sizes.length - 1, Math.floor(Math.log(bytes) / Math.log(k)));
 	return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
 }
 
@@ -75,12 +75,12 @@ export function formatRate(bytesPerSec: number): string {
 	return `${formatBytes(Math.max(0, Math.round(bytesPerSec)))}/s`;
 }
 
-export function formatUptime(seconds: number): string {
+export function formatUptime(seconds: number, language = 'en'): string {
 	const days = Math.floor(seconds / 86400);
 	const hours = Math.floor((seconds % 86400) / 3600);
 	const minutes = Math.floor((seconds % 3600) / 60);
 	const hm = `${String(hours).padStart(2, '0')}h ${String(minutes).padStart(2, '0')}m`;
-	return days > 0 ? `${days}d ${hm}` : hm;
+	return days > 0 ? `${days}${language === 'fr' ? 'j' : 'd'} ${hm}` : hm;
 }
 
 export { formatBytes };

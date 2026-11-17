@@ -101,7 +101,7 @@ async fn create_user(
 
     let policy = crate::services::password_policy::PasswordPolicy::load(&state.db).await.unwrap_or_default();
     if let Some(reason) = policy.violation(&payload.password, Some(&payload.username)) {
-        return ApiError::bad_request(reason).with_code("VALIDATION_ERROR").into_response();
+        return ApiError::bad_request(reason).with_code("PASSWORD_POLICY").into_response();
     }
 
     // Create HomeService to manage user's home directory
@@ -246,7 +246,7 @@ async fn change_user_password(
     let target_username = get_user_by_id(&state.db, &id).await.ok().flatten().map(|u| u.username);
     let policy = crate::services::password_policy::PasswordPolicy::load(&state.db).await.unwrap_or_default();
     if let Some(reason) = policy.violation(&payload.password, target_username.as_deref()) {
-        return ApiError::bad_request(reason).with_code("VALIDATION_ERROR").into_response();
+        return ApiError::bad_request(reason).with_code("PASSWORD_POLICY").into_response();
     }
 
     match change_password(&state.db, &id, &payload.password).await {

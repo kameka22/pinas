@@ -1,6 +1,7 @@
 export default {
 	// Common
 	common: {
+		labelSeparator: '\xa0:',
 		save: 'Enregistrer',
 		cancel: 'Annuler',
 		delete: 'Supprimer',
@@ -78,7 +79,40 @@ export default {
 		dismiss: 'Ignorer'
 	},
 
+	walkthrough: {
+		myFiles: 'Mes fichiers',
+		defaultAccess: 'Accès par défaut',
+		permissionsHint: 'Ces droits concernent Fichiers et SMB. Pour NFS, utilisez les restrictions d’export. Sans règle, le partage est ouvert aux utilisateurs authentifiés ; les règles des parents peuvent s’appliquer. À dossier égal, le droit utilisateur ou groupe le plus élevé l’emporte. Les administrateurs gardent un accès complet.',
+		editPermissions: 'Gérer les droits',
+		groupAdmins: 'Administrateurs',
+		groupUsers: 'Utilisateurs',
+		groupAdminsDesc: 'Administrateurs système avec accès complet',
+		groupUsersDesc: 'Utilisateurs avec accès standard',
+	},
+	apiErrors: {
+		INVALID_PASSWORD: 'Le mot de passe actuel est incorrect.',
+		PASSWORD_CHANGE_FAILED: 'Le changement de mot de passe a échoué.',
+		INTERNAL_ERROR: 'Une erreur interne est survenue. Réessayez.',
+		VALIDATION_ERROR: 'Vérifiez les valeurs du formulaire.',
+
+		INVALID_CREDENTIALS: 'Identifiants incorrects.',
+		RATE_LIMITED: 'Trop de tentatives. Réessayez dans une minute.',
+		INVALID_USERNAME: 'Nom utilisateur invalide ou réservé.',
+		DUPLICATE_USERNAME: 'Ce nom utilisateur existe déjà.',
+		PASSWORD_POLICY: 'Le mot de passe ne respecte pas la politique de sécurité configurée.',
+		INVALID_HOSTNAME: 'Utilisez 1 à 63 lettres, chiffres ou tirets, sans tiret au début ni à la fin.',
+		PROTECTED_PROCESS: 'Ce processus système est protégé.',
+		INVALID_GROUP_NAME: 'Nom de groupe invalide ou réservé.',
+	},
 	login: {
+		username: 'Nom utilisateur',
+		password: 'Mot de passe',
+		usernameHint: 'Saisissez votre nom utilisateur',
+		passwordHint: 'Saisissez votre mot de passe',
+		signingIn: 'Connexion en cours…',
+		required: 'Le nom utilisateur et le mot de passe sont requis.',
+		failed: 'Connexion impossible. Réessayez.',
+
 		subtitle: 'Connectez-vous à votre compte',
 		signIn: 'Se connecter',
 		footer: 'Système de gestion NAS sécurisé'
@@ -261,7 +295,7 @@ export default {
 			readWrite: 'Lecture/Écriture',
 			addFolder: 'Ajouter un dossier',
 			folderPath: 'Chemin du dossier',
-			folderPathHint: 'Entrez le chemin complet du dossier (ex: /storage/shares/documents)',
+			folderPathHint: 'Entrez le chemin complet du dossier (ex: /storage/pools/)',
 			noPermissions: 'Aucune permission de dossier configurée',
 			noPermissionsHint: 'Ajoutez un dossier pour commencer à gérer les permissions',
 			confirmRemoveFolder: 'Supprimer toutes les permissions pour {path} ?'
@@ -335,6 +369,7 @@ export default {
 		noNotifications: 'Aucune notification',
 		clearAll: 'Tout effacer',
 		userMenu: {
+			changePassword: 'Changer le mot de passe',
 			profile: 'Profil',
 			settings: 'Paramètres',
 			logout: 'Déconnexion',
@@ -582,16 +617,21 @@ export default {
 		buttons: {
 			back: 'Retour',
 			next: 'Suivant',
+			settingUp: 'Configuration en cours…',
 			complete: 'Commencer à utiliser PiNAS',
 			getStarted: 'C\'est parti !'
 		},
 		validation: {
 			machineNameRequired: "Le nom de l'appareil est requis",
 			machineNameMinLength: "Le nom doit contenir au moins 2 caractères",
-			machineNameInvalid: 'Seuls les lettres, chiffres et tirets sont autorisés',
+			machineNameInvalid: 'Utilisez 1 à 63 lettres, chiffres ou tirets, sans tiret au début ni à la fin.',
 			usernameRequired: "Le nom d'utilisateur est requis",
 			usernameMinLength: "Le nom d'utilisateur doit contenir au moins 3 caractères",
-			usernameInvalid: 'Seuls les lettres, chiffres et underscores sont autorisés',
+			usernameInvalid: 'Utilisez 3 à 32 lettres, chiffres, _, . ou - ; les noms système et les noms uniquement numériques sont interdits.',
+			passwordContainsUsername: 'Le mot de passe ne doit pas contenir le nom utilisateur.',
+			passwordPolicy: 'Mot de passe refusé : au moins 8 caractères et sans le nom utilisateur.',
+			hostnameFailed: 'Impossible de définir le nom de machine. Réessayez.',
+			setupFailed: 'La configuration a échoué. Réessayez.',
 			passwordRequired: 'Le mot de passe est requis',
 			passwordMinLength: 'Le mot de passe doit contenir au moins 8 caractères',
 			passwordMismatch: 'Les mots de passe ne correspondent pas',
@@ -897,6 +937,8 @@ export default {
 				noDisksAvailable: 'Aucun disque disponible trouvé',
 				selectRaidType: 'Sélectionner le type RAID',
 				available: 'Disponible',
+				eraseWarning: 'La création du pool détruit les données des disques sélectionnés, même sans effacement préalable.',
+				confirmErase: 'Je confirme la destruction des données sur ces disques.',
 				wipeDisks: 'Effacer les disques sélectionnés avant de créer le pool',
 				total: 'Total',
 				raidType: 'Type RAID',
@@ -1089,6 +1131,7 @@ export default {
 		},
 		errors: {
 			loadFailed: 'Échec du chargement des données de stockage',
+			invalidPoolLayout: 'Le nombre de disques ne convient pas au type de RAID choisi.',
 			createPoolFailed: 'Échec de la création du pool',
 			createVolumeFailed: 'Échec de la création du volume',
 			deletePoolFailed: 'Échec de la suppression du pool',
