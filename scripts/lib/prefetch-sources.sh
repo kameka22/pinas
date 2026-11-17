@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-# Pre-seed LibreELEC's source cache for packages whose upstream site blocks
-# automated downloads.
+# Pre-seed LibreELEC's source cache for packages whose upstream tarball can no
+# longer be fetched (download blocked or file removed).
 #
 # Usage: scripts/lib/prefetch-sources.sh <LibreELEC.tv dir>
 #
 # Some upstreams answer scripted clients with an HTML challenge page instead of
-# the tarball (linuxtv.org sits behind an anti-bot wall since 2026-11), and the
+# the tarball (linuxtv.org sits behind an anti-bot wall since 2026-11), others
+# have removed the release (releases.pagure.org: newt 0.52.24 is a 404), and the
 # LibreELEC mirror does not always carry the file. `make image` then aborts.
 # For each package listed below, this script downloads the very same tarball
 # from a fallback mirror, checks it against PKG_SHA256 from the package's
@@ -19,9 +20,11 @@ set -euo pipefail
 LE_DIR="${1:?usage: $0 <LibreELEC.tv dir>}"
 
 # package.mk path (relative to LE_DIR) | fallback URL; {VERSION} is replaced
-# with PKG_VERSION. Debian's .orig tarballs are byte-identical to upstream.
+# with PKG_VERSION. The mirrors carry byte-identical copies of the upstream
+# tarballs (Debian .orig, BLFS conglomeration); the sha256 check enforces it.
 FALLBACKS=(
     "packages/sysutils/v4l-utils/package.mk|https://deb.debian.org/debian/pool/main/v/v4l-utils/v4l-utils_{VERSION}.orig.tar.xz"
+    "packages/tools/newt/package.mk|https://ftp.osuosl.org/pub/blfs/conglomeration/newt/newt-{VERSION}.tar.gz"
 )
 
 pkg_var() {
