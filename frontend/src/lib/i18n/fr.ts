@@ -1,6 +1,7 @@
 export default {
 	// Common
 	common: {
+		labelSeparator: '\xa0:',
 		save: 'Enregistrer',
 		cancel: 'Annuler',
 		delete: 'Supprimer',
@@ -78,7 +79,40 @@ export default {
 		dismiss: 'Ignorer'
 	},
 
+	walkthrough: {
+		myFiles: 'Mes fichiers',
+		defaultAccess: 'Accès par défaut',
+		permissionsHint: 'Ces droits concernent Fichiers et SMB. Pour NFS, utilisez les restrictions d’export. Sans règle, le partage est ouvert aux utilisateurs authentifiés ; les règles des parents peuvent s’appliquer. À dossier égal, le droit utilisateur ou groupe le plus élevé l’emporte. Les administrateurs gardent un accès complet.',
+		editPermissions: 'Gérer les droits',
+		groupAdmins: 'Administrateurs',
+		groupUsers: 'Utilisateurs',
+		groupAdminsDesc: 'Administrateurs système avec accès complet',
+		groupUsersDesc: 'Utilisateurs avec accès standard',
+	},
+	apiErrors: {
+		INVALID_PASSWORD: 'Le mot de passe actuel est incorrect.',
+		PASSWORD_CHANGE_FAILED: 'Le changement de mot de passe a échoué.',
+		INTERNAL_ERROR: 'Une erreur interne est survenue. Réessayez.',
+		VALIDATION_ERROR: 'Vérifiez les valeurs du formulaire.',
+
+		INVALID_CREDENTIALS: 'Identifiants incorrects.',
+		RATE_LIMITED: 'Trop de tentatives. Réessayez dans une minute.',
+		INVALID_USERNAME: 'Nom utilisateur invalide ou réservé.',
+		DUPLICATE_USERNAME: 'Ce nom utilisateur existe déjà.',
+		PASSWORD_POLICY: 'Le mot de passe ne respecte pas la politique de sécurité configurée.',
+		INVALID_HOSTNAME: 'Utilisez 1 à 63 lettres, chiffres ou tirets, sans tiret au début ni à la fin.',
+		PROTECTED_PROCESS: 'Ce processus système est protégé.',
+		INVALID_GROUP_NAME: 'Nom de groupe invalide ou réservé.',
+	},
 	login: {
+		username: 'Nom utilisateur',
+		password: 'Mot de passe',
+		usernameHint: 'Saisissez votre nom utilisateur',
+		passwordHint: 'Saisissez votre mot de passe',
+		signingIn: 'Connexion en cours…',
+		required: 'Le nom utilisateur et le mot de passe sont requis.',
+		failed: 'Connexion impossible. Réessayez.',
+
 		subtitle: 'Connectez-vous à votre compte',
 		signIn: 'Se connecter',
 		footer: 'Système de gestion NAS sécurisé'
@@ -261,7 +295,7 @@ export default {
 			readWrite: 'Lecture/Écriture',
 			addFolder: 'Ajouter un dossier',
 			folderPath: 'Chemin du dossier',
-			folderPathHint: 'Entrez le chemin complet du dossier (ex: /storage/shares/documents)',
+			folderPathHint: 'Entrez le chemin complet du dossier (ex: /storage/pools/)',
 			noPermissions: 'Aucune permission de dossier configurée',
 			noPermissionsHint: 'Ajoutez un dossier pour commencer à gérer les permissions',
 			confirmRemoveFolder: 'Supprimer toutes les permissions pour {path} ?'
@@ -335,6 +369,7 @@ export default {
 		noNotifications: 'Aucune notification',
 		clearAll: 'Tout effacer',
 		userMenu: {
+			changePassword: 'Changer le mot de passe',
 			profile: 'Profil',
 			settings: 'Paramètres',
 			logout: 'Déconnexion',

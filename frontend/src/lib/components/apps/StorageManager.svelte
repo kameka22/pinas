@@ -1,5 +1,6 @@
 <script lang="ts">
 	import Icon from '@iconify/svelte';
+	import { formatBytes } from '#lib/stores/system.js';
 	import { onMount } from 'svelte';
 	import { api, type Disk, type StoragePool, type VolumeInfo, type DiskCandidate, type SmartInfo, type RaidType, type PoolHealthInfo, type ScrubStatus, type WipeMode, type FsckStatus, type SmartTestHistoryEntry, type SmartTestScheduleInfo, type SmartTestStatus, type DiskPowerSettings, type BtrfsSnapshotInfo, type GrowPoolStatus } from '#lib/stores/api.js';
 	import { taskProgress } from '#lib/stores/websocket.js';
@@ -19,7 +20,6 @@
 
 	// UI state
 	let sidebarSection: 'overview' | 'storage' | 'harddisk' | 'external' = 'storage';
-	let activeTab: 'pools' | 'organizing' | 'settings' = 'pools';
 	let expandedPools: Set<string> = new Set();
 	let showCreateMenu = false;
 
@@ -183,14 +183,6 @@
 	}
 
 	// Utility functions
-	function formatBytes(bytes: number): string {
-		if (bytes === 0) return '0 B';
-		const k = 1024;
-		const sizes = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
-		const i = Math.floor(Math.log(bytes) / Math.log(k));
-		return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
-	}
-
 	function getStatusColor(status: string): string {
 		switch (status) {
 			case 'normal':
@@ -225,12 +217,6 @@
 		}
 	}
 
-	function getRaidIcon(raidType: RaidType): string {
-		if (raidType === 'basic' || raidType === 'btrfs-single') {
-			return 'mdi:database';
-		}
-		return 'mdi:database-multiple';
-	}
 
 	function getAvailableRaidTypes(): typeof raidTypes {
 		const numDevices = newPool.selectedDevices.length;
@@ -380,7 +366,7 @@
 		showCreateMenu = false;
 		poolMenuTarget = null;
 		newVolume = {
-			poolId: poolId || '',
+			poolId: poolId || (pools.length === 1 ? pools[0].id : ''),
 			name: `Volume ${pools.reduce((sum, p) => sum + p.volumes.length, 0) + 1}`,
 			fsType: 'ext4'
 		};
@@ -933,18 +919,10 @@
 		{#if sidebarSection === 'storage'}
 			<!-- Tabs -->
 			<nav class="tabs">
-				<button class="tab" class:active={activeTab === 'pools'} onclick={() => activeTab = 'pools'}>
-					{$t.storageManager.tabs.poolsVolumes}
-				</button>
-				<button class="tab" class:active={activeTab === 'organizing'} onclick={() => activeTab = 'organizing'}>
-					{$t.storageManager.tabs.dataOrganizing}
-				</button>
-				<button class="tab" class:active={activeTab === 'settings'} onclick={() => activeTab = 'settings'}>
-					{$t.storageManager.tabs.advancedSettings}
-				</button>
+				<span class="tab active">{$t.storageManager.tabs.poolsVolumes}</span>
 			</nav>
 
-			{#if activeTab === 'pools'}
+
 				<!-- Create button -->
 				<div class="toolbar">
 					<div class="create-dropdown">
@@ -996,7 +974,7 @@
 										<Icon icon="mdi:chevron-down" class="w-5 h-5" />
 									</button>
 									<div class="pool-icon">
-										<Icon icon={getRaidIcon(pool.raid_type)} class="w-8 h-8 text-slate-600" />
+										<Icon icon="mdi:harddisk" class="w-8 h-8 text-slate-600" />
 									</div>
 									<div class="pool-info">
 										<div class="pool-title">
@@ -1018,7 +996,7 @@
 												{#if poolHealth[pool.id].rebuild_progress != null}
 													<span class="health-item rebuild">
 														<Icon icon="mdi:sync" class="w-3.5 h-3.5 animate-spin" />
-														{$t.storageManager.health?.rebuilding || 'Rebuilding'}: {poolHealth[pool.id].rebuild_progress?.toFixed(1)}%
+														{$t.storageManager.health?.rebuilding || 'Rebuilding'}{$t.common.labelSeparator} {poolHealth[pool.id].rebuild_progress?.toFixed(1)}%
 													</span>
 												{/if}
 												{#if scrubbingPools.has(pool.id)}
@@ -1029,7 +1007,7 @@
 												{:else if poolHealth[pool.id].last_scrub}
 													<span class="health-item scrub-info">
 														<Icon icon="mdi:check-circle-outline" class="w-3.5 h-3.5" />
-														{$t.storageManager.health?.lastScrub || 'Last scrub'}: {formatRelativeDate(poolHealth[pool.id].last_scrub?.date || '')}
+														{$t.storageManager.health?.lastScrub || 'Last scrub'}{$t.common.labelSeparator} {formatRelativeDate(poolHealth[pool.id].last_scrub?.date || '')}
 														{#if (poolHealth[pool.id].last_scrub?.errors_found ?? 0) > 0}
 															<span class="scrub-errors">({poolHealth[pool.id].last_scrub?.errors_found} {$t.storageManager.health?.errorsFound || 'errors'})</span>
 														{/if}
@@ -1082,7 +1060,7 @@
 													</div>
 												</div>
 												<div class="volume-usage">
-													<span class="usage-text">{$t.storageManager.volumes.used}: {formatBytes(volume.used)}</span>
+													<span class="usage-text">{$t.storageManager.volumes.used}{$t.common.labelSeparator} {formatBytes(volume.used)}</span>
 													<div class="usage-bar">
 														<div class="usage-fill" style="width: {volume.usage_percent}%"></div>
 													</div>
@@ -1104,17 +1082,6 @@
 						{/each}
 					</div>
 				{/if}
-			{:else if activeTab === 'organizing'}
-				<div class="coming-soon">
-					<Icon icon="mdi:folder-sync" class="w-16 h-16 text-slate-300" />
-					<p>{$t.storageManager.messages.dataOrganizingComingSoon}</p>
-				</div>
-			{:else if activeTab === 'settings'}
-				<div class="coming-soon">
-					<Icon icon="mdi:cog" class="w-16 h-16 text-slate-300" />
-					<p>{$t.storageManager.messages.advancedSettingsComingSoon}</p>
-				</div>
-			{/if}
 
 		{:else if sidebarSection === 'harddisk'}
 			{#if loading}
@@ -1438,7 +1405,7 @@
 												<span class="rec-badge">{$t.storageManager.modals.createPool.recommended}</span>
 											{/if}
 										</div>
-										<span class="raid-space">{$t.storageManager.modals.createPool.available}: {formatBytes(calculateAvailableSpace(raid.type))}</span>
+										<span class="raid-space">{$t.storageManager.modals.createPool.available}{$t.common.labelSeparator} {formatBytes(calculateAvailableSpace(raid.type))}</span>
 										<p class="raid-desc">{getRaidTypeDesc(raid.descKey)}</p>
 									</button>
 								{/each}
@@ -1460,7 +1427,7 @@
 					<label class="checkbox-label"><input type="checkbox" bind:checked={confirmPoolErase} />{$t.storageManager.modals.createPool.confirmErase}</label>
 					<div class="preview-card">
 						<div class="preview-header">
-							<Icon icon={getRaidIcon(newPool.raidType)} class="w-10 h-10 text-slate-600" />
+							<Icon icon="mdi:harddisk" class="w-10 h-10 text-slate-600" />
 							<h3>{newPool.name}</h3>
 						</div>
 						<div class="preview-details">
@@ -1777,7 +1744,7 @@
 										 `${schedule.interval_hours}h`}
 									</span>
 									{#if schedule.last_run}
-										<span class="schedule-last">{$t.storageManager?.smartTests?.lastRun || 'Last'}: {new Date(schedule.last_run).toLocaleDateString()}</span>
+										<span class="schedule-last">{$t.storageManager?.smartTests?.lastRun || 'Last'}{$t.common.labelSeparator} {new Date(schedule.last_run).toLocaleDateString()}</span>
 									{/if}
 								</div>
 								<div class="schedule-actions">
@@ -2241,7 +2208,7 @@
 
 					{#if !resizeData.useMax}
 						<div class="form-section">
-							<label class="form-label">{$t.storageManager.modals2?.resize?.newSize || 'New Size'} (GB)</label>
+							<label class="form-label">{$t.storageManager.modals2?.resize?.newSize || 'New Size'} (GiB)</label>
 							<input type="number" class="form-input" bind:value={resizeData.newSizeGB} min="1" />
 						</div>
 
@@ -2820,16 +2787,15 @@
 	/* States */
 	.loading-state,
 	.error-state,
-	.empty-state,
-	.coming-soon {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		gap: 16px;
-		padding: 60px 20px;
-		color: #64748b;
-	}
+	.empty-state {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 16px;
+        padding: 60px 20px;
+        color: #64748b;
+    }
 
 	.error-state p { color: #dc2626; }
 

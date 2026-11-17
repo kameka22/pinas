@@ -230,7 +230,7 @@
 						</div>
 					{:else}
 						<div class="dns-auto">
-							<span class="sublabel">{$t.networkSettings?.dnsAuto || 'DNS provided by DHCP'}: {networkStatus.dns.primary}{networkStatus.dns.secondary ? `, ${networkStatus.dns.secondary}` : ''}</span>
+							<span class="sublabel">{$t.networkSettings?.dnsAuto || 'DNS provided by DHCP'}{$t.common.labelSeparator} {networkStatus.dns.primary}{networkStatus.dns.secondary ? `, ${networkStatus.dns.secondary}` : ''}</span>
 						</div>
 					{/if}
 				</div>

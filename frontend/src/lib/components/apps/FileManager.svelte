@@ -1,5 +1,6 @@
 <script lang="ts">
 	import Icon from '@iconify/svelte';
+	import { formatBytes } from '#lib/stores/system.js';
 	import { t, locale } from '#lib/i18n/index.js';
 	import { onMount } from 'svelte';
 	import { api, type FileItem as ApiFileItem, type BrowsableLocation } from '#lib/stores/api.js';
@@ -609,11 +610,7 @@
 	}
 
 	function formatSize(bytes?: number): string {
-		if (!bytes) return '-';
-		if (bytes < 1024) return `${bytes} B`;
-		if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-		if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-		return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+		return bytes == null ? '-' : formatBytes(bytes);
 	}
 
 	function formatDate(date: Date): string {
@@ -635,7 +632,7 @@
 
 	$: currentFolderDisplay = (() => {
 		const location = locations.find(l => l.id === selectedLocationId);
-		const locationName = location?.name || '';
+		const locationName = location?.type === 'home' ? $t.walkthrough.myFiles : location?.name || '';
 		if (!currentPath) return locationName ? `/${locationName}` : '/';
 		return `/${locationName}/${currentPath}`;
 	})();
@@ -800,7 +797,7 @@
 									on:click={() => selectLocation(loc)}
 								>
 									<Icon icon={loc.icon} class="w-4 h-4 location-icon home-icon" />
-									<span>{loc.name}</span>
+									<span>{loc.type === 'home' ? $t.walkthrough.myFiles : loc.name}</span>
 								</button>
 							{/each}
 						{/if}
@@ -830,7 +827,7 @@
 									disabled={!loc.enabled}
 								>
 									<Icon icon={loc.icon} class="w-4 h-4 location-icon share-icon" />
-									<span>{loc.name}</span>
+									<span>{loc.type === 'home' ? $t.walkthrough.myFiles : loc.name}</span>
 									{#if !loc.enabled}
 										<span class="status-badge disabled">{$t.fileManager.statuses?.disabled || 'Disabled'}</span>
 									{/if}
@@ -864,7 +861,7 @@
 								>
 									<Icon icon={loc.icon} class="w-4 h-4 location-icon volume-icon" />
 									<div class="location-info">
-										<span class="location-name">{loc.name}</span>
+										<span class="location-name">{loc.type === 'home' ? $t.walkthrough.myFiles : loc.name}</span>
 										{#if loc.pool_name}
 											<span class="location-detail">{loc.pool_name}</span>
 										{/if}
@@ -903,7 +900,7 @@
 									on:click={() => selectLocation(loc)}
 								>
 									<Icon icon={loc.icon} class="w-4 h-4 location-icon media-icon" />
-									<span>{loc.name}</span>
+									<span>{loc.type === 'home' ? $t.walkthrough.myFiles : loc.name}</span>
 								</button>
 							{/each}
 						{/if}

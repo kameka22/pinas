@@ -115,8 +115,8 @@
 						<div class="storage-bar-fill" style="width: {storagePercent}%"></div>
 					</div>
 					<div class="storage-labels">
-						<span>{$t.dashboard.used}: {formatBytes(storageUsed)}</span>
-						<span>{$t.dashboard.free}: {formatBytes(Math.max(storageTotal - storageUsed, 0))}</span>
+						<span>{$t.dashboard.used}{$t.common.labelSeparator} {formatBytes(storageUsed)}</span>
+						<span>{$t.dashboard.free}{$t.common.labelSeparator} {formatBytes(Math.max(storageTotal - storageUsed, 0))}</span>
 					</div>
 				</div>
 			{:else}

@@ -1958,13 +1958,7 @@ impl StorageService {
                 errors: DeviceErrorInfo { read_errors: 0, write_errors: 0, corruption_errors: 0, generation_errors: 0 },
             }).collect(),
             rebuild_progress: None,
-            last_scrub: Some(ScrubInfo {
-                date: chrono::Utc::now().checked_sub_signed(chrono::Duration::days(3))
-                    .unwrap_or(chrono::Utc::now()).to_rfc3339(),
-                duration_secs: Some(1234),
-                result: "ok".to_string(),
-                errors_found: 0,
-            }),
+            last_scrub: None,
         }
     }
 

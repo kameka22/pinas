@@ -83,7 +83,7 @@ async fn update_hostname(
         Ok(()) => Json(ApiSuccess { success: true }).into_response(),
         Err(e) => {
             tracing::error!("Failed to update hostname: {}", e);
-            ApiError::bad_request(e.to_string()).into_response()
+            ApiError::bad_request(e.to_string()).with_code("INVALID_HOSTNAME").into_response()
         }
     }
 }

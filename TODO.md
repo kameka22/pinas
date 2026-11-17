@@ -34,13 +34,15 @@ Branche `fix/ui-walkthrough`. P1 = fonctionnel / risque de données, P2 = le dev
 Validation P1/P2 : 76 tests Rust, Clippy et build backend verts ; 51 tests frontend, build et svelte-check verts (0 erreur, 280 avertissements). Vérifié en navigateur : choix/capacités RAID, confirmation avant création, couleur des fenêtres et réception WebSocket. Les opérations système réelles restent à valider sur LibreELEC.
 
 **P3**
-- [ ] Chaînes anglaises : écran de connexion, menu utilisateur (Profile/Change Password/Logout), erreurs backend (politique de mot de passe, hostname…), rôles, groupes seedés, « My Files »
-- [ ] Connexion appareil : chemin SMB affiché `\\\\ip` ; hostname en double avec Réseau ; À propos affiche le hostname réel ≠ Réseau
-- [ ] FolderPicker : le chemin affiché ne suit pas le changement d'emplacement (la valeur retournée est correcte)
-- [ ] Permissions : ajout de dossier en saisie libre (exemple `/storage/shares/`), droits non gérables depuis Partages (« 0 permissions »)
-- [ ] Lanceur « Tout 10 » pour 9 apps (Tableau de bord seulement via la recherche) ; 404 sur les préférences non définies au premier chargement
-- [ ] Stockage : onglets « bientôt disponibles », « Dernière vérification : 3 jours » factice, icône de pool vide, tailles GB/TB incohérentes, pool non présélectionné à la création de volume
-- [ ] Fichiers : taille « - » pour un fichier vide ; espace avant « : » en français ; uptime non localisé
+- [x] Traductions : connexion, menu utilisateur et modales, erreurs de politique de mot de passe/hostname/noms réservés, rôles, groupes système et « Mes fichiers »
+- [x] Connexion appareil : chemin SMB à deux antislashs ; hostname en lecture seule, édition dans Réseau ; À propos utilise la même identité réseau
+- [x] FolderPicker : chemin réactif à l’emplacement, réponses obsolètes ignorées et confirmation bloquée pendant le chargement
+- [x] Permissions : sélecteur de dossiers accessible et chemins d’exemple corrigés ; édition des droits depuis Partages ; refus explicite distinct de l’accès par défaut dans les deux écrans
+- [x] Lanceur : Tableau de bord présent parmi les dix apps ; préférences lues sans 404 sur les clés absentes
+- [x] Stockage : onglets vides et date de vérification fictive retirés, icône visible, unités binaires cohérentes (KiB/MiB/GiB/TiB), pool unique présélectionné à la création de volume
+- [x] Fichiers : zéro octet affiché ; séparateur de libellé français avec espace insécable ; jours de fonctionnement localisés
+
+Validation P3 : 76 tests Rust, Clippy et build backend verts ; 57 tests frontend, build et svelte-check verts (0 erreur, 279 avertissements). Parcours navigateur : dix apps dans le lanceur, menu utilisateur français, chemin de dossier affiché = chemin choisi, enregistrement puis restauration d’un droit de test, icône de pool, identité réseau et uptime français. `last_scrub` absent confirmé après redémarrage du backend dev. La validation SMB/NFS et stockage sur LibreELEC reste matérielle.
 
 ---
 

@@ -9,7 +9,6 @@
 	let avahi: ServiceStatus | null = null;
 	let ports: { port: number; protocol: string; label: string; active: boolean }[] = [];
 	let hostname = '';
-	let savingHostname = false;
 	let avahiBusy = false;
 
 	$: scheme = window.location.protocol.replace(':', '');
@@ -24,7 +23,7 @@
 			toasts.error(errorMessage(e, $t.common.errors.loadNetwork));
 		}
 		try { avahi = await api.getServiceStatus('avahi-daemon'); } catch { avahi = null; }
-		const [samba, ssh, cups, containers] = await Promise.allSettled([api.getSambaStatus(), api.getSshStatus(), api.getCupsStatus(), api.getContainers(false)]);
+		const [samba, ssh, cups, containers] = await Promise.allSettled([api.getSambaStatus(), api.getSshStatus(), api.getCupsStatus(), api.getDockerStatus().then(status => status.running ? api.getContainers(false) : [])]);
 		const list: typeof ports = [
 			{ port: Number(uiPort), protocol: 'tcp', label: 'PiNAS UI', active: true },
 			{ port: 445, protocol: 'tcp', label: 'SMB', active: samba.status === 'fulfilled' && samba.value.running },
@@ -40,19 +39,6 @@
 			}
 		}
 		ports = list.sort((a, b) => a.port - b.port);
-	}
-
-	async function saveHostname() {
-		savingHostname = true;
-		try {
-			await api.updateNetworkHostname(hostname.trim());
-			toasts.success($t.deviceConnection.hostnameSaved);
-			await load();
-		} catch (e) {
-			toasts.error(errorMessage(e, $t.common.errors.saveFailed));
-		} finally {
-			savingHostname = false;
-		}
 	}
 
 	async function toggleAvahi() {
@@ -84,11 +70,7 @@
 <div class="dc">
 	<section class="dc-section">
 		<h3 class="dc-title"><Icon icon="mdi:server-network" class="w-5 h-5" />{$t.deviceConnection.identity}</h3>
-		<div class="dc-row">
-			<label for="hostname">{$t.deviceConnection.hostname}</label>
-			<input id="hostname" class="dc-input" bind:value={hostname} pattern="[a-zA-Z0-9-]+" />
-			<button class="btn-primary" on:click={saveHostname} disabled={savingHostname || !hostname.trim() || hostname === network?.hostname}>{$t.common.save}</button>
-		</div>
+		<div class="dc-row"><span>{$t.deviceConnection.hostname}</span><span class="mono">{hostname}</span></div>
 		<div class="dc-row">
 			<span>{$t.deviceConnection.mdns}</span>
 			{#if avahi}
@@ -112,7 +94,7 @@
 			{/each}
 		</ul>
 		{#if addresses.length > 0}
-			<p class="dc-hint">{$t.deviceConnection.smbHint} <span class="mono">\\\\{addresses[0].ip}</span> · <span class="mono">smb://{addresses[0].ip}</span></p>
+			<p class="dc-hint">{$t.deviceConnection.smbHint} <span class="mono">{String.fromCharCode(92, 92) + addresses[0].ip}</span> · <span class="mono">smb://{addresses[0].ip}</span></p>
 		{/if}
 	</section>
 
@@ -134,7 +116,6 @@
 	.dc-section { background: white; border: 1px solid #e2e8f0; border-radius: 0.75rem; padding: 1rem 1.25rem; }
 	.dc-title { display: flex; align-items: center; gap: 0.5rem; font-size: 0.9375rem; font-weight: 600; color: #0f172a; margin: 0 0 0.75rem; }
 	.dc-row { display: flex; align-items: center; gap: 0.75rem; font-size: 0.8125rem; margin-bottom: 0.625rem; flex-wrap: wrap; }
-	.dc-input { border: 1px solid #cbd5e1; border-radius: 0.5rem; padding: 0.375rem 0.625rem; font-size: 0.8125rem; min-width: 12rem; }
 	.dc-hint { font-size: 0.75rem; color: #64748b; margin: 0.25rem 0 0; }
 	.dc-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.375rem; font-size: 0.8125rem; }
 	.dc-list li { display: flex; align-items: center; gap: 0.75rem; }
@@ -148,8 +129,6 @@
 	.dc-badge.on { background: #dcfce7; color: #15803d; }
 	.mono { font-family: ui-monospace, monospace; }
 	a.mono { color: #1d4ed8; }
-	.btn-primary { padding: 0.4rem 0.875rem; border-radius: 0.5rem; font-size: 0.8125rem; font-weight: 500; background: #3b82f6; color: white; }
-	.btn-primary:disabled { opacity: 0.5; }
 	.toggle { position: relative; width: 2.25rem; height: 1.25rem; display: inline-block; }
 	.toggle input { opacity: 0; width: 0; height: 0; }
 	.toggle-slider { position: absolute; inset: 0; background: #cbd5e1; border-radius: 999px; transition: 0.2s; }

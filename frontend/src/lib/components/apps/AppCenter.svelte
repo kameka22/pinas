@@ -521,7 +521,7 @@
 					<div class="detail-info">
 						<h1>{selectedPackage.name}</h1>
 						<p class="detail-meta">
-							{$t.appCenter.version}: {selectedPackage.version}
+							{$t.appCenter.version}{$t.common.labelSeparator} {selectedPackage.version}
 							{#if selectedPackage.author}
 								· {selectedPackage.author}
 							{/if}
@@ -545,7 +545,7 @@
 								</button>
 								<p class="dependency-warning">
 									<Icon icon="mdi:alert" class="w-4 h-4" />
-									{$t.appCenter.requiresInstall || 'Requires'}: {getDependencyNames(missingDeps).join(', ')}
+									{$t.appCenter.requiresInstall || 'Requires'}{$t.common.labelSeparator} {getDependencyNames(missingDeps).join(', ')}
 								</p>
 							{:else}
 								<button class="btn-primary" on:click={() => handleInstall(selectedPackage)}>

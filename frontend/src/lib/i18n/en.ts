@@ -1,6 +1,7 @@
 export default {
 	// Common
 	common: {
+		labelSeparator: ':',
 		save: 'Save',
 		cancel: 'Cancel',
 		delete: 'Delete',
@@ -78,7 +79,40 @@ export default {
 		dismiss: 'Dismiss'
 	},
 
+	walkthrough: {
+		myFiles: 'My Files',
+		defaultAccess: 'Default access',
+		permissionsHint: 'These rules apply to Files and SMB. For NFS, use export restrictions. Without rules, the share is open to authenticated users; parent folder rules may apply. At the same folder, the highest user or group permission wins. Administrators retain full access.',
+		editPermissions: 'Manage permissions',
+		groupAdmins: 'Administrators',
+		groupUsers: 'Users',
+		groupAdminsDesc: 'System administrators with full access',
+		groupUsersDesc: 'Users with standard access',
+	},
+	apiErrors: {
+		INVALID_PASSWORD: 'The current password is incorrect.',
+		PASSWORD_CHANGE_FAILED: 'Password change failed.',
+		INTERNAL_ERROR: 'An internal error occurred. Try again.',
+		VALIDATION_ERROR: 'Check the form values.',
+
+		INVALID_CREDENTIALS: 'Invalid credentials.',
+		RATE_LIMITED: 'Too many attempts. Try again in a minute.',
+		INVALID_USERNAME: 'Invalid or reserved username.',
+		DUPLICATE_USERNAME: 'This username already exists.',
+		PASSWORD_POLICY: 'The password does not satisfy the configured security policy.',
+		INVALID_HOSTNAME: 'Use 1–63 letters, digits or hyphens, without a leading or trailing hyphen.',
+		PROTECTED_PROCESS: 'This system process is protected.',
+		INVALID_GROUP_NAME: 'Invalid or reserved group name.',
+	},
 	login: {
+		username: 'Username',
+		password: 'Password',
+		usernameHint: 'Enter your username',
+		passwordHint: 'Enter your password',
+		signingIn: 'Signing in…',
+		required: 'Username and password are required.',
+		failed: 'Sign-in failed. Try again.',
+
 		subtitle: 'Sign in to your account',
 		signIn: 'Sign In',
 		footer: 'Secure NAS Management System'
@@ -261,7 +295,7 @@ export default {
 			readWrite: 'Read/Write',
 			addFolder: 'Add Folder',
 			folderPath: 'Folder Path',
-			folderPathHint: 'Enter the full path to the folder (e.g., /storage/shares/documents)',
+			folderPathHint: 'Enter the full path to the folder (e.g., /storage/pools/)',
 			noPermissions: 'No folder permissions configured',
 			noPermissionsHint: 'Add a folder to start managing permissions',
 			confirmRemoveFolder: 'Remove all permissions for {path}?'
@@ -335,6 +369,7 @@ export default {
 		noNotifications: 'No notifications',
 		clearAll: 'Clear all',
 		userMenu: {
+			changePassword: 'Change password',
 			profile: 'Profile',
 			settings: 'Settings',
 			logout: 'Logout',

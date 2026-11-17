@@ -102,3 +102,16 @@ describe('file download URLs', () => {
 		]);
 	});
 });
+
+it('loads absent preferences without requesting missing keys', async () => {
+ const fetcher = mockFetch(200, {});
+ expect(await api.getPreference('desktop_icons')).toEqual({ value: '' });
+ expect((fetcher.mock.calls[0] as unknown as [string])[0]).toBe('/api/preferences');
+});
+
+it('translates known backend errors while retaining stable codes', async () => {
+ mockFetch(400, { error: 'raw password policy', code: 'PASSWORD_POLICY' });
+ await expect(api.post('/users', {})).rejects.toMatchObject({ code: 'PASSWORD_POLICY', status: 400 });
+ mockFetch(400, { error: 'raw password policy', code: 'PASSWORD_POLICY' });
+ await expect(api.post('/users', {})).rejects.not.toMatchObject({ message: 'raw password policy' });
+});

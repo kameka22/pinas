@@ -153,7 +153,7 @@
 
 	$: userInitial = $auth.user?.username?.[0]?.toUpperCase() || 'U';
 	$: userName = $auth.user?.username || 'User';
-	$: userRole = $auth.user?.role === 'admin' ? 'Administrator' : 'User';
+	$: userRole = $auth.user?.role === 'admin' ? $t.userManager.roles.administrator : $t.userManager.roles.user;
 
 	// Update check
 	let updateAvailable = false;
@@ -278,20 +278,20 @@
 
 					<button class="dropdown-item" on:click={openProfileModal}>
 						<Icon icon="mdi:account" class="w-4 h-4" />
-						<span>{$t.topBar?.profile || 'Profile'}</span>
+						<span>{$t.topBar.userMenu.profile}</span>
 					</button>
 
 					<button class="dropdown-item" on:click={openChangePasswordModal}>
 						<Icon icon="mdi:key-variant" class="w-4 h-4" />
-						<span>{$t.topBar?.changePassword || 'Change Password'}</span>
+						<span>{$t.topBar.userMenu.changePassword}</span>
 					</button>
 
 					<div class="dropdown-divider"></div>
 
 					<div class="power-row">
-						<button class="power-row-btn" on:click={handleLogout} title={$t.topBar?.logout || 'Logout'}>
+						<button class="power-row-btn" on:click={handleLogout} title={$t.topBar.userMenu.logout}>
 							<Icon icon="mdi:logout" class="w-5 h-5" />
-							<span>{$t.topBar?.logout || 'Logout'}</span>
+							<span>{$t.topBar.userMenu.logout}</span>
 						</button>
 						<div class="power-row-sep"></div>
 						<button class="power-row-btn" on:click={() => openPowerModal('restart')} title={$t.topBar?.userMenu?.restart || 'Restart'}>
