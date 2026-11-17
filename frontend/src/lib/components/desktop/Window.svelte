@@ -104,6 +104,7 @@
 
 <style>
 	.window {
+		color: #1e293b;
 		position: absolute;
 		display: flex;
 		flex-direction: column;

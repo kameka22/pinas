@@ -5,6 +5,9 @@
 	import { taskProgress } from '#lib/stores/websocket.js';
 	import { t } from '#lib/i18n/index.js';
 
+	import { validRaidCount, recommendedRaid, raidCapacity } from '#lib/utils/raid.js';
+	let confirmPoolErase = false;
+
 	// State
 	let loading = true;
 	let error: string | null = null;
@@ -52,7 +55,7 @@
 		description: '',
 		raidType: 'basic' as RaidType,
 		selectedDevices: [] as string[],
-		wipeDevices: true
+		wipeDevices: false
 	};
 
 	// Create volume state
@@ -148,20 +151,20 @@
 	let newScheduleInterval = 168; // weekly
 
 	// RAID type info - translations are applied in the template via getRaidTypeName/getRaidTypeDesc
-	const raidTypes: { type: RaidType; nameKey: string; minDisks: number; descKey: string }[] = [
-		{ type: 'basic', nameKey: 'basic', minDisks: 1, descKey: 'basicDesc' },
-		{ type: 'jbod', nameKey: 'jbod', minDisks: 1, descKey: 'jbodDesc' },
-		{ type: 'raid0', nameKey: 'raid0', minDisks: 2, descKey: 'raid0Desc' },
-		{ type: 'raid1', nameKey: 'raid1', minDisks: 2, descKey: 'raid1Desc' },
-		{ type: 'raid5', nameKey: 'raid5', minDisks: 3, descKey: 'raid5Desc' },
-		{ type: 'raid10', nameKey: 'raid10', minDisks: 4, descKey: 'raid10Desc' },
-		{ type: 'raid6', nameKey: 'raid6', minDisks: 4, descKey: 'raid6Desc' },
-		{ type: 'btrfs-single', nameKey: 'btrfsSingle', minDisks: 1, descKey: 'btrfsSingleDesc' },
-		{ type: 'btrfs-raid0', nameKey: 'btrfsRaid0', minDisks: 2, descKey: 'btrfsRaid0Desc' },
-		{ type: 'btrfs-raid1', nameKey: 'btrfsRaid1', minDisks: 2, descKey: 'btrfsRaid1Desc' },
-		{ type: 'btrfs-raid5', nameKey: 'btrfsRaid5', minDisks: 3, descKey: 'btrfsRaid5Desc' },
-		{ type: 'btrfs-raid6', nameKey: 'btrfsRaid6', minDisks: 4, descKey: 'btrfsRaid6Desc' },
-		{ type: 'btrfs-raid10', nameKey: 'btrfsRaid10', minDisks: 4, descKey: 'btrfsRaid10Desc' },
+	const raidTypes: { type: RaidType; nameKey: string; descKey: string }[] = [
+		{ type: 'basic', nameKey: 'basic', descKey: 'basicDesc' },
+		{ type: 'jbod', nameKey: 'jbod', descKey: 'jbodDesc' },
+		{ type: 'raid0', nameKey: 'raid0', descKey: 'raid0Desc' },
+		{ type: 'raid1', nameKey: 'raid1', descKey: 'raid1Desc' },
+		{ type: 'raid5', nameKey: 'raid5', descKey: 'raid5Desc' },
+		{ type: 'raid10', nameKey: 'raid10', descKey: 'raid10Desc' },
+		{ type: 'raid6', nameKey: 'raid6', descKey: 'raid6Desc' },
+		{ type: 'btrfs-single', nameKey: 'btrfsSingle', descKey: 'btrfsSingleDesc' },
+		{ type: 'btrfs-raid0', nameKey: 'btrfsRaid0', descKey: 'btrfsRaid0Desc' },
+		{ type: 'btrfs-raid1', nameKey: 'btrfsRaid1', descKey: 'btrfsRaid1Desc' },
+		{ type: 'btrfs-raid5', nameKey: 'btrfsRaid5', descKey: 'btrfsRaid5Desc' },
+		{ type: 'btrfs-raid6', nameKey: 'btrfsRaid6', descKey: 'btrfsRaid6Desc' },
+		{ type: 'btrfs-raid10', nameKey: 'btrfsRaid10', descKey: 'btrfsRaid10Desc' },
 	];
 
 	// Helper to get RAID type translated name
@@ -231,29 +234,11 @@
 
 	function getAvailableRaidTypes(): typeof raidTypes {
 		const numDevices = newPool.selectedDevices.length;
-		return raidTypes.filter(r => numDevices >= r.minDisks);
+		return raidTypes.filter(r => validRaidCount(r.type, numDevices));
 	}
 
-	function calculateAvailableSpace(): number {
-		const selectedDisks = candidates.filter(c => newPool.selectedDevices.includes(c.device_path));
-		const totalSize = selectedDisks.reduce((sum, d) => sum + d.size, 0);
-
-		const smallestDisk = Math.min(...selectedDisks.map(d => d.size)) || 0;
-		switch (newPool.raidType) {
-			case 'raid1':
-			case 'btrfs-raid1':
-				return smallestDisk;
-			case 'raid5':
-			case 'btrfs-raid5':
-				return totalSize - smallestDisk;
-			case 'raid6':
-			case 'btrfs-raid6':
-				return totalSize - 2 * smallestDisk;
-			case 'raid10':
-				return totalSize / 2;
-			default:
-				return totalSize;
-		}
+	function calculateAvailableSpace(type: RaidType = newPool.raidType): number {
+		return raidCapacity(type, candidates.filter(c => newPool.selectedDevices.includes(c.device_path)).map(c => c.size));
 	}
 
 	// Data loading
@@ -349,12 +334,13 @@
 	function openCreatePool() {
 		showCreateMenu = false;
 		createPoolStep = 1;
+		confirmPoolErase = false;
 		newPool = {
 			name: `Storage Pool ${pools.length + 1}`,
 			description: '',
 			raidType: 'basic',
 			selectedDevices: [],
-			wipeDevices: true
+			wipeDevices: false
 		};
 		showCreatePoolModal = true;
 	}
@@ -368,11 +354,12 @@
 		// Reset RAID type if not enough devices
 		const available = getAvailableRaidTypes();
 		if (!available.find(r => r.type === newPool.raidType)) {
-			newPool.raidType = available[0]?.type || 'basic';
+			newPool.raidType = recommendedRaid(newPool.selectedDevices.length);
 		}
 	}
 
 	async function createPool() {
+		if (!confirmPoolErase || !validRaidCount(newPool.raidType, newPool.selectedDevices.length)) return;
 		try {
 			await api.createPool({
 				name: newPool.name,
@@ -384,7 +371,7 @@
 			showCreatePoolModal = false;
 			await loadData();
 		} catch (e) {
-			error = e instanceof Error ? e.message : $t.storageManager.errors.createPoolFailed;
+			error = (e as { code?: string })?.code === 'INVALID_POOL_LAYOUT' ? $t.storageManager.errors.invalidPoolLayout : $t.storageManager.errors.createPoolFailed;
 		}
 	}
 
@@ -1447,11 +1434,11 @@
 									>
 										<div class="raid-header">
 											<span class="raid-name">{getRaidTypeName(raid.nameKey)}</span>
-											{#if raid.type === 'basic'}
+											{#if raid.type === recommendedRaid(newPool.selectedDevices.length)}
 												<span class="rec-badge">{$t.storageManager.modals.createPool.recommended}</span>
 											{/if}
 										</div>
-										<span class="raid-space">{$t.storageManager.modals.createPool.available}: {formatBytes(calculateAvailableSpace())}</span>
+										<span class="raid-space">{$t.storageManager.modals.createPool.available}: {formatBytes(calculateAvailableSpace(raid.type))}</span>
 										<p class="raid-desc">{getRaidTypeDesc(raid.descKey)}</p>
 									</button>
 								{/each}
@@ -1468,6 +1455,9 @@
 
 				{:else if createPoolStep === 2}
 					<!-- Step 2: Preview -->
+					<p role="alert">{$t.storageManager.modals.createPool.eraseWarning}</p>
+					<p>{newPool.selectedDevices.join(', ')}</p>
+					<label class="checkbox-label"><input type="checkbox" bind:checked={confirmPoolErase} />{$t.storageManager.modals.createPool.confirmErase}</label>
 					<div class="preview-card">
 						<div class="preview-header">
 							<Icon icon={getRaidIcon(newPool.raidType)} class="w-10 h-10 text-slate-600" />
@@ -1496,13 +1486,13 @@
 				{#if createPoolStep === 1}
 					<button
 						class="btn-primary"
-						disabled={newPool.selectedDevices.length === 0 || !newPool.name}
-						onclick={() => createPoolStep = 2}
+						disabled={!validRaidCount(newPool.raidType, newPool.selectedDevices.length) || !newPool.name}
+						onclick={() => { confirmPoolErase = false; createPoolStep = 2; }}
 					>
 						{$t.common.next}
 					</button>
 				{:else}
-					<button class="btn-primary" onclick={createPool}>{$t.common.create}</button>
+					<button class="btn-primary" disabled={!confirmPoolErase} onclick={createPool}>{$t.common.create}</button>
 				{/if}
 			</div>
 		</div>

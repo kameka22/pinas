@@ -21,15 +21,17 @@ Branche `fix/ui-walkthrough`. P1 = fonctionnel / risque de données, P2 = le dev
 **P1**
 - [x] Création de pool : nombre de disques validé par type de RAID **avant** tout effacement (`RaidType::validate_devices`, code `INVALID_POOL_LAYOUT`), aussi en dev mode
 - [x] Capacité d'un pool = capacité utile du niveau RAID (`RaidType::usable_capacity`), pas la somme des disques (création et agrandissement)
-- [ ] Assistant de pool : « Basique » proposé/recommandé avec 2+ disques, même capacité affichée pour chaque option, recommandation selon le nombre de disques, avertissement d'effacement dans le récapitulatif
-- [ ] `Window.svelte` : `.window` sans `color` → texte blanc sur blanc (Connexion appareil, Sécurité)
-- [ ] Setup : `machine_name` ignoré (TODO `api/setup.rs`), hostname et noms réservés (`root`…) validés trop tard, erreurs en anglais sans retour à l'étape fautive, « Setting up... » non traduit
-- [ ] Proxy Vite sans `ws: true` : pas de WebSocket en dev (CPU/mémoire à 0 %, widgets et tâches figés)
+- [x] Assistant de pool : choix RAID valides, capacité propre à chaque option, recommandation selon le nombre de disques et confirmation explicite de destruction des données
+- [x] `Window.svelte` : couleur de texte explicite (Connexion appareil, Sécurité)
+- [x] Setup : hostname validé, appliqué et persisté ; noms réservés refusés dès le formulaire ; erreurs traduites et retour à l’étape fautive
+- [x] Proxy Vite : `ws: true` pour les statistiques et événements en direct
 
 **P2**
-- [ ] App Docker en dev mode : parle au vrai démon Docker de la machine
-- [ ] `kill_process` agit sur les vrais processus en dev mode ; aucune garde pour PID 1 ni pour PiNAS lui-même
-- [ ] Terminal : racine dev codée en dur (`./data`) au lieu de `AppConfig`
+- [x] App Docker en dev mode : connexion au vrai démon désactivée (y compris après reconnexion)
+- [x] `kill_process` simulé en dev ; PID 0/1 et PiNAS protégés dans les deux modes
+- [x] Terminal : racine dev fournie par `AppConfig.files_root`
+
+Validation P1/P2 : 76 tests Rust, Clippy et build backend verts ; 51 tests frontend, build et svelte-check verts (0 erreur, 280 avertissements). Vérifié en navigateur : choix/capacités RAID, confirmation avant création, couleur des fenêtres et réception WebSocket. Les opérations système réelles restent à valider sur LibreELEC.
 
 **P3**
 - [ ] Chaînes anglaises : écran de connexion, menu utilisateur (Profile/Change Password/Logout), erreurs backend (politique de mot de passe, hostname…), rôles, groupes seedés, « My Files »

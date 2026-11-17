@@ -108,6 +108,9 @@ impl DockerService {
 
     /// Try to connect to Docker daemon
     async fn connect() -> Result<Docker> {
+        if crate::config::AppConfig::global().dev_mode {
+            return Err(anyhow!("Docker is disabled in development mode"));
+        }
         // Try socket path first (common on Linux)
         let socket_path = crate::config::AppConfig::global().docker_host();
 

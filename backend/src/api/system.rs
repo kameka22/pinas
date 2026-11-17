@@ -330,6 +330,14 @@ async fn kill_process(
     _admin: AdminUser,
     Path(pid): Path<u32>,
 ) -> impl IntoResponse {
+    if pid <= 1 || pid == std::process::id() {
+        return crate::api::error::ApiError::forbidden("Protected process")
+            .with_code("PROTECTED_PROCESS")
+            .into_response();
+    }
+    if state.config.dev_mode {
+        return Json(serde_json::json!({"success": true, "simulated": true})).into_response();
+    }
     let pid = Pid::from_u32(pid);
     let mut sys = state.system.write().await;
     // Make sure we act on the current process table, not a 2s-old snapshot
@@ -339,12 +347,84 @@ async fn kill_process(
         // Default to SIGTERM for graceful termination
         if process.kill_with(Signal::Term).unwrap_or(false) {
             tracing::info!("Process {} killed successfully", pid);
-            return (StatusCode::OK, Json(serde_json::json!({"success": true, "message": "Process terminated"})));
+            return (
+                StatusCode::OK,
+                Json(serde_json::json!({"success": true, "message": "Process terminated"})),
+            )
+                .into_response();
         } else {
             tracing::warn!("Failed to kill process {}", pid);
-            return (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"success": false, "message": "Failed to kill process"})));
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"success": false, "message": "Failed to kill process"})),
+            )
+                .into_response();
         }
     }
 
-    (StatusCode::NOT_FOUND, Json(serde_json::json!({"success": false, "message": "Process not found"})))
+    (
+        StatusCode::NOT_FOUND,
+        Json(serde_json::json!({"success": false, "message": "Process not found"})),
+    )
+        .into_response()
+}
+
+#[cfg(test)]
+mod process_tests {
+    use super::*;
+    use std::sync::Arc;
+    use tokio::sync::{Mutex, RwLock, broadcast};
+
+    async fn state(dev_mode: bool) -> AppState {
+        AppState {
+            config: Arc::new(crate::config::AppConfig {
+                dev_mode,
+                ..Default::default()
+            }),
+            db: crate::test_util::migrated_pool().await,
+            task_tx: broadcast::channel(1).0,
+            file_task_tx: broadcast::channel(1).0,
+            storage_tx: broadcast::channel(1).0,
+            just_updated: Arc::new(Mutex::new(None)),
+            tls_enabled: false,
+            system: Arc::new(RwLock::new(System::new().unwrap())),
+            net_rates: Arc::new(RwLock::new(Default::default())),
+        }
+    }
+
+    fn admin() -> AdminUser {
+        AdminUser(crate::api::middleware::AuthUser {
+            id: "test".into(),
+            username: "test".into(),
+            is_admin: true,
+        })
+    }
+
+    #[tokio::test]
+    async fn protected_processes_are_refused_in_both_modes() {
+        for dev_mode in [false, true] {
+            let state = state(dev_mode).await;
+            for pid in [0, 1, std::process::id()] {
+                let response = kill_process(State(state.clone()), admin(), Path(pid))
+                    .await
+                    .into_response();
+                assert_eq!(response.status(), StatusCode::FORBIDDEN);
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn dev_kill_does_not_consult_or_signal_real_processes() {
+        let state = state(true).await;
+        let response = kill_process(State(state.clone()), admin(), Path(u32::MAX))
+            .await
+            .into_response();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(response.into_body(), 1024)
+            .await
+            .unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(body["simulated"], true);
+        assert!(state.system.read().await.processes().is_empty());
+    }
 }
