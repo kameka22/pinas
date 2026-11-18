@@ -15,8 +15,6 @@ const VIRTUAL_ROOT: &str = "/storage";
 /// Real root in production
 const PROD_ROOT: &str = "/storage";
 
-/// Real root in dev mode (relative to cwd)
-const DEV_ROOT: &str = "data";
 
 /// Rate limiting: max commands per window
 const RATE_LIMIT_MAX: usize = 30;
@@ -317,12 +315,9 @@ fn split_command_segments(command: &str) -> Vec<String> {
 }
 
 /// Get the real root directory based on dev_mode
-fn get_real_root(dev_mode: bool) -> PathBuf {
-    if dev_mode {
-        // In dev mode, use ./data relative to current working directory
-        std::env::current_dir()
-            .unwrap_or_else(|_| PathBuf::from("."))
-            .join(DEV_ROOT)
+fn get_real_root(config: &crate::config::AppConfig) -> PathBuf {
+    if config.dev_mode {
+        PathBuf::from(&config.files_root)
     } else {
         PathBuf::from(PROD_ROOT)
     }
@@ -372,7 +367,7 @@ pub async fn execute(
 ) -> impl IntoResponse {
     let command = req.command.trim();
     let dev_mode = state.config.dev_mode;
-    let real_root = get_real_root(dev_mode);
+    let real_root = get_real_root(&state.config);
 
     // Rate limiting
     if !check_rate_limit(&admin.id) {
@@ -595,8 +590,7 @@ pub async fn complete(
     admin: AdminUser,
     Json(req): Json<CompleteRequest>,
 ) -> impl IntoResponse {
-    let dev_mode = state.config.dev_mode;
-    let real_root = get_real_root(dev_mode);
+    let real_root = get_real_root(&state.config);
 
     // Rate limiting
     if !check_complete_rate_limit(&admin.id) {

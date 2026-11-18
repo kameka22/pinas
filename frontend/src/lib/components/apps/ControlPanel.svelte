@@ -11,22 +11,43 @@
 	import SecuritySettings from './SecuritySettings.svelte';
 	import DeviceConnection from './DeviceConnection.svelte';
 	import Personalization from './Personalization.svelte';
+	import ConfirmModal from '#lib/components/ui/ConfirmModal.svelte';
+	import SettingsHeader from '#lib/components/ui/settings/SettingsHeader.svelte';
+	import SettingsTabs from '#lib/components/ui/settings/SettingsTabs.svelte';
+	import SettingsSection from '#lib/components/ui/settings/SettingsSection.svelte';
+	import SettingsState from '#lib/components/ui/settings/SettingsState.svelte';
+	import '#lib/components/ui/settings/settings.css';
+	import { errorMessage } from '#lib/stores/toasts.js';
+	import { hasUnsavedChanges } from '#lib/stores/unsavedChanges.js';
 	import { onMount } from 'svelte';
-	import { t } from '#lib/i18n/index.js';
+	import { t, locale } from '#lib/i18n/index.js';
 	import { systemInfo as systemInfoStore, formatBytes, formatUptime } from '#lib/stores/system.js';
 
 	let aboutPools: StoragePool[] = [];
 	let aboutVolumes: VolumeInfo[] = [];
 	let aboutServices: ServiceStatus[] = [];
 	let aboutLoadedFor: string | null = null;
+	function statusTone(status: string): string {
+		if (status === 'normal' || status === 'mounted') return 'success';
+		if (status === 'error') return 'danger';
+		if (status === 'unmounted') return '';
+		return 'warning';
+	}
+	let aboutLoading = false;
+	let aboutError = '';
 	async function loadAboutTab(tab: string) {
 		if (aboutLoadedFor === tab) return;
 		aboutLoadedFor = tab;
+		aboutLoading = true;
+		aboutError = '';
 		try {
 			if (tab === 'storage') [aboutPools, aboutVolumes] = await Promise.all([api.getPools(), api.getVolumes()]);
 			if (tab === 'service') aboutServices = await api.get<ServiceStatus[]>('/services');
-		} catch {
+		} catch (e) {
 			aboutLoadedFor = null;
+			aboutError = errorMessage(e, $t.common.errors.loadFailed);
+		} finally {
+			aboutLoading = false;
 		}
 	}
 	$: if (selectedItem === 'about' && activeTab !== 'general') loadAboutTab(activeTab);
@@ -131,26 +152,30 @@
 	let activeTab = 'general';
 
 	// Primary network interface for the "About" card
+	let networkHostname = '';
 	let primaryInterface: NetworkInterface | null = null;
-	onMount(async () => {
+	async function refreshNetworkIdentity() {
 		try {
 			const status = await api.getNetworkStatus();
+			networkHostname = status.hostname;
 			primaryInterface =
 				status.interfaces.find((i) => i.ip_address) ?? status.interfaces[0] ?? null;
 		} catch {
 			// Network card simply stays empty
 		}
-	});
+	}
+	onMount(refreshNetworkIdentity);
+	$: if (selectedItem === 'about') refreshNetworkIdentity();
 
 	const NA = '—';
 	$: systemInfo = {
-		deviceName: $systemInfoStore?.hostname ?? NA,
+		deviceName: networkHostname || $systemInfoStore?.hostname || NA,
 		systemVersion: $systemInfoStore?.version ?? NA,
 		deviceOwner: $auth.user?.username ?? NA,
 		model: $systemInfoStore?.model ?? NA,
 		serialNumber: $systemInfoStore?.serial ?? NA,
 		lastStartup: $systemInfoStore ? new Date($systemInfoStore.bootTime * 1000).toLocaleString() : NA,
-		powerTime: $systemInfoStore ? formatUptime($systemInfoStore.uptime) : NA,
+		powerTime: $systemInfoStore ? formatUptime($systemInfoStore.uptime, $locale) : NA,
 		cpu: {
 			model: $systemInfoStore?.cpu.model || NA,
 			freq: $systemInfoStore?.cpu.frequencyMhz ? `${$systemInfoStore.cpu.frequencyMhz} MHz` : null,
@@ -169,14 +194,32 @@
 		}
 	};
 
+	// Navigation away from a section with pending edits asks first.
+	let pendingNavigation: (() => void) | null = null;
+	function navigate(action: () => void) {
+		if ($hasUnsavedChanges) pendingNavigation = action;
+		else action();
+	}
+	function confirmNavigation() {
+		const action = pendingNavigation;
+		pendingNavigation = null;
+		action?.();
+	}
+
 	function selectItem(id: string) {
-		selectedItem = id;
-		viewMode = 'detail';
+		if (id === selectedItem && viewMode === 'detail') return;
+		navigate(() => {
+			selectedItem = id;
+			activeTab = 'general';
+			viewMode = 'detail';
+		});
 	}
 
 	function goToGrid() {
-		viewMode = 'grid';
-		selectedItem = null;
+		navigate(() => {
+			viewMode = 'grid';
+			selectedItem = null;
+		});
 	}
 
 	// Helper to get translation by key path
@@ -216,9 +259,9 @@
 		: sidebarCategories;
 
 	$: tabs = [
-		{ key: 'general', label: $t.controlPanel.tabs.general },
-		{ key: 'storage', label: $t.controlPanel.tabs.storage },
-		{ key: 'service', label: $t.controlPanel.tabs.service }
+		{ value: 'general', label: $t.controlPanel.tabs.general },
+		{ value: 'storage', label: $t.controlPanel.tabs.storage },
+		{ value: 'service', label: $t.controlPanel.tabs.service }
 	];
 </script>
 
@@ -289,190 +332,104 @@
 				<!-- Time & Language -->
 				<TimeLanguage />
 			{:else if selectedItem === 'about'}
-				<!-- About / General Info -->
-				<div class="content-header">
-					<nav class="content-tabs">
-						{#each tabs as tab}
-							<button class="tab" class:active={activeTab === tab.key} on:click={() => (activeTab = tab.key)}>
-								{tab.label}
-							</button>
-						{/each}
-					</nav>
+				<div class="settings-page">
+					<SettingsHeader title={$t.controlPanel.items.about} description={$t.settingsUi.descriptions.about} icon="mdi:information-outline" />
+					<SettingsTabs label={$t.controlPanel.items.about} items={tabs} value={activeTab} onchange={(value) => (activeTab = value)} />
+
+					{#if activeTab === 'general'}
+						<SettingsSection title={$t.controlPanel.about.device} icon="mdi:server">
+							<dl class="settings-details">
+								<dt>{$t.controlPanel.about.deviceName}</dt><dd>{systemInfo.deviceName}</dd>
+								<dt>{$t.controlPanel.about.systemVersion}</dt><dd>{systemInfo.systemVersion}</dd>
+								<dt>{$t.controlPanel.about.deviceOwner}</dt><dd>{systemInfo.deviceOwner}</dd>
+								<dt>{$t.controlPanel.about.model}</dt><dd>{systemInfo.model}</dd>
+								<dt>{$t.controlPanel.about.serialNumber}</dt><dd class="settings-mono">{systemInfo.serialNumber}</dd>
+								<dt>{$t.controlPanel.about.lastStartup}</dt><dd>{systemInfo.lastStartup}</dd>
+								<dt>{$t.controlPanel.about.powerTime}</dt><dd>{systemInfo.powerTime}</dd>
+							</dl>
+						</SettingsSection>
+						<SettingsSection title={$t.controlPanel.about.hardware} icon="mdi:chip">
+							<dl class="settings-details">
+								<dt>{$t.controlPanel.about.cpu}</dt>
+								<dd>{[systemInfo.cpu.model, systemInfo.cpu.freq, `${systemInfo.cpu.cores} ${$t.controlPanel.about.cores}`, systemInfo.cpu.temp].filter(Boolean).join(' · ')}</dd>
+								<dt>{$t.controlPanel.about.memory}</dt><dd>{systemInfo.memory.size}</dd>
+							</dl>
+						</SettingsSection>
+						<SettingsSection title={$t.controlPanel.about.network} icon="mdi:web">
+							<dl class="settings-details">
+								<dt>{systemInfo.network.interface}</dt>
+								<dd class="settings-mono">{[systemInfo.network.ip, systemInfo.network.speed].filter(Boolean).join(' · ')}</dd>
+								<dt>{$t.controlPanel.about.macAddress}</dt>
+								<dd class="settings-mono">{systemInfo.network.mac} · {systemInfo.network.subnet}</dd>
+							</dl>
+						</SettingsSection>
+					{:else if aboutLoading}
+						<SettingsState kind="loading" message={$t.common.loading} />
+					{:else if aboutError}
+						<SettingsState kind="error" message={aboutError} onretry={() => loadAboutTab(activeTab)} />
+					{:else if activeTab === 'storage'}
+						<SettingsSection title={$t.controlPanel.about.pools} icon="mdi:harddisk">
+							{#if aboutPools.length === 0}
+								<SettingsState kind="empty" message={$t.dashboard.noPools} />
+							{:else}
+								<div class="settings-table-wrap">
+									<table class="settings-table">
+										<tbody>
+											{#each aboutPools as pool (pool.id)}
+												<tr>
+													<td><strong>{pool.name}</strong> · {pool.raid_type}</td>
+													<td>{formatBytes(pool.used_size)} / {formatBytes(pool.total_size)}</td>
+													<td><span class="settings-badge {statusTone(pool.status)}">{$t.storageManager.status[pool.status] ?? pool.status}</span></td>
+												</tr>
+											{/each}
+										</tbody>
+									</table>
+								</div>
+							{/if}
+						</SettingsSection>
+						<SettingsSection title={$t.controlPanel.about.volumes} icon="mdi:database">
+							{#if aboutVolumes.length === 0}
+								<SettingsState kind="empty" message={$t.controlPanel.about.noVolumes} />
+							{:else}
+								<div class="settings-table-wrap">
+									<table class="settings-table">
+										<tbody>
+											{#each aboutVolumes as vol (vol.id)}
+												<tr>
+													<td><strong>{vol.name}</strong> · {vol.fs_type}</td>
+													<td class="settings-mono">{vol.mount_point}</td>
+													<td><span class="settings-badge {statusTone(vol.status)}">{$t.storageManager.status[vol.status] ?? vol.status}</span></td>
+												</tr>
+											{/each}
+										</tbody>
+									</table>
+								</div>
+							{/if}
+						</SettingsSection>
+					{:else if activeTab === 'service'}
+						<SettingsSection title={$t.dashboard.services} icon="mdi:cog-outline">
+							{#if aboutServices.length === 0}
+								<SettingsState kind="empty" message={$t.common.noData} />
+							{:else}
+								<div class="settings-table-wrap">
+									<table class="settings-table">
+										<tbody>
+											{#each aboutServices as svc (svc.name)}
+												<tr>
+													<td class="settings-mono">{svc.name}</td>
+													<td>
+														<span class="settings-badge" class:success={svc.running}>{svc.running ? $t.dashboard.running : $t.dashboard.stopped}</span>
+														{#if !svc.enabled}<span class="settings-badge">{$t.common.disabled}</span>{/if}
+													</td>
+												</tr>
+											{/each}
+										</tbody>
+									</table>
+								</div>
+							{/if}
+						</SettingsSection>
+					{/if}
 				</div>
-
-				{#if activeTab === 'general'}
-					<div class="info-grid">
-						<!-- Device Info Card -->
-						<div class="info-card device-info">
-							<div class="info-row">
-								<div class="info-block">
-									<span class="info-label">{$t.controlPanel.about.deviceName}</span>
-									<span class="info-value">
-										{systemInfo.deviceName}
-									</span>
-								</div>
-								<div class="info-block">
-									<span class="info-label">{$t.controlPanel.about.systemVersion}</span>
-									<span class="info-value">{systemInfo.systemVersion}</span>
-								</div>
-							</div>
-							<div class="info-row">
-								<div class="info-block">
-									<span class="info-label">{$t.controlPanel.about.deviceOwner}</span>
-									<span class="info-value">{systemInfo.deviceOwner}</span>
-								</div>
-							</div>
-							<div class="device-image">
-								<Icon icon="mdi:server" class="w-24 h-24 text-slate-300" />
-							</div>
-						</div>
-
-						<!-- Device Details Card -->
-						<div class="info-card">
-							<div class="card-header">
-								<Icon icon="mdi:information-outline" class="w-5 h-5 text-slate-500" />
-								<span>{$t.controlPanel.about.device}</span>
-							</div>
-							<div class="card-content">
-								<div class="info-line">
-									<span class="info-label">{$t.controlPanel.about.model}</span>
-									<span class="info-value">{systemInfo.model}</span>
-								</div>
-								<div class="info-line">
-									<span class="info-label">{$t.controlPanel.about.serialNumber}</span>
-									<span class="info-value">{systemInfo.serialNumber}</span>
-								</div>
-								<div class="info-line">
-									<span class="info-label">{$t.controlPanel.about.lastStartup}</span>
-									<span class="info-value">{systemInfo.lastStartup}</span>
-								</div>
-								<div class="info-line">
-									<span class="info-label">{$t.controlPanel.about.powerTime}</span>
-									<span class="info-value">{systemInfo.powerTime}</span>
-								</div>
-							</div>
-						</div>
-
-						<!-- Hardware Card -->
-						<div class="info-card">
-							<div class="card-header">
-								<Icon icon="mdi:chip" class="w-5 h-5 text-slate-500" />
-								<span>{$t.controlPanel.about.hardware}</span>
-							</div>
-							<div class="card-content">
-								<div class="info-line">
-									<span class="info-label">{$t.controlPanel.about.cpu}</span>
-									<span class="info-value hardware-specs">
-										{systemInfo.cpu.model}
-										{#if systemInfo.cpu.freq}
-											<span class="spec-divider">|</span>
-											{systemInfo.cpu.freq}
-										{/if}
-										<span class="spec-divider">|</span>
-										{systemInfo.cpu.cores} {$t.controlPanel.about.cores}
-										{#if systemInfo.cpu.temp}
-											<span class="spec-divider">|</span>
-											{systemInfo.cpu.temp}
-										{/if}
-									</span>
-								</div>
-								<div class="info-line">
-									<span class="info-label">{$t.controlPanel.about.memory}</span>
-									<span class="info-value hardware-specs">
-										{systemInfo.memory.size}
-									</span>
-								</div>
-							</div>
-						</div>
-
-						<!-- Network Card -->
-						<div class="info-card">
-							<div class="card-header">
-								<Icon icon="mdi:web" class="w-5 h-5 text-slate-500" />
-								<span>{$t.controlPanel.about.network}</span>
-								<button class="expand-btn">
-									<Icon icon="mdi:chevron-right" class="w-5 h-5" />
-								</button>
-							</div>
-							<div class="card-content">
-								<div class="info-line">
-									<span class="info-label">{systemInfo.network.interface}</span>
-									<span class="info-value hardware-specs">
-										{systemInfo.network.ip}
-										{#if systemInfo.network.speed}
-											<span class="spec-divider">|</span>
-											{systemInfo.network.speed}
-										{/if}
-									</span>
-								</div>
-								<div class="info-line">
-									<span class="info-label">{$t.controlPanel.about.macAddress}</span>
-									<span class="info-value hardware-specs">
-										{systemInfo.network.mac}
-										<span class="spec-divider">|</span>
-										{systemInfo.network.subnet}
-									</span>
-								</div>
-							</div>
-						</div>
-					</div>
-				{:else if activeTab === 'storage'}
-					<div class="info-grid">
-						<div class="info-card col-span-full">
-							<div class="card-header">
-								<Icon icon="mdi:harddisk" class="w-5 h-5 text-slate-500" />
-								<span>{$t.controlPanel.about.pools}</span>
-							</div>
-							<div class="card-content">
-								{#if aboutPools.length === 0}
-									<p class="info-empty">{$t.dashboard.noPools}</p>
-								{/if}
-								{#each aboutPools as pool (pool.id)}
-									<div class="info-line">
-										<span class="info-label">{pool.name} · {pool.raid_type}</span>
-										<span class="info-value">{formatBytes(pool.used_size)} / {formatBytes(pool.total_size)} · {pool.status}</span>
-									</div>
-								{/each}
-							</div>
-						</div>
-						<div class="info-card col-span-full">
-							<div class="card-header">
-								<Icon icon="mdi:database" class="w-5 h-5 text-slate-500" />
-								<span>{$t.controlPanel.about.volumes}</span>
-							</div>
-							<div class="card-content">
-								{#if aboutVolumes.length === 0}
-									<p class="info-empty">{$t.controlPanel.about.noVolumes}</p>
-								{/if}
-								{#each aboutVolumes as vol (vol.id)}
-									<div class="info-line">
-										<span class="info-label">{vol.name} · {vol.fs_type}</span>
-										<span class="info-value">{vol.mount_point} · {vol.status}</span>
-									</div>
-								{/each}
-							</div>
-						</div>
-					</div>
-				{:else if activeTab === 'service'}
-					<div class="info-grid">
-						<div class="info-card col-span-full">
-							<div class="card-header">
-								<Icon icon="mdi:cog-outline" class="w-5 h-5 text-slate-500" />
-								<span>{$t.dashboard.services}</span>
-							</div>
-							<div class="card-content">
-								{#each aboutServices as svc (svc.name)}
-									<div class="info-line">
-										<span class="info-label">{svc.name}</span>
-										<span class="info-value" class:service-running={svc.running} class:service-stopped={!svc.running}>
-											{svc.running ? $t.dashboard.running : $t.dashboard.stopped}{svc.enabled ? '' : ` · ${$t.common.disabled.toLowerCase()}`}
-										</span>
-									</div>
-								{/each}
-							</div>
-						</div>
-					</div>
-				{/if}
 			{/if}
 		</main>
 	{:else}
@@ -513,6 +470,17 @@
 		</div>
 	{/if}
 </div>
+
+<ConfirmModal
+	visible={pendingNavigation !== null}
+	title={$t.settingsUi.leaveTitle}
+	message={$t.settingsUi.leaveMessage}
+	confirmLabel={$t.settingsUi.leaveConfirm}
+	cancelLabel={$t.settingsUi.stay}
+	danger
+	on:confirm={confirmNavigation}
+	on:cancel={() => (pendingNavigation = null)}
+/>
 
 <style>
 	.control-panel {
@@ -620,17 +588,6 @@
 		flex-direction: column;
 	}
 
-	.content-header {
-		border-bottom: 1px solid #e5e7eb;
-		padding: 0 24px;
-		background: white;
-	}
-
-	.content-tabs {
-		display: flex;
-		gap: 32px;
-	}
-
 	.tab {
 		padding: 16px 0;
 		font-size: 14px;
@@ -650,106 +607,6 @@
 	.tab.active {
 		color: #2563eb;
 		border-bottom-color: #2563eb;
-	}
-
-	/* Info Grid (About/General) */
-	.info-grid {
-		padding: 24px;
-		display: flex;
-		flex-direction: column;
-		gap: 16px;
-	}
-
-	.info-card {
-		background: #f9fafb;
-		border-radius: 12px;
-		padding: 20px;
-	}
-
-	.info-card.device-info {
-		position: relative;
-		display: grid;
-		grid-template-columns: 1fr auto;
-		gap: 16px;
-	}
-
-	.device-image {
-		position: absolute;
-		right: 24px;
-		top: 50%;
-		transform: translateY(-50%);
-	}
-
-	.info-row {
-		display: flex;
-		gap: 48px;
-	}
-
-	.info-block {
-		display: flex;
-		flex-direction: column;
-		gap: 4px;
-	}
-
-	.card-header {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		margin-bottom: 16px;
-		font-size: 14px;
-		font-weight: 500;
-		color: #1f2937;
-	}
-
-	.card-header .expand-btn {
-		margin-left: auto;
-		color: #9ca3af;
-	}
-
-	.card-content {
-		display: flex;
-		flex-direction: column;
-		gap: 12px;
-	}
-
-	.info-line {
-		display: flex;
-		flex-direction: column;
-		gap: 4px;
-	}
-
-	.info-label {
-		font-size: 12px;
-		color: #9ca3af;
-	}
-
-	.info-value {
-		font-size: 14px;
-		color: #1f2937;
-		font-weight: 500;
-		display: flex;
-		align-items: center;
-		gap: 8px;
-	}
-
-	.info-value.hardware-specs {
-		font-weight: 400;
-	}
-
-	.spec-divider {
-		color: #d1d5db;
-		margin: 0 4px;
-	}
-
-	.edit-btn {
-		color: #9ca3af;
-		padding: 4px;
-		border-radius: 4px;
-	}
-
-	.edit-btn:hover {
-		background: #e5e7eb;
-		color: #6b7280;
 	}
 
 	/* Grid View */
@@ -865,43 +722,5 @@
 		line-height: 1.3;
 	}
 
-	/* Placeholder */
-	.placeholder-content {
-		flex: 1;
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		gap: 12px;
-		color: #9ca3af;
-	}
 
-	.placeholder-content h3 {
-		font-size: 18px;
-		font-weight: 500;
-		color: #374151;
-	}
-
-	.placeholder-content p {
-		font-size: 14px;
-	}
-
-	.empty-tab {
-		flex: 1;
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		gap: 12px;
-		color: #9ca3af;
-	}
-
-	.empty-tab p {
-		font-size: 14px;
-	}
-
-	.info-card.col-span-full { grid-column: 1 / -1; }
-	.info-empty { font-size: 0.8125rem; color: #94a3b8; }
-	.service-running { color: #15803d; }
-	.service-stopped { color: #b45309; }
 </style>

@@ -1,6 +1,7 @@
 export default {
 	// Common
 	common: {
+		labelSeparator: ':',
 		save: 'Save',
 		cancel: 'Cancel',
 		delete: 'Delete',
@@ -78,7 +79,40 @@ export default {
 		dismiss: 'Dismiss'
 	},
 
+	walkthrough: {
+		myFiles: 'My Files',
+		defaultAccess: 'Default access',
+		permissionsHint: 'These rules apply to Files and SMB. For NFS, use export restrictions. Without rules, the share is open to authenticated users; parent folder rules may apply. At the same folder, the highest user or group permission wins. Administrators retain full access.',
+		editPermissions: 'Manage permissions',
+		groupAdmins: 'Administrators',
+		groupUsers: 'Users',
+		groupAdminsDesc: 'System administrators with full access',
+		groupUsersDesc: 'Users with standard access',
+	},
+	apiErrors: {
+		INVALID_PASSWORD: 'The current password is incorrect.',
+		PASSWORD_CHANGE_FAILED: 'Password change failed.',
+		INTERNAL_ERROR: 'An internal error occurred. Try again.',
+		VALIDATION_ERROR: 'Check the form values.',
+
+		INVALID_CREDENTIALS: 'Invalid credentials.',
+		RATE_LIMITED: 'Too many attempts. Try again in a minute.',
+		INVALID_USERNAME: 'Invalid or reserved username.',
+		DUPLICATE_USERNAME: 'This username already exists.',
+		PASSWORD_POLICY: 'The password does not satisfy the configured security policy.',
+		INVALID_HOSTNAME: 'Use 1–63 letters, digits or hyphens, without a leading or trailing hyphen.',
+		PROTECTED_PROCESS: 'This system process is protected.',
+		INVALID_GROUP_NAME: 'Invalid or reserved group name.',
+	},
 	login: {
+		username: 'Username',
+		password: 'Password',
+		usernameHint: 'Enter your username',
+		passwordHint: 'Enter your password',
+		signingIn: 'Signing in…',
+		required: 'Username and password are required.',
+		failed: 'Sign-in failed. Try again.',
+
 		subtitle: 'Sign in to your account',
 		signIn: 'Sign In',
 		footer: 'Secure NAS Management System'
@@ -147,6 +181,28 @@ export default {
 		},
 		underDevelopment: 'This section is under development',
 		contentFor: 'Content for {tab} tab'
+	},
+
+	settingsUi: {
+		unsaved: 'Unsaved changes',
+		timeDescription: 'Manage the NAS clock and your display preferences.',
+		immediate: 'Display preferences are saved immediately.',
+		leaveTitle: 'Unsaved changes',
+		leaveMessage: 'Leaving this section will discard your pending changes.',
+		leaveConfirm: 'Leave without saving',
+		stay: 'Stay',
+		descriptions: {
+			about: 'NAS identity, hardware, storage and services.',
+			users: 'Accounts, groups and folder access rights.',
+			files: 'Network file sharing over SMB and NFS.',
+			device: 'Addresses and ports to reach the NAS from your devices.',
+			terminal: 'Remote command-line access over SSH.',
+			printer: 'Sharing of printers connected to the NAS.',
+			hardware: 'Processor, scheduling and power of the NAS.',
+			security: 'Sessions, HTTPS and login history.',
+			personalization: 'Desktop wallpaper and widgets.',
+			update: 'Installed version and PiNAS updates.'
+		}
 	},
 
 	// Time & Language
@@ -261,7 +317,7 @@ export default {
 			readWrite: 'Read/Write',
 			addFolder: 'Add Folder',
 			folderPath: 'Folder Path',
-			folderPathHint: 'Enter the full path to the folder (e.g., /storage/shares/documents)',
+			folderPathHint: 'Enter the full path to the folder (e.g., /storage/pools/)',
 			noPermissions: 'No folder permissions configured',
 			noPermissionsHint: 'Add a folder to start managing permissions',
 			confirmRemoveFolder: 'Remove all permissions for {path}?'
@@ -275,7 +331,11 @@ export default {
 			noUsersFound: 'No users found',
 			noGroupsFound: 'No groups found',
 			cannotChangeOwnRole: 'You cannot change your own role',
-			systemGroupNameReadonly: 'System group names cannot be changed'
+			systemGroupNameReadonly: 'System group names cannot be changed',
+			credentialsRequired: 'Username and password are required',
+			groupNameRequired: 'Group name is required',
+			passwordMismatch: 'Passwords do not match',
+			passwordTooShort: 'Password must be at least 8 characters'
 		},
 		advancedSettings: {
 			saved: 'Password policy saved',
@@ -335,6 +395,7 @@ export default {
 		noNotifications: 'No notifications',
 		clearAll: 'Clear all',
 		userMenu: {
+			changePassword: 'Change password',
 			profile: 'Profile',
 			settings: 'Settings',
 			logout: 'Logout',
@@ -444,6 +505,7 @@ export default {
 		restarting: 'Restarting PiNAS… the page reconnects in a few seconds.',
 		selfSigned: 'Self-signed certificate generated on this device; your browser will ask you to trust it once.',
 		certGenerated: 'generated',
+		certificate: 'Certificate',
 		regenerateCert: 'Regenerate certificate at next start',
 		certReset: 'Certificate removed; a new one is generated at the next start.',
 		devModeTls: 'HTTPS is disabled in dev mode.',
@@ -582,16 +644,21 @@ export default {
 		buttons: {
 			back: 'Back',
 			next: 'Next',
+			settingUp: 'Setting up…',
 			complete: 'Start using PiNAS',
 			getStarted: 'Let\'s go!'
 		},
 		validation: {
 			machineNameRequired: 'Machine name is required',
 			machineNameMinLength: 'Machine name must be at least 2 characters',
-			machineNameInvalid: 'Only letters, numbers and hyphens allowed',
+			machineNameInvalid: 'Use 1–63 letters, digits or hyphens, without a leading or trailing hyphen.',
 			usernameRequired: 'Username is required',
 			usernameMinLength: 'Username must be at least 3 characters',
-			usernameInvalid: 'Only letters, numbers and underscores allowed',
+			usernameInvalid: 'Use 3–32 letters, digits, _, . or -; system names and numeric-only names are forbidden.',
+			passwordContainsUsername: 'Password must not contain the username.',
+			passwordPolicy: 'Password refused: use at least 8 characters without the username.',
+			hostnameFailed: 'Could not apply the hostname. Try again.',
+			setupFailed: 'Setup failed. Try again.',
 			passwordRequired: 'Password is required',
 			passwordMinLength: 'Password must be at least 8 characters',
 			passwordMismatch: 'Passwords do not match',
@@ -897,6 +964,8 @@ export default {
 				noDisksAvailable: 'No available disks found',
 				selectRaidType: 'Select RAID type',
 				available: 'Available',
+				eraseWarning: 'Creating the pool destroys data on the selected disks, even without pre-wiping.',
+				confirmErase: 'I confirm destruction of data on these disks.',
 				wipeDisks: 'Wipe selected disks before creating pool',
 				total: 'Total',
 				raidType: 'RAID type',
@@ -1089,6 +1158,7 @@ export default {
 		},
 		errors: {
 			loadFailed: 'Failed to load storage data',
+			invalidPoolLayout: 'The disk count is invalid for the selected RAID type.',
 			createPoolFailed: 'Failed to create pool',
 			createVolumeFailed: 'Failed to create volume',
 			deletePoolFailed: 'Failed to delete pool',
@@ -1351,6 +1421,7 @@ export default {
 			passwordDescription: 'This password is used to connect via SSH as the root user.',
 			passwordTooShort: 'Password must be at least 8 characters',
 			passwordMismatch: 'Passwords do not match',
+			passwordChanged: 'SSH password changed',
 			connectionInfo: 'Connect using:'
 		},
 		smb: {
@@ -1376,6 +1447,7 @@ export default {
 		},
 		nfs: {
 			description: 'Network File System for Linux, macOS and media players',
+			enable: 'Enable NFS',
 			exports: 'Exports',
 			exportsCount: '{n} active exports',
 			addExport: 'Add export',
@@ -1389,6 +1461,8 @@ export default {
 			sync: 'Synchronous writes (safer)',
 			squash: 'Root mapping',
 			notAvailable: 'The NFS server (nfsd) is not part of this image. Rebuild the image with the pinas-nfs-server package.',
+			deleteTitle: 'Delete NFS export',
+			deleteConfirm: 'Delete the export “{name}”? NFS clients will lose access. Files in the folder are not deleted.',
 			mountHint: 'Mount from a client:'
 		},
 		cups: {
@@ -1624,6 +1698,7 @@ export default {
 		restarting: 'Restarting service...',
 		updateHistory: 'Update History',
 		noHistory: 'No update history yet.',
+		failed: 'Failed',
 		failedToCheck: 'Failed to check for updates',
 		failedToInstall: 'Failed to install update',
 		modal: {

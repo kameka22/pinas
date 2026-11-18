@@ -103,7 +103,9 @@ class ApiClient {
 			this.logout();
 		}
 		const body = await response.json().catch(() => ({}));
-		const message = body.error || body.message || `HTTP ${response.status}`;
+		const errors = get(t).apiErrors;
+		const translated = errors[body.code as keyof typeof errors];
+		const message = translated || body.error || body.message || `HTTP ${response.status}`;
 		if (response.status === 403) {
 			const tr = get(t) as any;
 			toasts.error(tr?.common?.errors?.forbidden || message);
@@ -790,7 +792,8 @@ class ApiClient {
 	}
 
 	async getPreference(key: string): Promise<{ value: string }> {
-		return this.get<{ value: string }>(`/preferences/${encodeURIComponent(key)}`);
+		const preferences = await this.getPreferences();
+		return { value: preferences[key] ?? '' };
 	}
 
 	async setPreference(key: string, value: string): Promise<void> {

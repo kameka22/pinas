@@ -1,4 +1,11 @@
 <script lang="ts">
+	import SettingsHeader from '#lib/components/ui/settings/SettingsHeader.svelte';
+	import SettingsTabs from '#lib/components/ui/settings/SettingsTabs.svelte';
+	import SettingsSection from '#lib/components/ui/settings/SettingsSection.svelte';
+	import SettingsActions from '#lib/components/ui/settings/SettingsActions.svelte';
+	import SettingsState from '#lib/components/ui/settings/SettingsState.svelte';
+	import '#lib/components/ui/settings/settings.css';
+
 	import { onMount } from 'svelte';
 	import Icon from '@iconify/svelte';
 	import { t } from '#lib/i18n/index.js';
@@ -131,43 +138,22 @@
 			dnsSecondary !== networkStatus.dns.secondary);
 </script>
 
-<div class="network-settings">
-	<!-- Header -->
-	<div class="section-header">
-		<Icon icon="mdi:wifi" class="w-6 h-6" />
-		<div class="section-info">
-			<h2>{$t.networkSettings?.title || 'Network'}</h2>
-			<p>{$t.networkSettings?.description || 'Configure network interfaces and DNS'}</p>
-		</div>
-	</div>
-
-	<!-- Tabs -->
-	<div class="tabs-bar">
-		<button class="tab" class:active={activeTab === 'general'} on:click={() => (activeTab = 'general')}>
-			{$t.networkSettings?.tabs?.general || 'General'}
-		</button>
-		<button class="tab" class:active={activeTab === 'interfaces'} on:click={() => (activeTab = 'interfaces')}>
-			{$t.networkSettings?.tabs?.interfaces || 'Network Interface'}
-		</button>
-	</div>
+<div class="network-settings settings-page">
+	<SettingsHeader title={$t.networkSettings.title} description={$t.networkSettings.description} icon="mdi:wifi" />
+	<SettingsTabs label={$t.networkSettings.title} items={[
+		{ value: 'general', label: $t.networkSettings.tabs.general },
+		{ value: 'interfaces', label: $t.networkSettings.tabs.interfaces }
+	]} value={activeTab} onchange={(value) => activeTab = value === 'general' ? 'general' : 'interfaces'} />
 
 	{#if loading}
-		<div class="loading-state">
-			<Icon icon="mdi:loading" class="w-5 h-5 animate-spin" />
-			<span>{$t.common.loading}</span>
-		</div>
+		<SettingsState kind="loading" message={$t.common.loading} />
 	{:else if error && !networkStatus}
-		<div class="error-state">
-			<Icon icon="mdi:alert-circle" class="w-5 h-5" />
-			<span>{error}</span>
-			<button class="retry-btn" on:click={loadNetworkStatus}>
-				{$t.common.retry || 'Retry'}
-			</button>
-		</div>
+		<SettingsState kind="error" message={error} onretry={loadNetworkStatus} />
 	{:else if networkStatus}
 		{#if activeTab === 'general'}
 			<!-- General Tab -->
 			<div class="tab-content">
+				<SettingsSection title={$t.networkSettings.tabs.general}>
 				<!-- Hostname -->
 				<div class="service-row">
 					<div class="service-label">
@@ -230,28 +216,22 @@
 						</div>
 					{:else}
 						<div class="dns-auto">
-							<span class="sublabel">{$t.networkSettings?.dnsAuto || 'DNS provided by DHCP'}: {networkStatus.dns.primary}{networkStatus.dns.secondary ? `, ${networkStatus.dns.secondary}` : ''}</span>
+							<span class="sublabel">{$t.networkSettings?.dnsAuto || 'DNS provided by DHCP'}{$t.common.labelSeparator} {networkStatus.dns.primary}{networkStatus.dns.secondary ? `, ${networkStatus.dns.secondary}` : ''}</span>
 						</div>
 					{/if}
 				</div>
 
-				<!-- Apply Button -->
-				{#if hasGeneralChanges}
-					<div class="actions-bar">
-						{#if error}
-							<div class="inline-error">
-								<Icon icon="mdi:alert-circle" class="w-4 h-4" />
-								{error}
-							</div>
-						{/if}
-						<button class="btn-primary" on:click={saveGeneral} disabled={saving}>
-							{#if saving}
-								<Icon icon="mdi:loading" class="w-4 h-4 animate-spin" />
-							{/if}
-							{$t.common.apply}
-						</button>
-					</div>
-				{/if}
+				</SettingsSection>
+				{#if error}<SettingsState kind="error" message={error} />{/if}
+				<SettingsActions dirty={!!hasGeneralChanges} {saving} onsave={saveGeneral} oncancel={() => {
+					if (!networkStatus) return;
+					hostname = networkStatus.hostname;
+					dnsManual = networkStatus.dns.manual;
+					dnsPrimary = networkStatus.dns.primary;
+					dnsSecondary = networkStatus.dns.secondary;
+					hostnameEditing = false;
+					error = null;
+				}} />
 			</div>
 		{:else}
 			<!-- Interfaces Tab -->
@@ -271,7 +251,7 @@
 										: ($t.networkSettings?.disconnected || 'Disconnected')}
 								</span>
 							</div>
-							<button class="btn-secondary" on:click={() => openEditModal(iface)}>
+							<button class="settings-button" on:click={() => openEditModal(iface)}>
 								<Icon icon="mdi:pencil" class="w-4 h-4" />
 								{$t.common.edit}
 							</button>
@@ -311,10 +291,7 @@
 				{/each}
 
 				{#if networkStatus.interfaces.length === 0}
-					<div class="empty-state">
-						<Icon icon="mdi:ethernet-cable-off" class="w-12 h-12 text-slate-300" />
-						<p>{$t.networkSettings?.noInterfaces || 'No network interfaces detected'}</p>
-					</div>
+					<SettingsState kind="empty" message={$t.networkSettings.noInterfaces} />
 				{/if}
 			</div>
 		{/if}
@@ -323,7 +300,7 @@
 
 <!-- Edit Interface Modal -->
 {#if showEditModal && editingInterface}
-	<div class="modal-overlay" on:click={closeEditModal}>
+	<div class="modal-overlay settings-page" on:click={closeEditModal}>
 		<div class="modal" on:click|stopPropagation>
 			<div class="modal-header">
 				<h2>
@@ -381,10 +358,10 @@
 			</div>
 
 			<div class="modal-footer">
-				<button class="btn-secondary" on:click={closeEditModal}>
+				<button class="settings-button" on:click={closeEditModal}>
 					{$t.common.cancel}
 				</button>
-				<button class="btn-primary" on:click={saveInterface} disabled={editSaving}>
+				<button class="settings-button primary" on:click={saveInterface} disabled={editSaving}>
 					{#if editSaving}
 						<Icon icon="mdi:loading" class="w-4 h-4 animate-spin" />
 					{/if}
@@ -396,64 +373,8 @@
 {/if}
 
 <style>
-	.network-settings {
-		padding: 24px;
-	}
-
-	.section-header {
-		display: flex;
-		align-items: center;
-		gap: 16px;
-		margin-bottom: 24px;
-		padding-bottom: 16px;
-		border-bottom: 1px solid #e5e7eb;
-	}
-
-	.section-header > :global(svg) {
-		color: #6b7280;
-	}
-
-	.section-info h2 {
-		font-size: 18px;
-		font-weight: 600;
-		color: #1f2937;
-		margin-bottom: 4px;
-	}
-
-	.section-info p {
-		font-size: 13px;
-		color: #6b7280;
-	}
 
 	/* Tabs */
-	.tabs-bar {
-		display: flex;
-		gap: 0;
-		border-bottom: 1px solid #e5e7eb;
-		margin-bottom: 24px;
-	}
-
-	.tab {
-		padding: 12px 20px;
-		font-size: 14px;
-		color: #6b7280;
-		border-bottom: 2px solid transparent;
-		transition: all 0.15s ease;
-		background: transparent;
-		border-top: none;
-		border-left: none;
-		border-right: none;
-		cursor: pointer;
-	}
-
-	.tab:hover {
-		color: #374151;
-	}
-
-	.tab.active {
-		color: #2563eb;
-		border-bottom-color: #2563eb;
-	}
 
 	.tab-content {
 		display: flex;
@@ -653,70 +574,10 @@
 	}
 
 	/* Actions bar */
-	.actions-bar {
-		display: flex;
-		align-items: center;
-		justify-content: flex-end;
-		gap: 12px;
-		padding-top: 8px;
-	}
-
-	.inline-error {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		color: #dc2626;
-		font-size: 13px;
-	}
 
 	/* Empty state */
-	.empty-state {
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		gap: 12px;
-		padding: 40px;
-		color: #9ca3af;
-	}
-
-	.empty-state p {
-		font-size: 14px;
-	}
 
 	/* States */
-	.loading-state {
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		gap: 8px;
-		padding: 40px 20px;
-		color: #9ca3af;
-	}
-
-	.error-state {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		padding: 16px;
-		background: #fef2f2;
-		border-radius: 8px;
-		color: #dc2626;
-	}
-
-	.retry-btn {
-		margin-left: auto;
-		padding: 6px 12px;
-		background: white;
-		border: 1px solid #fecaca;
-		border-radius: 6px;
-		font-size: 13px;
-		color: #dc2626;
-	}
-
-	.retry-btn:hover {
-		background: #fef2f2;
-	}
 
 	.animate-spin {
 		animation: spin 1s linear infinite;
@@ -787,44 +648,6 @@
 	}
 
 	/* Buttons */
-	.btn-primary {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		padding: 10px 16px;
-		background: #3b82f6;
-		border-radius: 8px;
-		font-size: 14px;
-		font-weight: 500;
-		color: white;
-		transition: background 0.15s ease;
-	}
-
-	.btn-primary:hover:not(:disabled) {
-		background: #2563eb;
-	}
-
-	.btn-primary:disabled {
-		opacity: 0.6;
-		cursor: not-allowed;
-	}
-
-	.btn-secondary {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		padding: 8px 14px;
-		background: white;
-		border: 1px solid #e5e7eb;
-		border-radius: 8px;
-		font-size: 13px;
-		color: #374151;
-		transition: all 0.15s ease;
-	}
-
-	.btn-secondary:hover {
-		background: #f9fafb;
-	}
 
 	/* Modal */
 	.modal-overlay {
@@ -896,4 +719,13 @@
 		padding: 16px 20px;
 		border-top: 1px solid #e5e7eb;
 	}
+
+	.service-row { padding: 16px 0; background: white; border: 0; border-bottom: 1px solid #e2e8f0; border-radius: 0; gap: 16px; flex-wrap: wrap; }
+	.service-row:last-child { border-bottom: 0; }
+	.service-label .sublabel, .sublabel, .detail-label { color: #475569; }
+	.interface-card { background: white; border-radius: 12px; padding: 20px; }
+	.interface-header, .interface-name { flex-wrap: wrap; gap: 12px; }
+	.dns-inputs { flex-wrap: wrap; }
+	.dns-inputs .form-group { min-width: 160px; }
+	@container (max-width: 440px) { .interface-details { grid-template-columns: 1fr; } }
 </style>

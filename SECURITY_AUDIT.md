@@ -418,3 +418,7 @@ Validation du path puis opération async dans un `tokio::spawn`. Symlinks modifi
 - ~~`GET /api/services` renvoie 500 hors LibreELEC~~ — CORRIGE en P1 (`ServiceManager` honore `dev_mode`).
 
 Procédure complète : `docs/RELEASE_CHECKLIST.md` (sections 1 à 3), à exécuter à chaque release.
+
+### ~~40. « Pas d’accès » supprimait la règle explicite de dossier~~ — CORRIGÉ (revue UI P3)
+
+Dans le panneau Utilisateurs, choisir `none` effaçait une règle existante. Cela pouvait rendre l’accès par défaut à un partage sans ACL, au lieu de refuser l’accès. Les écrans Utilisateurs et Partages utilisent maintenant `setFolderPermission` : `none` crée ou met à jour un refus explicite ; une option distincte « Accès par défaut » supprime la règle. L’ajout d’un dossier au panneau ne crée plus de refus arbitraire pour le premier utilisateur. Quatre tests couvrent ces distinctions. Les règles de priorité côté serveur restent celles de `most_specific_permission`.

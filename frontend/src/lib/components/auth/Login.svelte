@@ -12,7 +12,7 @@
 		e.preventDefault();
 
 		if (!username || !password) {
-			error = 'Username and password are required';
+			error = $t.login.required;
 			return;
 		}
 
@@ -24,7 +24,7 @@
 			// The auth store will be updated automatically
 			// The layout will detect the change and show the desktop
 		} catch (err) {
-			error = err instanceof Error ? err.message : 'Login failed';
+			error = err instanceof Error ? err.message : $t.login.failed;
 		} finally {
 			isLoading = false;
 		}
@@ -52,14 +52,14 @@
 			{/if}
 
 			<div class="form-group">
-				<label for="username">Username</label>
+				<label for="username">{$t.login.username}</label>
 				<div class="input-wrapper">
 					<Icon icon="mdi:account" class="input-icon" />
 					<input
 						type="text"
 						id="username"
 						bind:value={username}
-						placeholder="Enter your username"
+						placeholder={$t.login.usernameHint}
 						disabled={isLoading}
 						autocomplete="username"
 					/>
@@ -67,14 +67,14 @@
 			</div>
 
 			<div class="form-group">
-				<label for="password">Password</label>
+				<label for="password">{$t.login.password}</label>
 				<div class="input-wrapper">
 					<Icon icon="mdi:lock" class="input-icon" />
 					<input
 						type="password"
 						id="password"
 						bind:value={password}
-						placeholder="Enter your password"
+						placeholder={$t.login.passwordHint}
 						disabled={isLoading}
 						autocomplete="current-password"
 					/>
@@ -84,7 +84,7 @@
 			<button type="submit" class="login-btn" disabled={isLoading}>
 				{#if isLoading}
 					<Icon icon="mdi:loading" class="w-5 h-5 animate-spin" />
-					<span>Signing in...</span>
+					<span>{$t.login.signingIn}</span>
 				{:else}
 					<Icon icon="mdi:login" class="w-5 h-5" />
 					<span>{$t.login.signIn}</span>

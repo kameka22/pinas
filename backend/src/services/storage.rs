@@ -631,7 +631,9 @@ impl StorageService {
 
     /// Create a new storage pool
     pub async fn create_pool(&self, request: CreatePoolRequest) -> Result<String> {
-        // Validate devices (even in dev mode, to catch logic errors)
+        // Validate the layout first (even in dev mode): nothing may be wiped for a
+        // request that would be rejected afterwards.
+        request.raid_type.validate_devices(&request.devices)?;
         for device in &request.devices {
             if self.is_protected_device(device) {
                 return Err(anyhow!("Cannot use system device in pool: {}", device));
@@ -641,8 +643,9 @@ impl StorageService {
         let pool_id = Uuid::new_v4().to_string();
         let now = chrono::Utc::now().to_rfc3339();
 
-        // Calculate total size from devices
-        let total_size = self.calculate_devices_total_size(&request.devices).await;
+        // Usable capacity for this RAID level (not the raw sum of the disks)
+        let sizes = self.device_sizes(&request.devices).await;
+        let total_size = request.raid_type.usable_capacity(&sizes);
 
         // In dev mode, skip actual disk operations
         let metadata = if self.dev_mode {
@@ -668,11 +671,12 @@ impl StorageService {
             // Create pool based on RAID type
             match request.raid_type {
                 RaidType::Basic => {
-                    // Single device, just partition it
-                    if request.devices.len() != 1 {
-                        return Err(anyhow!("Basic pool requires exactly one device"));
-                    }
-                    self.create_basic_pool(&request.devices[0]).await?
+                    // Single device (count checked by validate_devices), just partition it
+                    let device = request
+                        .devices
+                        .first()
+                        .ok_or(PoolLayoutError::NoDevices)?;
+                    self.create_basic_pool(device).await?
                 }
                 RaidType::BtrfsSingle | RaidType::BtrfsRaid0 | RaidType::BtrfsRaid1 | RaidType::BtrfsRaid5 | RaidType::BtrfsRaid6 | RaidType::BtrfsRaid10 => {
                     self.create_btrfs_pool(&request.devices, &request.raid_type).await?
@@ -1641,20 +1645,18 @@ impl StorageService {
     }
 
     /// Calculate total size of devices
-    async fn calculate_devices_total_size(&self, devices: &[String]) -> u64 {
+    /// Size of each listed device (unknown devices are skipped).
+    async fn device_sizes(&self, devices: &[String]) -> Vec<u64> {
         let disks = self.list_disks().await.unwrap_or_default();
-        let mut total = 0u64;
-
-        for device in devices {
-            for disk in &disks {
-                if &disk.device_path == device || disk.device_by_id.as_ref() == Some(device) {
-                    total += disk.size;
-                    break;
-                }
-            }
-        }
-
-        total
+        devices
+            .iter()
+            .filter_map(|device| {
+                disks
+                    .iter()
+                    .find(|disk| &disk.device_path == device || disk.device_by_id.as_ref() == Some(device))
+                    .map(|disk| disk.size)
+            })
+            .collect()
     }
 
     /// Create a basic (single device) pool
@@ -1956,13 +1958,7 @@ impl StorageService {
                 errors: DeviceErrorInfo { read_errors: 0, write_errors: 0, corruption_errors: 0, generation_errors: 0 },
             }).collect(),
             rebuild_progress: None,
-            last_scrub: Some(ScrubInfo {
-                date: chrono::Utc::now().checked_sub_signed(chrono::Duration::days(3))
-                    .unwrap_or(chrono::Utc::now()).to_rfc3339(),
-                duration_secs: Some(1234),
-                result: "ok".to_string(),
-                errors_found: 0,
-            }),
+            last_scrub: None,
         }
     }
 
@@ -3123,14 +3119,14 @@ impl StorageService {
         existing_devices.extend(new_devices.clone());
         let devices_json = serde_json::to_string(&existing_devices).unwrap_or_default();
 
-        // Recalculate total size
-        let mut total_size: i64 = pool.total_size.unwrap_or(0);
-        if dev_mode {
-            // In dev mode, just add fake size for each new device
-            for _ in &new_devices {
-                total_size += 1000 * 1024 * 1024 * 1024; // 1TB per device
-            }
-        }
+        // Recalculate usable capacity from the member disks (simulated disks in dev mode)
+        let sizes = StorageService::new(db.clone()).device_sizes(&existing_devices).await;
+        let total_size = if sizes.len() == existing_devices.len() {
+            i64::try_from(raid_type.usable_capacity(&sizes)).unwrap_or(i64::MAX)
+        } else {
+            // A member could not be sized: keep the previous figure rather than under-report
+            pool.total_size.unwrap_or(0)
+        };
 
         let now = chrono::Utc::now().to_rfc3339();
         let _ = sqlx::query("UPDATE storage_pools SET devices = ?, total_size = ?, status = 'normal', updated_at = ? WHERE id = ?")

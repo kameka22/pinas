@@ -18,7 +18,7 @@
 	}
 
 	const categoryDefs: CategoryDef[] = [
-		{ key: 'system', icon: 'mdi:cog', appIds: ['control-panel', 'process-manager'] },
+		{ key: 'system', icon: 'mdi:cog', appIds: ['control-panel', 'process-manager', 'dashboard'] },
 		{ key: 'storageFiles', icon: 'mdi:folder-multiple', appIds: ['storage', 'file-manager', 'shares'] },
 		{ key: 'services', icon: 'mdi:apps', appIds: ['app-center', 'docker', 'terminal', 'kodi', 'display'] }
 	];

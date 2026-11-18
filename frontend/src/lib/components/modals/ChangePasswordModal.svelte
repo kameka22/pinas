@@ -85,7 +85,7 @@
 			<div class="modal-header">
 				<h2>
 					<Icon icon="mdi:key-variant" class="w-5 h-5" />
-					{$t.topBar?.changePassword || 'Change Password'}
+					{$t.topBar.userMenu.changePassword}
 				</h2>
 				<button class="close-btn" on:click={handleClose}>
 					<Icon icon="mdi:close" class="w-5 h-5" />

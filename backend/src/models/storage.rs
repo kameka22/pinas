@@ -135,6 +135,102 @@ impl std::str::FromStr for RaidType {
     }
 }
 
+/// Why a list of devices cannot form a pool of the requested RAID type.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum PoolLayoutError {
+    #[error("no device selected")]
+    NoDevices,
+    #[error("device {0} is listed more than once")]
+    DuplicateDevice(String),
+    #[error("{raid_type} requires at least {min} disk(s), got {got}")]
+    TooFewDevices { raid_type: String, min: usize, got: usize },
+    #[error("{raid_type} accepts at most {max} disk(s), got {got}")]
+    TooManyDevices { raid_type: String, max: usize, got: usize },
+    #[error("{raid_type} requires an even number of disks, got {got}")]
+    OddDeviceCount { raid_type: String, got: usize },
+}
+
+impl RaidType {
+    /// Minimum number of member disks.
+    pub fn min_devices(&self) -> usize {
+        match self {
+            RaidType::Basic | RaidType::BtrfsSingle => 1,
+            RaidType::Jbod
+            | RaidType::Raid0
+            | RaidType::Raid1
+            | RaidType::BtrfsRaid0
+            | RaidType::BtrfsRaid1 => 2,
+            RaidType::Raid5 | RaidType::BtrfsRaid5 => 3,
+            RaidType::Raid6 | RaidType::Raid10 | RaidType::BtrfsRaid6 | RaidType::BtrfsRaid10 => 4,
+        }
+    }
+
+    /// Maximum number of member disks, if bounded.
+    pub fn max_devices(&self) -> Option<usize> {
+        match self {
+            RaidType::Basic => Some(1),
+            _ => None,
+        }
+    }
+
+    /// Validate a device list for this RAID type. Must run before any disk is touched.
+    pub fn validate_devices(&self, devices: &[String]) -> Result<(), PoolLayoutError> {
+        if devices.is_empty() {
+            return Err(PoolLayoutError::NoDevices);
+        }
+        let mut seen = std::collections::HashSet::new();
+        for device in devices {
+            if !seen.insert(device.as_str()) {
+                return Err(PoolLayoutError::DuplicateDevice(device.clone()));
+            }
+        }
+        let got = devices.len();
+        let min = self.min_devices();
+        if got < min {
+            return Err(PoolLayoutError::TooFewDevices { raid_type: self.to_string(), min, got });
+        }
+        if let Some(max) = self.max_devices()
+            && got > max
+        {
+            return Err(PoolLayoutError::TooManyDevices { raid_type: self.to_string(), max, got });
+        }
+        if *self == RaidType::Raid10 && !got.is_multiple_of(2) {
+            return Err(PoolLayoutError::OddDeviceCount { raid_type: self.to_string(), got });
+        }
+        Ok(())
+    }
+
+    /// Usable capacity (bytes) of a pool built from disks of the given sizes.
+    ///
+    /// mdadm levels are limited by the smallest member; btrfs profiles spread chunks
+    /// across members, so their figure is an estimate bounded by what the largest
+    /// member can pair with.
+    pub fn usable_capacity(&self, sizes: &[u64]) -> u64 {
+        let n = sizes.len() as u64;
+        if n == 0 {
+            return 0;
+        }
+        let total: u64 = sizes.iter().sum();
+        let smallest = sizes.iter().copied().min().unwrap_or(0);
+        let largest = sizes.iter().copied().max().unwrap_or(0);
+        match self {
+            RaidType::Basic | RaidType::Jbod | RaidType::BtrfsSingle | RaidType::BtrfsRaid0 => total,
+            RaidType::Raid0 => smallest * n,
+            RaidType::Raid1 => smallest,
+            RaidType::Raid5 => smallest * n.saturating_sub(1),
+            RaidType::Raid6 => smallest * n.saturating_sub(2),
+            RaidType::Raid10 => smallest * (n / 2),
+            RaidType::BtrfsRaid1 | RaidType::BtrfsRaid10 => (total / 2).min(total - largest),
+            RaidType::BtrfsRaid5 => total.saturating_sub(largest),
+            RaidType::BtrfsRaid6 => {
+                let mut sorted = sizes.to_vec();
+                sorted.sort_unstable();
+                sorted[..sorted.len().saturating_sub(2)].iter().sum()
+            }
+        }
+    }
+}
+
 /// Status d'un pool de stockage
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
@@ -546,4 +642,58 @@ pub struct GrowPoolStatus {
     pub pool_id: String,
     pub status: String,
     pub progress: f32,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn devs(n: usize) -> Vec<String> {
+        (0..n).map(|i| format!("/dev/sd{}", (b'a' + i as u8) as char)).collect()
+    }
+
+    #[test]
+    fn validate_devices_enforces_counts() {
+        assert_eq!(RaidType::Basic.validate_devices(&[]), Err(PoolLayoutError::NoDevices));
+        assert!(RaidType::Basic.validate_devices(&devs(1)).is_ok());
+        assert!(matches!(
+            RaidType::Basic.validate_devices(&devs(2)),
+            Err(PoolLayoutError::TooManyDevices { max: 1, got: 2, .. })
+        ));
+        assert!(matches!(
+            RaidType::Raid1.validate_devices(&devs(1)),
+            Err(PoolLayoutError::TooFewDevices { min: 2, got: 1, .. })
+        ));
+        assert!(RaidType::Raid1.validate_devices(&devs(2)).is_ok());
+        assert!(matches!(
+            RaidType::Raid5.validate_devices(&devs(2)),
+            Err(PoolLayoutError::TooFewDevices { min: 3, .. })
+        ));
+        assert!(matches!(
+            RaidType::Raid10.validate_devices(&devs(5)),
+            Err(PoolLayoutError::OddDeviceCount { got: 5, .. })
+        ));
+        assert!(RaidType::BtrfsRaid10.validate_devices(&devs(5)).is_ok());
+        let dup = vec!["/dev/sda".to_string(), "/dev/sda".to_string()];
+        assert_eq!(
+            RaidType::Raid1.validate_devices(&dup),
+            Err(PoolLayoutError::DuplicateDevice("/dev/sda".into()))
+        );
+    }
+
+    #[test]
+    fn usable_capacity_per_level() {
+        const T: u64 = 1_000_000_000_000;
+        let two = [2 * T, T];
+        assert_eq!(RaidType::Raid1.usable_capacity(&two), T);
+        assert_eq!(RaidType::Raid0.usable_capacity(&two), 2 * T);
+        assert_eq!(RaidType::Jbod.usable_capacity(&two), 3 * T);
+        assert_eq!(RaidType::BtrfsRaid1.usable_capacity(&two), T);
+        assert_eq!(RaidType::Raid5.usable_capacity(&[T, T, T]), 2 * T);
+        assert_eq!(RaidType::Raid6.usable_capacity(&[T, T, T, T]), 2 * T);
+        assert_eq!(RaidType::Raid10.usable_capacity(&[T, T, T, T]), 2 * T);
+        assert_eq!(RaidType::BtrfsRaid1.usable_capacity(&[T, T, T]), 3 * T / 2);
+        assert_eq!(RaidType::BtrfsRaid6.usable_capacity(&[T, T, T, 2 * T]), 2 * T);
+        assert_eq!(RaidType::Basic.usable_capacity(&[]), 0);
+    }
 }

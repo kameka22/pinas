@@ -68,7 +68,7 @@ PiNAS est un système d'exploitation NAS moderne, inspiré de Synology DSM, con�
 
 ## Dev Mode
 
-`PINAS_DEV_MODE=true` simule toutes les opérations système (stockage, packages, services) pour le développement local sans Raspberry Pi. Exposé via `/api/system/info` → `dev_mode: bool` → store `devMode`.
+`PINAS_DEV_MODE=true` simule toutes les opérations système (stockage, packages, services) pour le développement local sans Raspberry Pi. Docker reste déconnecté du démon hôte en dev (y compris après reconnexion) ; l’arrêt de processus est simulé, et la racine du terminal vient de `AppConfig.files_root`. Exposé via `/api/system/info` → `dev_mode: bool` → store `devMode`.
 
 ---
 

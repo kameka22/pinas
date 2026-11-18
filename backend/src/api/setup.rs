@@ -75,35 +75,60 @@ async fn complete_setup(
     // Check if setup is already complete
     match has_any_users(&state.db).await {
         Ok(true) => {
-            return ApiError::conflict("Setup has already been completed".to_string()).with_code("SETUP_ALREADY_COMPLETE".to_string()).into_response();
+            return ApiError::conflict("Setup has already been completed".to_string())
+                .with_code("SETUP_ALREADY_COMPLETE".to_string())
+                .into_response();
         }
         Ok(false) => {}
         Err(e) => {
             tracing::error!("Failed to check setup status: {}", e);
-            return ApiError::internal("Failed to check setup status".to_string()).with_code("INTERNAL_ERROR".to_string()).into_response();
+            return ApiError::internal("Failed to check setup status".to_string())
+                .with_code("INTERNAL_ERROR".to_string())
+                .into_response();
         }
     }
 
     // Validate input
     if payload.admin_username.trim().is_empty() {
-        return ApiError::bad_request("Username is required".to_string()).with_code("VALIDATION_ERROR".to_string()).into_response();
+        return ApiError::bad_request("Username is required".to_string())
+            .with_code("SETUP_INVALID_USERNAME".to_string())
+            .into_response();
     }
 
     if payload.admin_username.len() < 3 {
-        return ApiError::bad_request("Username must be at least 3 characters".to_string()).with_code("VALIDATION_ERROR".to_string()).into_response();
+        return ApiError::bad_request("Username must be at least 3 characters".to_string())
+            .with_code("SETUP_INVALID_USERNAME".to_string())
+            .into_response();
     }
 
     if let Err(e) = crate::services::user::validate_username(&payload.admin_username) {
-        return ApiError::from(e).into_response();
+        return ApiError::bad_request(e.to_string())
+            .with_code("SETUP_INVALID_USERNAME")
+            .into_response();
     }
 
     let policy = crate::services::password_policy::PasswordPolicy::default();
     if let Some(reason) = policy.violation(&payload.admin_password, Some(&payload.admin_username)) {
-        return ApiError::bad_request(reason).with_code("VALIDATION_ERROR").into_response();
+        return ApiError::bad_request(reason)
+            .with_code("SETUP_INVALID_PASSWORD")
+            .into_response();
     }
 
-    if payload.machine_name.trim().is_empty() {
-        return ApiError::bad_request("Machine name is required".to_string()).with_code("VALIDATION_ERROR".to_string()).into_response();
+    if let Err(e) = crate::services::network::validate_hostname(&payload.machine_name) {
+        return ApiError::bad_request(e.to_string())
+            .with_code("SETUP_INVALID_HOSTNAME")
+            .into_response();
+    }
+
+    // Apply before creating the first user: a failure must leave setup retryable.
+    if let Err(e) = crate::services::network::NetworkService::new()
+        .update_hostname(&payload.machine_name)
+        .await
+    {
+        tracing::error!("Failed to apply setup hostname: {}", e);
+        return ApiError::internal("Failed to apply hostname")
+            .with_code("SETUP_HOSTNAME_FAILED")
+            .into_response();
     }
 
     // Create HomeService to manage admin's home directory
@@ -123,33 +148,37 @@ async fn complete_setup(
         Ok(user) => user,
         Err(e) => {
             tracing::error!("Failed to create admin user: {}", e);
-            return ApiError::internal("Failed to create admin user".to_string()).with_code("USER_CREATION_FAILED".to_string()).into_response();
+            return ApiError::internal("Failed to create admin user".to_string())
+                .with_code("USER_CREATION_FAILED".to_string())
+                .into_response();
         }
     };
 
     // Add admin user to administrators group
     if let Ok(Some(admin_group)) = get_group_by_name(&state.db, "administrators").await
-        && let Err(e) = add_member(&state.db, &admin_group.id, &user.id).await {
-            tracing::warn!("Failed to add admin to administrators group: {}", e);
-            // Continue anyway - user is still admin
-        }
+        && let Err(e) = add_member(&state.db, &admin_group.id, &user.id).await
+    {
+        tracing::warn!("Failed to add admin to administrators group: {}", e);
+        // Continue anyway - user is still admin
+    }
 
     // Sync admin user to Samba
     let share_svc = ShareService::new(state.db.clone());
-    if let Err(e) = share_svc.sync_samba_user(&payload.admin_username, &payload.admin_password).await {
+    if let Err(e) = share_svc
+        .sync_samba_user(&payload.admin_username, &payload.admin_password)
+        .await
+    {
         tracing::warn!("Failed to sync admin Samba user: {}", e);
     }
-
-    // TODO: Save machine_name to settings table (for future use)
-    // For now, we just log it
-    tracing::info!("Setup complete. Machine name: {}", payload.machine_name);
 
     // Generate JWT token for auto-login
     let token = match generate_jwt(&user, &state.config) {
         Ok(token) => token,
         Err(e) => {
             tracing::error!("Failed to generate token: {}", e);
-            return ApiError::internal("Failed to generate authentication token".to_string()).with_code("TOKEN_GENERATION_FAILED".to_string()).into_response();
+            return ApiError::internal("Failed to generate authentication token".to_string())
+                .with_code("TOKEN_GENERATION_FAILED".to_string())
+                .into_response();
         }
     };
 
@@ -169,11 +198,8 @@ async fn complete_setup(
         },
     };
 
-    let cookie = cookies::build_auth_cookie(
-        &token,
-        state.config.jwt_expiration_hours,
-        state.tls_enabled,
-    );
+    let cookie =
+        cookies::build_auth_cookie(&token, state.config.jwt_expiration_hours, state.tls_enabled);
     let mut resp = (StatusCode::OK, Json(response)).into_response();
     resp.headers_mut().insert(header::SET_COOKIE, cookie);
     resp

@@ -14,6 +14,19 @@ Restes connus hors phase 9 : historique des métriques (widgets), thème sombre,
 
 ---
 
+## Refonte visuelle et navigation — chantier actif
+
+Le suivi courant est dans [REMEDIATION_PLAN.md](REMEDIATION_PLAN.md), avec le périmètre écran par écran dans [la proposition UI](docs/UI_REDESIGN_PROPOSAL.md).
+
+- [x] Audit de toutes les applications et du panneau de configuration.
+- [x] Première proposition interactive Partages / Utilisateurs / Disques : [maquettes](docs/mockups/ui-redesign/index.html).
+- [ ] Socle commun éprouvé dans deux rubriques réelles (R1), puis harmonisation des douze rubriques du panneau (R2).
+- [ ] Implémentation progressive et généralisation à tous les écrans selon les lots R1–R6 du plan.
+
+Les correctifs P1/P2/P3 intégrés à `master` par la [PR #45](https://github.com/kameka22/pinas/pull/45) quittent la liste active : [historique et validations](docs/archive/UI_WALKTHROUGH_PR45.md). La validation matérielle reste ouverte.
+
+---
+
 ## Phase 9 : Features inspirées OpenMediaVault
 
 > Référence : analyse du code source OMV (`extra/openmediavault/`)

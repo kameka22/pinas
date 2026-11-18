@@ -58,7 +58,7 @@
 
 	$: userInitial = $auth.user?.username?.[0]?.toUpperCase() || 'U';
 	$: userName = $auth.user?.username || 'User';
-	$: userRole = $auth.user?.role === 'admin' ? 'Administrator' : 'User';
+	$: userRole = $auth.user?.role === 'admin' ? $t.userManager.roles.administrator : $t.userManager.roles.user;
 </script>
 
 {#if show}
@@ -67,7 +67,7 @@
 			<div class="modal-header">
 				<h2>
 					<Icon icon="mdi:account" class="w-5 h-5" />
-					{$t.topBar?.profile || 'Profile'}
+					{$t.topBar.userMenu.profile}
 				</h2>
 				<button class="close-btn" on:click={handleClose}>
 					<Icon icon="mdi:close" class="w-5 h-5" />

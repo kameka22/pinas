@@ -182,7 +182,9 @@ async fn create_pool(
         Ok(pool_id) => (StatusCode::CREATED, Json(serde_json::json!({ "id": pool_id }))).into_response(),
         Err(e) => {
             tracing::error!("Failed to create pool: {}", e);
-            if e.to_string().contains("system device") {
+            if let Some(layout) = e.downcast_ref::<crate::models::storage::PoolLayoutError>() {
+                ApiError::bad_request(layout).with_code("INVALID_POOL_LAYOUT").into_response()
+            } else if e.to_string().contains("system device") {
                 ApiError::forbidden(e.to_string()).into_response()
             } else {
                 ApiError::bad_request(e.to_string()).into_response()

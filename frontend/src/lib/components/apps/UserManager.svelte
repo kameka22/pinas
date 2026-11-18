@@ -5,8 +5,13 @@
 	import { t } from '#lib/i18n/index.js';
 	import { api, auth } from '#lib/stores/api.js';
 	import type { FolderPermissions, PermissionLevel, PermissionEntry, UserServiceAccess } from '#lib/stores/api.js';
+	import { setFolderPermission, type PermissionChoice } from '#lib/utils/permissions.js';
 	import FolderPicker from '#lib/components/ui/FolderPicker.svelte';
 	import PasswordRules from '#lib/components/ui/PasswordRules.svelte';
+	import SettingsHeader from '#lib/components/ui/settings/SettingsHeader.svelte';
+	import SettingsTabs from '#lib/components/ui/settings/SettingsTabs.svelte';
+	import SettingsState from '#lib/components/ui/settings/SettingsState.svelte';
+	import '#lib/components/ui/settings/settings.css';
 
 	// Types - matches API response from /users
 	interface User {
@@ -47,6 +52,11 @@
 
 	// State
 	let activeTab: 'user' | 'group' | 'settings' = 'user';
+	$: tabItems = [
+		{ value: 'user', label: $t.userManager.tabs.user },
+		{ value: 'group', label: $t.userManager.tabs.userGroup },
+		{ value: 'settings', label: $t.userManager.tabs.advancedSettings }
+	];
 	let filterQuery = '';
 	let showAddDropdown = false;
 	let showActionMenu: string | null = null;
@@ -217,8 +227,7 @@
 			groups = groupsData;
 			serviceAccess = accessData;
 		} catch (e) {
-			error = e instanceof Error ? e.message : $t.common.errors.loadFailed;
-			console.error('Failed to load user manager data:', e);
+			error = errorMessage(e, $t.common.errors.loadFailed);
 		} finally {
 			loading = false;
 		}
@@ -240,7 +249,6 @@
 			}
 			serviceAccess = serviceAccess; // trigger reactivity
 		} catch (e) {
-			console.error('Failed to update service access:', e);
 			toasts.error(errorMessage(e, $t.common.errors.updateServiceAccess));
 		}
 	}
@@ -310,15 +318,15 @@
 
 	async function submitCreateUser() {
 		if (!newUser.username || !newUser.password) {
-			actionError = 'Username and password are required';
+			actionError = $t.userManager.messages.credentialsRequired;
 			return;
 		}
 		if (newUser.password !== newUser.confirmPassword) {
-			actionError = 'Passwords do not match';
+			actionError = $t.userManager.messages.passwordMismatch;
 			return;
 		}
 		if (newUser.password.length < 8) {
-			actionError = 'Password must be at least 8 characters';
+			actionError = $t.userManager.messages.passwordTooShort;
 			return;
 		}
 
@@ -379,7 +387,7 @@
 
 	async function submitCreateGroup() {
 		if (!newGroup.name) {
-			actionError = 'Group name is required';
+			actionError = $t.userManager.messages.groupNameRequired;
 			return;
 		}
 
@@ -444,73 +452,73 @@
 	async function loadPermissions() {
 		permissionsLoading = true;
 		try {
-			folderPermissions = await api.getPermissions();
+			const saved = await api.getPermissions();
+			folderPermissions = [
+				...saved,
+				...folderPermissions.filter(
+					(folder) =>
+						folder.permissions.length === 0 &&
+						!saved.some((item) => item.path === folder.path),
+				),
+			];
 		} catch (e) {
-			console.error('Failed to load permissions:', e);
+			toasts.error(errorMessage(e, $t.common.errors.loadFailed));
 		} finally {
 			permissionsLoading = false;
 		}
 	}
 
-	async function handlePermissionChange(folderId: string, userId: string | undefined, groupId: string | undefined, oldPermId: string | undefined, newPermission: PermissionLevel) {
+	async function handlePermissionChange(
+		folderId: string,
+		userId: string | undefined,
+		groupId: string | undefined,
+		oldPermId: string | undefined,
+		newPermission: PermissionChoice,
+	) {
 		try {
-			if (newPermission === 'none' && oldPermId) {
-				// Delete the permission
-				await api.deletePermission(oldPermId);
-			} else if (oldPermId) {
-				// Update existing
-				await api.updatePermission(oldPermId, newPermission);
-			} else {
-				// Create new
-				await api.createPermission({
-					path: folderId,
-					user_id: userId,
-					group_id: groupId,
-					permission: newPermission
-				});
-			}
+			await setFolderPermission(
+				folderId,
+				{ user_id: userId, group_id: groupId },
+				oldPermId,
+				newPermission,
+			);
 			await loadPermissions();
 		} catch (e) {
-			console.error('Failed to update permission:', e);
 			toasts.error(errorMessage(e, $t.common.errors.updatePermission));
 		}
 	}
 
-	async function addFolderForPermissions() {
-		if (!newFolderPath.trim()) return;
-
-		// Create a default permission to establish the folder
-		try {
-			// Add to the first user as no-access to create the folder entry
-			if (users.length > 0) {
-				await api.createPermission({
-					path: newFolderPath.trim(),
-					user_id: users[0].id,
-					permission: 'none'
-				});
-			}
-			showAddFolderModal = false;
-			newFolderPath = '';
-			await loadPermissions();
-		} catch (e) {
-			console.error('Failed to add folder:', e);
-			toasts.error(errorMessage(e, $t.common.errors.addFolder));
+	function addFolderForPermissions() {
+		const path = newFolderPath.trim();
+		if (!path) return;
+		if (!folderPermissions.some((folder) => folder.path === path)) {
+			folderPermissions = [...folderPermissions, { path, permissions: [] }];
 		}
+		showAddFolderModal = false;
+		newFolderPath = '';
 	}
 
 	async function removeFolderPermissions(path: string) {
-		if (!confirm($t.userManager.permissions.confirmRemoveFolder?.replace('{path}', path) || `Remove all permissions for ${path}?`)) return;
+		if (
+			!confirm(
+				$t.userManager.permissions.confirmRemoveFolder.replace('{path}', path),
+			)
+		)
+			return;
 
-		const folder = folderPermissions.find(f => f.path === path);
+		const folder = folderPermissions.find((f) => f.path === path);
 		if (!folder) return;
 
 		try {
 			for (const perm of folder.permissions) {
 				await api.deletePermission(perm.id);
 			}
+			folderPermissions = folderPermissions.filter(
+				(folder) => folder.path !== path,
+			);
 			await loadPermissions();
 		} catch (e) {
-			console.error('Failed to remove folder permissions:', e);
+			toasts.error(errorMessage(e, $t.common.errors.updatePermission));
 		}
 	}
 
@@ -531,44 +539,17 @@
 <svelte:window on:click={closeAllMenus} />
 
 <div class="user-manager">
-	<!-- Tabs -->
-	<nav class="tabs">
-		<button
-			class="tab"
-			class:active={activeTab === 'user'}
-			on:click={() => activeTab = 'user'}
-		>
-			{$t.userManager.tabs.user}
-		</button>
-		<button
-			class="tab"
-			class:active={activeTab === 'group'}
-			on:click={() => activeTab = 'group'}
-		>
-			{$t.userManager.tabs.userGroup}
-		</button>
-		<button
-			class="tab"
-			class:active={activeTab === 'settings'}
-			on:click={() => activeTab = 'settings'}
-		>
-			{$t.userManager.tabs.advancedSettings}
-		</button>
-	</nav>
+	<div class="settings-page um-head">
+		<SettingsHeader title={$t.controlPanel.items.userManagement} description={$t.settingsUi.descriptions.users} icon="mdi:account-group-outline" />
+		<SettingsTabs label={$t.controlPanel.items.userManagement} items={tabItems} value={activeTab} onchange={(value) => (activeTab = value === 'group' || value === 'settings' ? value : 'user')} />
+	</div>
 
 	<!-- Content -->
 	<div class="content">
 		{#if loading}
-			<div class="loading-state">
-				<Icon icon="mdi:loading" class="w-8 h-8 animate-spin" />
-				<p>Loading...</p>
-			</div>
+			<div class="settings-page um-state"><SettingsState kind="loading" message={$t.common.loading} /></div>
 		{:else if error}
-			<div class="error-state">
-				<Icon icon="mdi:alert-circle" class="w-8 h-8" />
-				<p>{error}</p>
-				<button class="btn-secondary" on:click={loadData}>Retry</button>
-			</div>
+			<div class="settings-page um-state"><SettingsState kind="error" message={error} onretry={loadData} /></div>
 		{:else if activeTab === 'user'}
 			<!-- User Tab -->
 			<div class="toolbar">
@@ -644,7 +625,7 @@
 									</div>
 								</td>
 								<td class="text-secondary">{user.email}</td>
-								<td>{user.role}</td>
+								<td>{user.role === 'Administrator' ? $t.userManager.roles.administrator : $t.userManager.roles.user}</td>
 								<td>
 									<div class="service-toggles">
 										<label class="service-toggle" title={$t.userManager.serviceAccess.smb}>
@@ -746,13 +727,13 @@
 							<tr>
 								<td>
 									<div class="group-cell">
-										<span class="group-name">{group.name}</span>
+										<span class="group-name">{group.name === 'administrators' ? $t.walkthrough.groupAdmins : group.name === 'users' ? $t.walkthrough.groupUsers : group.name}</span>
 										{#if group.isSystem}
 											<span class="badge-system">{$t.userManager.badges.system}</span>
 										{/if}
 									</div>
 								</td>
-								<td class="text-secondary">{group.description || '-'}</td>
+								<td class="text-secondary">{group.name === 'administrators' ? $t.walkthrough.groupAdminsDesc : group.name === 'users' ? $t.walkthrough.groupUsersDesc : group.description || '-'}</td>
 								<td>{group.memberCount}</td>
 								<td>
 									<div class="action-cell">
@@ -915,10 +896,11 @@
 														</div>
 														<select
 															class="permission-select"
-															value={perm?.permission || 'none'}
-															on:change={(e) => handlePermissionChange(folder.path, user.id, undefined, perm?.id, e.currentTarget.value as PermissionLevel)}
+															value={perm?.permission || 'default'}
+															on:change={(e) => handlePermissionChange(folder.path, user.id, undefined, perm?.id, e.currentTarget.value as PermissionChoice)}
 														>
-															<option value="none">{$t.userManager.permissions.noAccess}</option>
+															<option value="default">{$t.walkthrough.defaultAccess}</option>
+													<option value="none">{$t.userManager.permissions.noAccess}</option>
 															<option value="read">{$t.userManager.permissions.readOnly}</option>
 															<option value="write">{$t.userManager.permissions.readWrite}</option>
 														</select>
@@ -939,14 +921,15 @@
 																<div class="avatar-sm group-avatar">
 																	<Icon icon="mdi:account-group" class="w-3 h-3" />
 																</div>
-																<span>{group.name}</span>
+																<span>{group.name === 'administrators' ? $t.walkthrough.groupAdmins : group.name === 'users' ? $t.walkthrough.groupUsers : group.name}</span>
 															</div>
 															<select
 																class="permission-select"
-																value={perm?.permission || 'none'}
-																on:change={(e) => handlePermissionChange(folder.path, undefined, group.id, perm?.id, e.currentTarget.value as PermissionLevel)}
+																value={perm?.permission || 'default'}
+																on:change={(e) => handlePermissionChange(folder.path, undefined, group.id, perm?.id, e.currentTarget.value as PermissionChoice)}
 															>
-																<option value="none">{$t.userManager.permissions.noAccess}</option>
+																<option value="default">{$t.walkthrough.defaultAccess}</option>
+													<option value="none">{$t.userManager.permissions.noAccess}</option>
 																<option value="read">{$t.userManager.permissions.readOnly}</option>
 																<option value="write">{$t.userManager.permissions.readWrite}</option>
 															</select>
@@ -981,7 +964,7 @@
 					bind:value={newFolderPath}
 					label={$t.userManager.permissions.folderPath}
 					hint={$t.userManager.permissions.folderPathHint}
-					placeholder="/storage/shares/documents"
+					placeholder="/storage/pools/"
 				/>
 			</div>
 			<div class="modal-footer">
@@ -1224,34 +1207,23 @@
 		display: flex;
 		flex-direction: column;
 		height: 100%;
-		background: white;
+		background: var(--color-surface-50, #f8fafc);
 	}
 
-	/* Tabs */
-	.tabs {
-		display: flex;
-		gap: 8px;
-		padding: 0 20px;
-		border-bottom: 1px solid #e5e7eb;
+	.um-head {
+		min-height: 0;
+		padding: 24px 20px 0;
 	}
 
-	.tab {
-		padding: 14px 16px;
-		font-size: 14px;
-		color: #6b7280;
-		border-bottom: 2px solid transparent;
-		margin-bottom: -1px;
-		transition: all 0.15s ease;
+	.um-head :global(.settings-tabs) {
+		margin-bottom: 0;
 	}
 
-	.tab:hover {
-		color: #3b82f6;
+	.um-state {
+		flex: 1;
+		min-height: 0;
 	}
 
-	.tab.active {
-		color: #3b82f6;
-		border-bottom-color: #3b82f6;
-	}
 
 	/* Content */
 	.content {
@@ -1261,25 +1233,6 @@
 		overflow: hidden;
 	}
 
-	/* Loading and Error States */
-	.loading-state,
-	.error-state {
-		flex: 1;
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
-		gap: 12px;
-		color: #6b7280;
-	}
-
-	.error-state {
-		color: #ef4444;
-	}
-
-	.animate-spin {
-		animation: spin 1s linear infinite;
-	}
 
 	@keyframes spin {
 		from { transform: rotate(0deg); }
@@ -1395,21 +1348,6 @@
 	}
 
 	/* Icon Button */
-	.icon-btn {
-		width: 36px;
-		height: 36px;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		border-radius: 8px;
-		color: #6b7280;
-		transition: all 0.15s ease;
-	}
-
-	.icon-btn:hover {
-		background: #f3f4f6;
-		color: #374151;
-	}
 
 	/* Table */
 	.table-container {
@@ -1451,10 +1389,6 @@
 
 	.data-table tr:hover {
 		background: #f9fafb;
-	}
-
-	.data-table tr.disabled td {
-		color: #9ca3af;
 	}
 
 	/* User Cell */
@@ -1797,75 +1731,8 @@
 	}
 
 	/* Permission Filters */
-	.permission-filters {
-		display: flex;
-		align-items: flex-end;
-		gap: 16px;
-		margin-bottom: 20px;
-	}
-
-	.select-group {
-		display: flex;
-		flex-direction: column;
-		gap: 6px;
-	}
-
-	.select-group label {
-		font-size: 13px;
-		color: #6b7280;
-	}
-
-	.select-group select {
-		padding: 8px 12px;
-		border: 1px solid #e5e7eb;
-		border-radius: 6px;
-		font-size: 14px;
-		min-width: 150px;
-	}
 
 	/* Pagination */
-	.pagination {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		padding: 16px 0;
-		font-size: 13px;
-		color: #6b7280;
-	}
-
-	.pagination-controls {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-	}
-
-	.pagination-controls button {
-		width: 28px;
-		height: 28px;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		border: 1px solid #e5e7eb;
-		border-radius: 4px;
-		color: #6b7280;
-	}
-
-	.pagination-controls button:disabled {
-		opacity: 0.5;
-		cursor: not-allowed;
-	}
-
-	.page-number {
-		width: 28px;
-		height: 28px;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		border: 1px solid #3b82f6;
-		border-radius: 4px;
-		color: #3b82f6;
-		font-weight: 500;
-	}
 
 	/* Form */
 	.form-group {
@@ -1884,20 +1751,8 @@
 	}
 
 	.form-group input,
-	.form-group select {
-		width: 100%;
-		padding: 10px 12px;
-		border: 1px solid #e5e7eb;
-		border-radius: 8px;
-		font-size: 14px;
-	}
 
 	.form-group input:focus,
-	.form-group select:focus {
-		outline: none;
-		border-color: #3b82f6;
-		box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-	}
 
 	.form-group input:disabled {
 		background: #f3f4f6;
@@ -1978,10 +1833,6 @@
 		display: flex;
 		align-items: center;
 		gap: 10px;
-	}
-
-	.folder-icon {
-		color: #f59e0b;
 	}
 
 	.folder-path {

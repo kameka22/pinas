@@ -1,5 +1,6 @@
 import { writable, derived, get } from 'svelte/store';
-import { api, auth } from './api';
+import { api, auth } from './api.js';
+import { t } from '#lib/i18n/index.js';
 
 export interface SetupConfig {
 	machineName: string;
@@ -166,12 +167,18 @@ function createOnboardingStore() {
 
 				return true;
 			} catch (error) {
-				const errorMessage = error instanceof Error ? error.message : 'Setup failed';
+				const code = (error as { code?: string })?.code;
+				const messages = get(t).onboarding.validation;
+				const step = code === 'SETUP_INVALID_HOSTNAME' || code === 'SETUP_HOSTNAME_FAILED' ? 3
+				    : code === 'SETUP_INVALID_USERNAME' ? 4 : code === 'SETUP_INVALID_PASSWORD' ? 5 : 7;
+				const errorMessage = step === 3 ? (code === 'SETUP_HOSTNAME_FAILED' ? messages.hostnameFailed : messages.machineNameInvalid)
+				    : step === 4 ? messages.usernameInvalid : step === 5 ? messages.passwordPolicy : messages.setupFailed;
 				console.error('Setup failed:', error);
 
 				update((state) => ({
 					...state,
 					isTransitioning: false,
+					currentStep: step,
 					error: errorMessage
 				}));
 

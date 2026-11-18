@@ -1,186 +1,71 @@
-# PiNAS — Plan de remédiation et de finalisation
+# PiNAS — Plan actif : cohérence visuelle et navigation
 
-> Établi le 2026-09-08 à partir de l'audit complet du dépôt (obsolescence, sécurité, architecture, fonctionnalités inachevées).
-> Il couvre **tout ce qui a été identifié** : ce qui doit être corrigé, ce qui doit être terminé, et ce qui doit être retiré parce que ça ne sera pas fait.
-> Chaque item a une taille (S ≈ ½ journée, M ≈ 1–2 j, L ≈ 3–5 j, XL > 1 semaine), ses dépendances et un critère de fin vérifiable.
+Actualisé le 17 novembre 2026. Ce plan remplace le suivi historique de remédiation ; il ne déclare pas la refonte implémentée.
 
----
+## Travaux sortis du plan actif
 
-## 0. Règles du jeu
+Les correctifs de parcours P1/P2/P3 sont intégrés à `master` par la [PR #45](https://github.com/kameka22/pinas/pull/45), mergée le 17 novembre 2026 (squash `6b54347`). Détail, commits et validations : [historique de la revue UI](docs/archive/UI_WALKTHROUGH_PR45.md). Ne pas les refaire dans ce chantier ; conserver leurs protections et leurs tests.
 
-| Sujet | Décision |
-|---|---|
-| Branches | **Pas de branches** : tout le travail se fait directement sur `master` en local, un commit par item ; rien n'est pushé sans demande explicite. (`fix/p0-security` et `chore/backend-deps-bump` ont été rapatriées sur `master` le 2026-09-08.) |
-| Definition of Done | `cargo test` vert, `svelte-check` 0 erreur, `npm run build` OK, testé sur Pi (ou VM QEMU) pour tout ce qui touche au système, i18n en+fr à jour, README/TODO.md synchronisés. |
-| Ce qu'on **retire** plutôt que de finir | Domain/LDAP, Indexing Service, onglet *Device Analysis*, `Settings.svelte`, alias `NetdiskTools`. Un NAS Pi mono-site n'en a pas besoin ; afficher une entrée "under development" est pire que ne rien afficher. |
-| Hors périmètre de ce plan | La roadmap long terme de `TODO.md` §9 (rsync, quotas, UPS, SNMP, syslog distant, S3, LVM, bcache, cloud sync, RRD). Voir §9 de ce document pour la manière de la réintégrer une fois les phases 0–7 terminées. |
+Le [plan historique de septembre](docs/archive/REMEDIATION_PLAN_2026-11-17.md) est conservé comme archive, avec ses décisions et descriptions datées, dont certaines sont désormais obsolètes. Il ne constitue plus une consigne de travail. La roadmap fonctionnelle à long terme reste dans [TODO.md](TODO.md).
 
-Ordre : **P0 → P1 → P2** sont séquentielles (sécurité, puis fondations sur lesquelles tout le reste s'appuie). **P3 à P7** sont indépendantes entre elles et peuvent se paralléliser. **P8** court en continu.
+## Cadre du chantier
 
----
+- Les sept phases R1–R7 se font sur une seule branche : `feature/ui-consistency`, jamais sur `master`. Push, merge et publication exigent l’accord explicite de Laurent.
+- Conserver le bureau à fenêtres. Une application = une fenêtre de travail ; listes, fiches et assistants dans cette fenêtre. Une seule confirmation courte à la fois.
+- Réutiliser les fonctions et les contrôles de sécurité existants. Aucun changement implicite des droits, des validations RAID, des chemins ou du comportement des opérations destructives.
+- Les maquettes utilisent des données fictives et ne font aucun appel à l’API. Elles proposent une disposition, pas de nouvelles capacités backend.
+- Référence détaillée et inventaire complet : [UI_REDESIGN_PROPOSAL.md](docs/UI_REDESIGN_PROPOSAL.md).
 
-## Phase 0 — Sécurité (bloquant, avant toute exposition réseau)
+## Objectif et ordre de travail retenu
 
-Taille totale : **M–L (≈ 3 j)**. Aucune dépendance.
+La priorité demandée par Laurent est la cohérence **partout** : structure, composants et comportements communs dans l’interface existante. Les premières maquettes ont été jugées insuffisantes ; elles restent une exploration non validée et ne sont pas la cible à reproduire. La direction sera examinée dans l’instance de développement réelle.
 
-| # | Item | Taille | Détail / critère de fin |
+Conserver l’identité et le bureau PiNAS. Réutiliser les composants existants quand ils conviennent et centraliser leurs variantes. Ne pas transformer tous les écrans en tableaux : synthèse, catalogue, explorateur et terminal gardent une structure adaptée à leur usage, avec des commandes cohérentes.
+
+## Lots et critères de fin
+
+Les numéros R2–R4 sont réordonnés ici : le panneau complet vient avant les refontes de parcours détaillées. Décision de Laurent : une seule branche `feature/ui-consistency` pour les sept phases R1–R7, avec des commits distincts par phase et un état utilisable à chaque jalon. Ne pas créer une branche ou une PR par lot.
+
+| Lot | Travail et livrable | Dépendance | État / critère de fin |
 |---|---|---|---|
-| 0.1 ✅ | **Middleware d'authentification global** | M | `main.rs` : `middleware::from_fn_with_state(state, require_auth)` appliqué via `route_layer` à tous les nests sauf `/api/auth/login`, `/api/setup/*`, `/api/health`. Le middleware réutilise l'extraction cookie → Bearer de `middleware.rs`. Test : `curl` anonyme sur `/api/storage/disks`, `/api/docker/containers`, `/api/packages`, `/api/system/update/check`, `/api/cups/status`, `/api/system/processes` → 401. |
-| 0.2 ✅ | **`AdminUser` sur toutes les opérations destructives** | S | storage (wipe, pools, volumes, snapshots, SMART test, power), docker (create/remove/stop/prune/pull), packages (install/uninstall), update (install/dismiss), cups (enable/disable/add/remove), system (kill_process, reboot, shutdown), services (start/stop/enable/disable). Lecture seule reste `AuthUser`. Critère : un utilisateur non-admin reçoit 403 sur chacune. |
-| 0.3 ✅ | **Révocation de session effective** | S | `middleware.rs` : après `validate_jwt`, vérifier l'existence du token dans `sessions` (requête indexée sur `token`, déjà en place). Logout et `delete_user`/désactivation appellent `delete_user_sessions`. Tâche Tokio périodique `cleanup_expired_sessions` (toutes les heures). Critère : après logout, le même cookie renvoie 401. |
-| 0.4 ✅ | **Intégrité des mises à jour** | S | `scripts/build-release.sh` publie `pinas-update-vX.tar.gz.sha256` à côté de l'archive ; `update.rs` télécharge les deux, refuse l'installation si le hash diffère, loggue l'échec. Étape suivante optionnelle : signature minisign (clé publique embarquée dans le binaire). Critère : archive altérée → `install_update` échoue sans rien extraire. |
-| 0.5 ✅ | **Politique Samba `force user = root`** | S | Décision à prendre et documenter dans `SECURITY_AUDIT.md` : (a) conserver (LibreELEC mono-utilisateur, ACL émulées par `valid users/read list/write list`) en forçant `guest ok = no` quand des permissions existent, ou (b) créer des utilisateurs Unix dans `/storage/.pinas/etc/passwd` et pointer Samba dessus (`passdb backend = tdbsam`, `username map`). Recommandation : (a) + garde-fou. Critère : un partage avec `folder_permissions` refuse l'accès guest. |
-| 0.6 ⏳ | **Validation systemd sur le Pi** (point 11 de l'audit) | S | Vérifier que `pinas.service` démarre avec `ProtectSystem=strict` + `ReadWritePaths=/etc /var` sur le squashfs LibreELEC ; que `smbpasswd -a` fonctionne (`/etc/passwd` inscriptible ?) ; sinon ajuster l'unité et `share.rs::sync_user`. Critère : `journalctl -u pinas` propre au boot, création d'utilisateur → accès SMB OK. |
-| 0.7 ✅ | **Rate limiting login** | S | 5 tentatives / minute / IP sur `/api/auth/login` (même mécanisme que `terminal.rs`). Critère : 6ᵉ tentative → 429. |
-| 0.8 ✅ | Mettre à jour `SECURITY_AUDIT.md` | S | Ajouter les items 0.1–0.7 avec leur statut, retirer les `~~` obsolètes. |
+| R0 | Audit global et cadrage | — | Audit fait ; premières maquettes exploratoires non retenues comme cible ; présent plan actualisé |
+| R1 | Socle commun : styles et composants d’en-tête, actions, boutons, champs, onglets, sections, statuts, tableaux et sauvegarde | R0 | ✅ Fait (`ui/settings/*`, démontré sur Réseau et Heure/langue) : composants réutilisables démontrés dans deux rubriques existantes ; conventions vérifiables et états clavier/chargement/erreur définis |
+| R2 | Harmonisation des douze rubriques du panneau, accueil et navigation compris | R1 | ✅ Fait pour les douze rubriques (Utilisateurs : en-tête, onglets et états seulement, le reste en R3 ; accueil et navigation latérale inchangés) : premier livrable global consultable en dev ; titres, espacements, contrôles et actions homogènes dans chaque rubrique et sous-vue |
+| R3 | Partages, Utilisateurs/groupes et permissions : listes, fiches, créations et choix de dossier intégrés | R2 | À faire : aucun empilement de formulaires/modales ; retour préserve le contexte ; accès par défaut et refus explicite distincts ; SMB/NFS respectent le modèle existant |
+| R4 | Stockage : synthèse, disques/pools/volumes, SMART, alimentation, snapshots, montage, maintenance et assistants | R3 | À faire : actions contenues à 900 px ; fiches et assistants dans la fenêtre ; confirmations destructives et validations RAID conservées |
+| R5 | Dashboard, Fichiers, Centre d’applications, Docker, processus/services, Kodi, affichage externe, terminal et cadres des apps tierces | R4 | À faire : styles et comportements communs sur toutes leurs sous-vues, fonctionnalités spécifiques préservées, service indisponible distinct d’une liste vide |
+| R6 | Bureau, fenêtres, dock, lanceur, recherche, widgets, notifications, compte, connexion et sept étapes d’installation | R5 | À faire : cohérence des éléments transversaux et parcours de première utilisation ; focus, zoom et mouvement réduit vérifiés |
+| R7 | Revue globale et validation de release | R6 | À faire : inventaire intégral contrôlé, comparaisons avant/après, FR/EN et tests logiciels ; validation VM/Pi tracée séparément |
 
----
+État R2 : toutes les rubriques utilisent `SettingsHeader`, sections, lignes, interrupteurs (contrôlés quand ils déclenchent une action serveur), badges, tableaux et états chargement/erreur/vide communs ; les erreurs passent par toasts, plus de chaîne anglaise en dur ni de `console.error` silencieux ; formulaires intégrés au lieu de modales (mot de passe SSH, ajout d’imprimante, export NFS) ; suppressions (export NFS, imprimante, planification) confirmées par `ConfirmModal` ; quitter une rubrique avec des modifications non enregistrées demande confirmation (`stores/unsavedChanges.ts`).
 
-## Phase 1 — Fondations backend ✅ (terminée le 2026-09-08)
+Le socle R1 est développé avec deux cas réels (par exemple Réseau et Heure/langue), puis généralisé en R2. Les changements de structure des permissions et du stockage attendent R3/R4 ; R2 harmonise déjà leur présentation lorsqu’ils sont accessibles depuis le panneau.
 
-Taille : **L (≈ 5 j)**. Dépend de P0. Le bump de dépendances (axum 0.8, sqlx 0.9, bollard 0.21, édition 2024) est déjà sur `master` ; à valider sur le Pi avec le reste.
+## Règles communes à appliquer dès R1
 
-| # | Item | Taille | Détail / critère de fin |
-|---|---|---|---|
-| 1.1 ✅ | **Type d'erreur central `AppError`** | M | `api/error.rs` : enum `AppError { NotFound, BadRequest, Unauthorized, Forbidden, Conflict, Internal(anyhow::Error), Db(sqlx::Error), … }` + `impl IntoResponse` (JSON `{ error, code }`) + `From<…>` pour `ShareError`, `StorageError`, `AuthError`, `sqlx::Error`, `anyhow::Error`. Migrer les **146** constructions manuelles de `(StatusCode, Json(…))` vers `Result<Json<T>, AppError>`. Critère : `grep -c 'StatusCode::INTERNAL_SERVER_ERROR' api/` < 10. |
-| 1.2 ✅ | **Plus d'I/O bloquantes dans l'async** | M | `storage.rs` (46), `cups.rs` (21), `share.rs` (17), `network.rs` (17), `service.rs` (10), `ssh.rs` (8) : remplacer `std::process::Command` par `tokio::process::Command`, `std::fs` par `tokio::fs`, et envelopper ce qui reste synchrone (parsing lourd, `System::new_all`) dans `spawn_blocking`. Supprimer le `std::thread::sleep(200 ms)` de `get_processes`. Critère : `grep -rn 'std::process::Command\|std::thread::sleep' services api` = 0 (hors tests). |
-| 1.3 ✅ | **`sysinfo::System` partagé** | S | Un `Arc<RwLock<System>>` dans `AppState`, rafraîchi par la tâche WS toutes les 2 s ; `get_info`, `get_processes`, `kill_process` lisent cette instance au lieu de `System::new_all()` par requête. |
-| 1.4 ✅ | **Nettoyage schéma** | S | Migration `012_cleanup.sql` : `DROP TABLE permissions` (remplacée par `folder_permissions` en 006). **Garder** `notifications` (utilisée en P3). Supprimer `services/system.rs` (fichier d'une ligne). Critère : chaque table de `migrations/` est référencée au moins une fois dans `src/`. |
-| 1.5 ✅ | **Hygiène compilation** | S | Éliminer les 61 warnings (imports inutilisés, variables mortes) ; `#![deny(warnings)]` en CI via `RUSTFLAGS=-D warnings`. Passer les 58 `unwrap()/expect()` de code de prod en revue : garder ceux sur des invariants (`parse` de constantes), remplacer les autres par `?`/`AppError`. |
-| 1.6 ✅ | **Tests backend** | M | Cible : un module de test par service critique — `auth`, `permission`, `share` (génération `smb.conf`), `package` (parsing manifest + validation des steps), `update` (`is_newer_version`, vérification sha256), `files` (`validate_path`). Base SQLite en mémoire via `sqlx::SqlitePool::connect(":memory:")` + migrations. Critère : ≥ 40 tests, `cargo test` en CI. |
-| 1.7 ✅ | **Variables d'environnement** | S | Un seul chemin de lecture : tout dans `AppConfig` (les 11 `std::env::var` disséminés — `PINAS_DATA_DIR`, `PINAS_CATALOG_URL`, `PINAS_GITHUB_*`, `PINAS_POOLS_PATH`, `DOCKER_HOST`… — deviennent des champs). `CLAUDE.md` mis à jour en conséquence. |
-| 1.8 ✅ | **Docker : compteur de conteneurs par réseau** | S | `list_networks` appelle `inspect_network` (ou `list_containers` filtré par `network`) pour recalculer `containers` (perdu avec l'API Engine 1.53). |
+- **En-tête** : titre, description courte et emplacement stable de l’action principale ; éviter les titres et boutons de création dupliqués.
+- **Commandes** : mêmes tailles, variantes, icônes, libellés et états désactivé/chargement ; actions dangereuses séparées.
+- **Formulaires** : alignements, aides et erreurs au même endroit ; barre Enregistrer/Annuler commune pour les modifications différées. Les actions immédiates restent identifiables et ne reçoivent pas un faux bouton Enregistrer.
+- **Navigation** : onglets et retours prévisibles ; filtre, sélection et position de liste conservés ; modifications en attente protégées lors d’un départ.
+- **États** : mêmes présentations de chargement, vide, erreur, accès refusé, service arrêté et matériel non supporté, avec une action utile quand elle existe.
+- **Densité et lisibilité** : palette et espacements centralisés, une famille d’icônes, statuts avec texte, tableaux sans débordement de la fenêtre.
 
----
+R3 et R4 appliqueront la règle : une application, une fenêtre de travail ; fiches et assistants intégrés ; une seule confirmation courte à la fois. Toute exception utile à un parcours est documentée.
 
-## Phase 2 — Fondations frontend ✅ (terminée le 2026-09-08)
+## Suivi écran par écran
 
-Taille : **M–L (≈ 4 j)**. Dépend de P1 (format d'erreur JSON unifié).
+L’inventaire de [la proposition UI, section 6](docs/UI_REDESIGN_PROPOSAL.md#6-revue-de-toutes-les-familles-décrans) sert de liste de couverture. Pour chaque lot implémenté, consigner ses écrans et sous-vues, composants partagés adoptés, modales restantes, états vérifiés et captures avant/après. Ne pas déclarer une famille terminée après la seule migration de son écran d’accueil.
 
-| # | Item | Taille | Détail / critère de fin |
-|---|---|---|---|
-| 2.1 ✅ | **Un seul client HTTP** | M | Migrer les 27 `fetch('/api/…')` bruts (`DockerApp` 17, `AppCenter` 5, `ServiceApp` 3, `TerminalApp` 2) vers `api.ts` (méthodes typées `getContainers()`, `installPackage()`, …). Le client gère 401 → écran de login, 403 → toast, erreurs → `AppError` typé. Critère : `grep -rn "fetch(\`/api\|fetch('/api" components` = 0 (hors upload). |
-| 2.2 ✅ | **Système de toasts** | S | Store `toasts.ts` + composant `ToastHost.svelte` dans le desktop. Remplacer les **12 `alert()`** (Kodi, DisplayApp, UserManager). |
-| 2.3 ✅ | **i18n des 44 chaînes en dur** | S | `'Failed to update permission'`, `'Failed to add folder'`, `'Configuration options coming soon'`, `'Widgets'`, `'Dashboard'`… → clés `en.ts`/`fr.ts`. Critère : script CI qui échoue sur `alert('` et sur `: 'Failed` dans les `.svelte`. |
-| 2.4 ✅ | **Supprimer le mock aléatoire de `ServiceApp`** | S | En cas d'erreur : état `error` + message, jamais `Math.random()`. Le mode simulé ne s'active que si `$systemInfo.devMode`. |
-| 2.5 ✅ | **Suppressions** | S | `Settings.svelte` (orphelin, 6 boutons morts), alias `NetdiskTools → Dashboard` dans `index.ts`, `frontend/yarn.lock` (le projet est npm), dossiers `test/build_python_direct`, `build/`, `build.log`. |
-| 2.6 ✅ | **Erreur `StorageManager.svelte:1036`** | S | `poolHealth[pool.id].last_scrub` possiblement null → chaînage optionnel. `svelte-check` = 0 erreur, et **ajouter `svelte-check` à la CI**. |
-| 2.7 ✅ | **Tests frontend** | M | Vitest + `@testing-library/svelte`. Cibles : `api.ts` (gestion 401/403, parsing d'erreurs), stores `windows`/`desktop` (ouverture/focus/fermeture), `formatBytes`/`formatUptime`, un test de rendu par app critique (FileManager, StorageManager, UserManager) avec API mockée. Critère : ≥ 30 tests, en CI. |
-| 2.8 ✅ | **Boutons morts** | S | Retirer ou brancher : TopBar *Widgets* et *Search* (→ P7), FileManager *Sort* (→ P6), TimeLanguage *Apply/Sync* (→ P4), UserManager *Apply* (→ P4), Dashboard *Refresh*, NotificationCenter *Settings* (→ P3). Aucun `<button>` sans handler ne doit rester (lint custom ou revue). |
+## Hors périmètre
 
----
+Pas de nouvelle fonctionnalité backend, de changement des droits ou de nouveau modèle de stockage. Thème sombre complet, métriques historiques et roadmap fonctionnelle restent des chantiers distincts. Le prototype [historique](docs/mockups/ui-redesign/index.html) utilise des données fictives ; son thème et ses indicateurs ne constituent pas des fonctionnalités livrées.
 
-## Phase 3 — Notifications réelles et Dashboard ✅ (terminée le 2026-09-08)
+## Validation de chaque lot implémenté
 
-Taille : **M (≈ 2 j)**. Dépend de P1, P2. Indépendante de P4–P7.
+Build et tests Rust, Clippy/rustfmt, tests frontend, svelte-check et build frontend. Parcours navigateur ciblés, français/anglais, fenêtre 900 × 600, largeur étroite, zoom 200 %, navigation clavier. Confirmer les états chargement, vide, erreur, service arrêté, accès refusé et matériel non supporté. Les maquettes/documentations seules ne nécessitent pas de reconstruire le produit ; vérifier leur rendu et leurs interactions.
 
-| # | Item | Taille | Détail / critère de fin |
-|---|---|---|---|
-| 3.1 ✅ | **`NotificationService`** | S | CRUD sur la table `notifications` existante (id, type, title, message, read, source, created_at — ajouter `title`/`source` par migration). Endpoints `GET /api/notifications`, `POST /:id/read`, `POST /read-all`, `DELETE /:id`, `DELETE /`. |
-| 3.2 ✅ | **Émission** | S | Brancher les producteurs existants : `StorageAlertEvent` (santé pool, SMART), `TaskProgressEvent` (fin/échec installation), `update.rs` (mise à jour disponible/appliquée), login échoué répété (P0.7), disque branché/débranché (udev via `locations`). Diffusion WS `notification` (le client la gère déjà). |
-| 3.3 ✅ | **NotificationCenter live** | S | Remplacer les 4 notifications statiques par le store alimenté par API + WS ; *Dismiss*, *Clear all*, *Mark read* fonctionnels ; badge non-lus dans la TopBar ; bouton *Settings* → préférences (P4.5). |
-| 3.4 ✅ | **Dashboard réel** | S | *Recent activity* = 10 dernières notifications ; *Services* = `GET /api/services` (smbd, sshd, docker, cupsd, kodi) avec état réel ; bouton *Refresh* fonctionnel ; widgets CPU/RAM déjà branchés sur le WS. Supprimer les tableaux codés en dur. |
+## Validations et dépendances encore ouvertes
 
----
-
-## Phase 4 — Control Panel : terminer ou retirer ✅ (terminée le 2026-09-08)
-
-Taille : **L (≈ 6 j)**. Dépend de P1, P2.
-
-| # | Item | Taille | Détail / critère de fin |
-|---|---|---|---|
-| 4.1 ✅ | **Time & Language** (actuellement 0 appel API) | M | Backend `api/time.rs` : `GET /api/system/time` (timezone, NTP actif, heure, serveurs), `PUT` (timezone via `timedatectl set-timezone`, NTP on/off via `timedatectl set-ntp`, serveurs dans `/storage/.config/timesyncd.conf.d/`), `POST /sync` (`systemctl restart systemd-timesyncd`). Liste des fuseaux via `timedatectl list-timezones`. Langue : persister dans `user_preferences` (endpoint `/api/preferences` existe) et appliquer au login. Critère : changer le fuseau dans l'UI → `date` sur le Pi change. |
-| 4.2 ✅ | **Hardware & Power** | M | Regrouper l'existant : reboot/shutdown (endpoints existants), gestion d'alimentation disques (`disk_power_settings` + `hdparm -S`, déjà en base), gouverneur CPU (`/sys/devices/system/cpu/cpufreq/…`), température/ventilateur (lecture `thermal_zone0`, déjà exposée), **arrêt/redémarrage planifié** (table `scheduled_tasks` + tâche Tokio cron minimaliste — pose la base pour les tâches planifiées du TODO §9.2). |
-| 4.3 ✅ | **Security** | M | Vue et réglages : durée de session JWT (`jwt_expiration_hours` → `settings`), HTTPS on/off (`PINAS_TLS_ENABLED` déplacé dans `settings`, redémarrage du listener), régénération du certificat auto-signé, journal des connexions (table `login_attempts` alimentée par P0.7), blocage auto d'IP après N échecs, accès SSH (déjà existant → déplacer ici depuis `TerminalSettings`). |
-| 4.4 ✅ | **Device Connection** | S | Hostname (endpoint `network` existant), mDNS/Avahi (`avahi-daemon` est dans LibreELEC : activer/désactiver, nom `pinas.local`), QR code d'accès LAN, et rappel des ports exposés. Pas de "QuickConnect" cloud. |
-| 4.5 ✅ | **Password policy** (onglet Settings de UserManager) | S | Persister dans `settings` (`password.min_length`, `password.require_mixed`, `password.expiry_days`) ; enforcer dans `create_user`/`change_user_password` ; bouton *Apply* branché. |
-| 4.6 ✅ | **Onglet About** | S | *Storage* = résumé pools/volumes (API storage), *Service* = liste services (API services). **Supprimer** *Device Analysis* (doublon de Process Manager). Retirer le placeholder `contentFor`. |
-| 4.7 ✅ | **Retraits** | S | Entrées *Domain/LDAP* et *Indexing Service* supprimées de `ControlPanel.svelte` + clés i18n + `README.md`. |
-
----
-
-## Phase 5 — File Service : NFS et FTP/SFTP
-
-Taille : **L–XL (≈ 8 j)**, dont une part de build d'image LibreELEC. Dépend de P1. Décision préalable : **vaut-il la peine d'embarquer NFS/FTP dans l'image ?** Si non, supprimer les onglets et le type de share associé (S) et clore la phase.
-
-| # | Item | Taille | Détail / critère de fin |
-|---|---|---|---|
-| 5.1 ✅ | **NFS serveur — image** | M | Activer `CONFIG_NFSD`, `CONFIG_NFSD_V4` dans `libreelec/projects/…/linux.aarch64.conf` (absent aujourd'hui, seul le client `CONFIG_NFS_FS` est actif) ; package `nfs-utils` LibreELEC compilé avec le serveur (`rpc.nfsd`, `exportfs`, `rpcbind`) ; unités `pinas-nfsd.service`, `pinas-rpcbind.service` dans `libreelec/packages/pinas/system.d/`. Critère : `exportfs -v` sur le Pi. |
-| 5.2 ✅ | **NFS — backend** | M | `share.rs` : `share_type == "nfs"` → génération de `/storage/.pinas/data/nfs/exports` (`/path client(rw,sync,no_subtree_check,…)`), `exportfs -ra`, options : clients autorisés (CIDR), `rw/ro`, squash. Modèle `NfsConfig` dans `config` JSON du share. Mode dev simulé. |
-| 5.3 ✅ | **NFS — UI** | S | Onglet NFS de `FileService.svelte` : liste des exports, création (dossier via `FolderPicker`, clients, options), activation/désactivation. |
-| 5.4 ✗ | **SFTP** (sans nouveau démon) — *abandonné le 2026-09-08 : LibreELEC n'a qu'un compte Unix (root), `Match User`/`ChrootDirectory` n'ont rien sur quoi s'appuyer ; SFTP reste disponible pour root via SSH (Control Panel › Terminal)* | S | Réutiliser `sshd` : sous-système SFTP déjà présent ; restreindre par utilisateur avec `Match User` + `ChrootDirectory` dans un `sshd_config.d` géré par PiNAS ; UI : toggle "accès SFTP" par utilisateur dans UserManager (rejoint `service_access`). |
-| 5.5 ✗ | **FTP/FTPS** (optionnel) — *retiré le 2026-09-08 (onglet, clés i18n, toggle par utilisateur)* | L | Package `vsftpd` LibreELEC + `pinas-vsftpd.service` ; backend : config générée (utilisateurs virtuels depuis la base, TLS via le certificat auto-signé, passive ports) ; UI onglet FTP. **Recommandation : ne pas faire** — SFTP couvre le besoin, FTP en clair est une régression sécurité. Si non fait : supprimer l'onglet. |
-| 5.6 ✅ | Dashboard/Services | S | Les services NFS/FTP apparaissent dans `GET /api/services` avec leur vrai état (aujourd'hui "NFS running" est codé en dur). |
-
----
-
-## Phase 6 — File Manager complet ✅ (terminée le 2026-09-08)
-
-Taille : **M (≈ 3 j)**. Dépend de P1, P2. Indépendante de P3–P5.
-
-| # | Item | Taille | Détail / critère de fin |
-|---|---|---|---|
-| 6.1 ✅ | **Téléchargement** | S | `GET /api/files/download?path=&location_id=` (stream `tokio::fs::File` + `Content-Disposition`, `validate_path`, permission `can_read`) ; dossier → archive `zip` à la volée. Menu contextuel *Download*. **Aujourd'hui aucun moyen de récupérer un fichier depuis l'UI.** |
-| 6.2 ✅ | **Ouvrir / aperçu** | M | Double-clic (`console.log` aujourd'hui) → `FilePreview.svelte` : images, texte/code (< 1 Mo), PDF (iframe), audio/vidéo via `Range` sur l'endpoint download ; autres types → téléchargement. |
-| 6.3 ✅ | **Tri** | S | Bouton *Sort* → nom / taille / date / type, asc/desc, persisté dans `user_preferences`. |
-| 6.4 ✅ | **Drag & drop** | M | Déposer des fichiers du bureau → upload (endpoint existant, `fileTasks` déjà en place pour la progression) ; glisser un élément sur un dossier ou une location de la sidebar → `move` ; `Ctrl` → `copy`. |
-| 6.5 ✅ | **Renommer / propriétés** | S | Renommer inline (utilise `move`) ; panneau propriétés : taille, dates, permissions effectives (`folder_permissions`), partage SMB associé. |
-| 6.6 ✅ | Nettoyage | S | Retirer les `console.log` de `FolderPicker.svelte` et `FileManager.svelte`. |
-
----
-
-## Phase 7 — Desktop : widgets, recherche, finitions
-
-Taille : **M (≈ 3 j)**. Dépend de P2, P3.
-
-| # | Item | Taille | Détail / critère de fin |
-|---|---|---|---|
-| 7.1 ✅ | **Panneau Widgets** — *livré le 2026-09-08 : `WidgetsPanel.svelte` (système via WS, pools, services, notifications, Docker), widgets activables persistés dans `user_preferences` (`widgets.enabled`)* | M | Bouton TopBar *Widgets* (mort aujourd'hui) → panneau latéral : CPU/RAM/réseau (WS), stockage (pools, % utilisé), notifications récentes, services, conteneurs Docker. Disposition persistée dans `user_preferences`. |
-| 7.2 ✅ | **Recherche globale** — *livré le 2026-09-08 : `CommandPalette.svelte` (`Ctrl+K`), `GET /api/files/search` (BFS borné 50 000 entrées / 3 s, symlinks et fichiers cachés ignorés, `AccessMode::Read`)* | M | Bouton *Search* → palette (`Ctrl+K`) : apps, entrées du Control Panel, utilisateurs, partages, et fichiers (endpoint `GET /api/files/search?q=` limité aux locations autorisées, `walkdir` borné + timeout). |
-| 7.3 ✅ | **Sessions & préférences** — *livré le 2026-09-08 : section Control Panel › Personnalisation (fond d'écran en dégradés locaux → `ui.wallpaper`, widgets). Langue déjà couverte par 4.1. Thème sombre non fait : toute la palette est codée en clair, à traiter comme un chantier de restyle à part* | S | Fond d'écran, thème clair/sombre (le CSS a `darkMode: 'class'` sans toggle), langue, disposition des icônes — tout via `/api/preferences` (existe, utilisé 1 fois). |
-| 7.4 ✅ | **Docker UI** — *livré le 2026-09-08 : compteur de conteneurs par réseau, logs en mode suivi (rafraîchissement 2 s dans `LogViewer`), débits réseau réels dans la TopBar (WS `network_rx/tx_bytes_per_sec`)* | S | Afficher le compteur de conteneurs par réseau rétabli en 1.8 ; logs en flux (`follow=true`) plutôt que snapshot. |
-
----
-
-## Phase 8 — Ops, CI, documentation (continu)
-
-> **Édition VM / x86_64 (2026-09-08)** : LibreELEC `mkimage` produit déjà un `.ova` pour `PROJECT=Generic` ; `build-x86.sh` et le workflow CI (matrice `RPi5/aarch64` + `Generic/x86_64`, une draft release `vVERSION` regroupant image Pi, image x86 et `pinas-x86_64-<version>.ova`) le publient. `build-release.sh --arch x86_64|all` produit des archives de mise à jour par architecture (`update.rs` choisit par nom). Backend : S.M.A.R.T. indisponible → 501 `SMART_UNSUPPORTED` (UI explicite), modèle via DMI, Kodi qui ne démarre pas → retour au splash (503 `KODI_UNAVAILABLE`), `pinas-resize-storage.sh` gère `vd*`/`xvd*`. La voie ARM64-VM (`projects/Virtual`) reste expérimentale : config kernel sans virtio, pas de bootloader.
-
-| # | Item | Taille | Détail / critère de fin |
-|---|---|---|---|
-| 8.1 ✅ | **CI complète** | S | Workflow `ci.yml` séparé de `build-libreelec.yml`, sur PR et push : `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test`, `npm ci && npm run check && npm run build`, test de génération `smb.conf`. Le build d'image reste manuel/tag. |
-| 8.2 ✅ | **Release** — *livré le 2026-09-08 : `scripts/sync-version.sh` (VERSION → Cargo.toml/lock, package.json/lock, package.mk ; `--check` en CI et dans le workflow image), `build-release.sh` : sync sur la VM, notes depuis les commits conventionnels, `--tag` ; release GitHub nommée `vVERSION` au lieu du numéro de run* | S | `build-release.sh` : génère `.sha256` (P0.4), tag `vX.Y.Z` depuis `VERSION`, notes de release depuis les commits conventionnels. Une seule source de version : `VERSION` → injecté dans `Cargo.toml`/`package.json`/`package.mk` par le script (plus de dérive). |
-| 8.3 ✅ | **Validation Pi** — *check-list écrite le 2026-09-08 (`docs/RELEASE_CHECKLIST.md`, 8 sections + historique) ; à exécuter sur le matériel pour la prochaine release, ce qui couvre aussi 0.6 et SECURITY_AUDIT §31* | M | Check-list exécutée à chaque release : boot + `journalctl -u pinas`, onboarding, login/logout (révocation), SMB depuis un client, Storage (pool RAID1 sur 2 clés USB), App Center (installer Jellyfin), Docker, Terminal, Process Manager, mise à jour depuis la version N-1, cohabitation Kodi (bascule `display`). Résultats consignés dans `docs/RELEASE_CHECKLIST.md`. |
-| 8.4 ✅ | **App-catalog** — *livré le 2026-09-08 (dépôt app-catalog, catalogue 0.05) : photoprism `mariadb:11` + `MARIADB_AUTO_UPGRADE`, `scripts/check-image-tags.py` + action hebdomadaire ouvrant une PR, procédure DB documentée dans son CLAUDE.md. Les tests d'upgrade Paperless/Nextcloud sur instance existante restent à faire sur le Pi (check-list §6)* | S | Tester l'upgrade Paperless 2 → 3 et Nextcloud 32 → 33 sur une instance existante avant push ; migrer `photoprism` de `mariadb:10.5.12` (EOL) vers `mariadb:11` avec procédure dump/restore documentée ; automatiser le script de vérification des tags (déjà écrit) en action GitHub hebdomadaire ouvrant une PR. |
-| 8.5 ✅ | **Documentation** — *livré le 2026-09-08 : README (fonctionnalités et roadmap à jour, lien vers ce plan), TODO.md réduit à l'historique + phase 9 annotée, SECURITY_AUDIT (P0 sur master, §31 et BAS mis à jour), CLAUDE.md (`ApiError`, tests, versioning). `exemple/` est déjà hors git (`.gitignore`)* | S | `README.md` : retirer les fonctionnalités non livrées (NFS/FTP tant que P5 n'est pas faite), roadmap = ce plan. `TODO.md` : archiver les phases 0–8 terminées, ne garder que §9. `SECURITY_AUDIT.md` : P0. `CLAUDE.md` : `AppError`, client API unique, conventions de tests. Supprimer `MVP.md` des mentions, `exemple/` déplacé hors du repo ou documenté comme maquettes. |
-| 8.6 ✅ | **Dépendances** — *livré le 2026-09-08 : `.github/dependabot.yml` (cargo, npm, actions ; hebdo, minor/patch groupés, Tailwind majeure exclue). TypeScript 6 et Tailwind 4 restent des chantiers dédiés. Faits le 2026-11-16 : SvelteKit 3 + TypeScript 6 (#40), Tailwind 4 (config dans `app.css`, plugin `@tailwindcss/vite`). TypeScript 7 attend son support par SvelteKit/svelte-check* | S | Dependabot/Renovate (npm + cargo, hebdo, groupé). `frontend` : passer à TypeScript 6 quand `svelte-check` le supporte ; Tailwind 3 → 4 en dédié (réécriture `app.css`/config, S–M). |
-
----
-
-## 9. Après ce plan : roadmap TODO.md §9
-
-Une fois P0–P8 terminées, les briques manquantes du TODO deviennent des incréments sur des fondations saines. Ordre suggéré, en s'appuyant sur ce qui aura été posé :
-
-1. **Tâches planifiées** (généralisation du cron minimal de P4.2) → rsync backup (§9.6), USB backup (§9.7), tests SMART planifiés (existent déjà en base).
-2. **Notifications e-mail** (P3 fournit les événements ; ajouter un relais SMTP dans `settings`).
-3. **Historique métriques** (P1.3 centralise `System` ; persister 1 point/min en SQLite, purge glissante) → graphes 1h/1j/1s/1m dans les widgets P7.1.
-4. **Firewall nftables**, **Let's Encrypt** (nécessite un nom public), **quotas** (btrfs qgroups), **UPS/NUT**, **SNMP**, **syslog distant**, **cloud sync rclone** — chacun = package LibreELEC + service + onglet Control Panel, sur le modèle de P5.
-
----
-
-## Récapitulatif
-
-| Phase | Contenu | Taille | Dépend de |
-|---|---|---|---|
-| **P0** | Auth globale, admin, sessions, intégrité update, Samba, validation Pi, rate-limit | ≈ 3 j | — |
-| **P1** | `AppError`, async propre, `System` partagé, schéma, warnings, tests, config, Docker réseaux | ≈ 5 j | P0 |
-| **P2** | Client API unique, toasts, i18n, mocks, suppressions, svelte-check, tests | ≈ 4 j | P1 |
-| **P3** | Notifications réelles, Dashboard réel | ≈ 2 j | P1, P2 |
-| **P4** | Time & Language, Hardware & Power, Security, Device Connection, password policy, About | ≈ 6 j | P1, P2 |
-| **P5** | NFS (image + backend + UI), SFTP ; FTP à ne pas faire | ≈ 8 j | P1 |
-| **P6** | Download, aperçu, tri, drag & drop, renommer | ≈ 3 j | P1, P2 |
-| **P7** | Widgets, recherche globale, préférences, Docker UI | ≈ 3 j | P2, P3 |
-| **P8** | CI, release, validation Pi, catalogue, docs, dépendances | continu | — |
-| **Total** | | **≈ 34 jours** (≈ 7 semaines à temps plein, P3–P7 parallélisables) | |
-
-Livrable minimal "sûr à exposer sur un LAN" : **P0 seule (3 jours)**. Livrable "produit cohérent, sans placeholder" : **P0 → P4 + P6 (≈ 23 jours)**.
+- Image LibreELEC : suivi de la [PR #29](https://github.com/kameka22/pinas/pull/29), distinct du chantier visuel.
+- Exécuter [RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md) sur VM x86_64 puis Pi : démarrage/systemd, SMB/NFS, stockage et mises à jour signées. Une case historique cochée pour une checklist écrite ne vaut pas exécution matérielle.
+- Conserver les limites connues hors refonte : redimensionnement de volume, champ `CreateVolumeRequest.size` ignoré, historique métriques et événements Stockage WebSocket (TODO).
