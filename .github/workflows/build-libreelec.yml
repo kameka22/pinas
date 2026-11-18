@@ -23,7 +23,7 @@ jobs:
           - arch: x86_64
             target: x86_64-unknown-linux-musl
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -44,7 +44,7 @@ jobs:
           ls -lh backend/target/${{ matrix.target }}/release/pinas
 
       - name: Upload backend artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: pinas-binary-${{ matrix.arch }}
           path: backend/target/${{ matrix.target }}/release/pinas
@@ -53,10 +53,10 @@ jobs:
   build-frontend:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '26'
           cache: npm
@@ -69,7 +69,7 @@ jobs:
           npm run build
 
       - name: Upload frontend artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: frontend-build
           path: frontend/build/
@@ -77,7 +77,9 @@ jobs:
 
   build-libreelec:
     needs: [build-backend, build-frontend]
-    runs-on: ubuntu-latest
+    # Pinned: LibreELEC 12.2 host tools (e.g. pkg-config's bundled glib) do not
+    # build with GCC 15 / C23 (ubuntu-26.04, ubuntu-latest since Nov 2026).
+    runs-on: ubuntu-24.04
     timeout-minutes: 360  # 6 hours max
     strategy:
       fail-fast: false
@@ -101,7 +103,7 @@ jobs:
               LibreELEC.tv/target/*.ova
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Read LibreELEC branch (libreelec/BRANCH)
         run: echo "LIBREELEC_BRANCH=$(tr -d '[:space:]' < libreelec/BRANCH)" >> "$GITHUB_ENV"
@@ -112,13 +114,13 @@ jobs:
           echo "PINAS_VERSION=$(tr -d '[:space:]' < VERSION)" >> "$GITHUB_ENV"
 
       - name: Download backend artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: pinas-binary-${{ matrix.arch }}
           path: libreelec/packages/pinas/bin/
 
       - name: Download frontend artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: frontend-build
           path: libreelec/packages/pinas/www/
@@ -172,13 +174,47 @@ jobs:
           sudo docker image prune --all --force
           df -h
 
+      # Source tarballs are cached between runs: a run that fails still saves what it
+      # downloaded, so upstream mirror outages hurt at most once.
+      - name: Restore LibreELEC source tarballs
+        uses: actions/cache/restore@v6
+        with:
+          path: LibreELEC.tv/sources
+          key: le-sources-${{ env.LIBREELEC_BRANCH }}-${{ matrix.name }}-${{ github.run_id }}
+          restore-keys: le-sources-${{ env.LIBREELEC_BRANCH }}-${{ matrix.name }}-
+
+      # Some upstream tarballs can no longer be fetched (anti-bot wall on linuxtv.org,
+      # release removed from releases.pagure.org): fetch them from a fallback mirror,
+      # checked against LibreELEC's PKG_SHA256.
+      - name: Prefetch sources unavailable upstream
+        run: scripts/lib/prefetch-sources.sh LibreELEC.tv
+
+      # LibreELEC fetches ~300 tarballs from upstream mirrors (ftpmirror.gnu.org redirects to
+      # random mirrors, some of which 404) and a single failed download aborts `make image`.
+      # The build is incremental, so a re-run resumes where it stopped: retry a few times.
       - name: Build LibreELEC image
+        env:
+          PROJECT: ${{ matrix.project }}
+          DEVICE: ${{ matrix.device }}
+          ARCH: ${{ matrix.arch }}
         run: |
           cd LibreELEC.tv
-          PROJECT=${{ matrix.project }} \
-          DEVICE=${{ matrix.device }} \
-          ARCH=${{ matrix.arch }} \
-          make image
+          for attempt in 1 2 3; do
+            if make image; then
+              exit 0
+            fi
+            echo "::warning::make image failed (attempt ${attempt}/3), retrying in 60 s"
+            sleep 60
+          done
+          echo "::error::make image failed after 3 attempts"
+          exit 1
+
+      - name: Save LibreELEC source tarballs
+        if: always()
+        uses: actions/cache/save@v6
+        with:
+          path: LibreELEC.tv/sources
+          key: le-sources-${{ env.LIBREELEC_BRANCH }}-${{ matrix.name }}-${{ github.run_id }}
 
       - name: Name the virtual appliance after PiNAS
         if: matrix.arch == 'x86_64'
@@ -191,7 +227,7 @@ jobs:
           ls -lh
 
       - name: Upload image
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: libreelec-pinas-image-${{ matrix.name }}
           path: |
@@ -205,20 +241,20 @@ jobs:
     if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Read PiNAS version
         run: echo "PINAS_VERSION=$(tr -d '[:space:]' < VERSION)" >> "$GITHUB_ENV"
 
       - name: Download images
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: libreelec-pinas-image-*
           path: images
           merge-multiple: true
 
       - name: Create draft release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           # The tag is only created when the draft is published.
           tag_name: v${{ env.PINAS_VERSION }}

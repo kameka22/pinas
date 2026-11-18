@@ -16,14 +16,19 @@ PKG_LONGDESC="NFS server daemons (rpc.nfsd, rpc.mountd, exportfs, rpc.statd) for
 PKG_TOOLCHAIN="manual"
 
 makeinstall_target() {
+  # LibreELEC 12 builds nfs-utils in its source tree; older trees used a
+  # .${TARGET_NAME} subdirectory. Accept both layouts.
   local nfs_build="$(get_build_dir nfs-utils)"
+  if [ -d "${nfs_build}/.${TARGET_NAME}/utils" ]; then
+    nfs_build="${nfs_build}/.${TARGET_NAME}"
+  fi
   mkdir -p ${INSTALL}/usr/sbin
 
-  cp "${nfs_build}/.${TARGET_NAME}/utils/nfsd/nfsd"          ${INSTALL}/usr/sbin/rpc.nfsd
-  cp "${nfs_build}/.${TARGET_NAME}/utils/mountd/mountd"      ${INSTALL}/usr/sbin/rpc.mountd
-  cp "${nfs_build}/.${TARGET_NAME}/utils/exportfs/exportfs"  ${INSTALL}/usr/sbin/exportfs
-  cp "${nfs_build}/.${TARGET_NAME}/utils/statd/statd"        ${INSTALL}/usr/sbin/rpc.statd
-  cp "${nfs_build}/.${TARGET_NAME}/utils/statd/sm-notify"    ${INSTALL}/usr/sbin/sm-notify
+  cp "${nfs_build}/utils/nfsd/nfsd"          ${INSTALL}/usr/sbin/rpc.nfsd
+  cp "${nfs_build}/utils/mountd/mountd"      ${INSTALL}/usr/sbin/rpc.mountd
+  cp "${nfs_build}/utils/exportfs/exportfs"  ${INSTALL}/usr/sbin/exportfs
+  cp "${nfs_build}/utils/statd/statd"        ${INSTALL}/usr/sbin/rpc.statd
+  cp "${nfs_build}/utils/statd/sm-notify"    ${INSTALL}/usr/sbin/sm-notify
   chmod 755 ${INSTALL}/usr/sbin/rpc.nfsd ${INSTALL}/usr/sbin/rpc.mountd ${INSTALL}/usr/sbin/exportfs \
             ${INSTALL}/usr/sbin/rpc.statd ${INSTALL}/usr/sbin/sm-notify
 
