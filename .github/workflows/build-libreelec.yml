@@ -80,19 +80,22 @@ jobs:
     # Pinned: LibreELEC 12.2 host tools (e.g. pkg-config's bundled glib) do not
     # build with GCC 15 / C23 (ubuntu-26.04, ubuntu-latest since Nov 2026).
     runs-on: ubuntu-24.04
-    timeout-minutes: 360  # 6 hours max
+    timeout-minutes: 360  # GitHub's maximum for a hosted job
     strategy:
       fail-fast: false
       matrix:
         include:
-          # Raspberry Pi 5: SD-card image
+          # Raspberry Pi 5: SD-card image (about 2 h 30, fits in one job)
           - name: rpi5
             project: RPi
             device: RPi5
             arch: aarch64
             kernel_conf: projects/RPi/devices/RPi5/linux/linux.aarch64.conf
             image_glob: LibreELEC.tv/target/*.img.gz
-          # Generic x86_64 PC / virtual machine: raw image + .ova appliance (mkimage builds both)
+            handoff: false
+          # Generic x86_64 PC / virtual machine: raw image + .ova appliance (mkimage builds both).
+          # It needs more than 6 h from scratch (LLVM, Mesa...): this job stops after a
+          # time budget and hands its build state over to build-libreelec-resume.
           - name: x86_64
             project: Generic
             device: Generic
@@ -101,8 +104,12 @@ jobs:
             image_glob: |
               LibreELEC.tv/target/*.img.gz
               LibreELEC.tv/target/*.ova
+            handoff: true
 
     steps:
+      - name: Record job start (time budget)
+        run: echo "JOB_START=$(date +%s)" >> "$GITHUB_ENV"
+
       - uses: actions/checkout@v7
 
       - name: Read LibreELEC branch (libreelec/BRANCH)
@@ -128,27 +135,8 @@ jobs:
       - name: Make binary executable
         run: chmod +x libreelec/packages/pinas/bin/pinas
 
-      - name: Install LibreELEC build dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            xfonts-utils \
-            rdfind \
-            libparse-yapp-perl \
-            gperf \
-            xsltproc \
-            libxml-parser-perl \
-            patchutils \
-            lzop \
-            bc \
-            gcc-multilib \
-            g++-multilib \
-            libc6-dev-i386 \
-            lib32gcc-s1 \
-            lib32stdc++6 \
-            qemu-utils \
-            mtools \
-            dosfstools
+      - name: Install build dependencies and free disk space
+        run: scripts/lib/ci-prepare-runner.sh
 
       - name: Clone LibreELEC
         run: |
@@ -165,15 +153,6 @@ jobs:
           echo 'PKG_DEPENDS_TARGET="$PKG_DEPENDS_TARGET pinas"' >> \
             LibreELEC.tv/packages/virtual/mediacenter/package.mk
 
-      - name: Free disk space
-        run: |
-          sudo rm -rf /usr/share/dotnet
-          sudo rm -rf /usr/local/lib/android
-          sudo rm -rf /opt/ghc
-          sudo rm -rf /opt/hostedtoolcache/CodeQL
-          sudo docker image prune --all --force
-          df -h
-
       # Source tarballs are cached between runs: a run that fails still saves what it
       # downloaded, so upstream mirror outages hurt at most once.
       - name: Restore LibreELEC source tarballs
@@ -189,25 +168,31 @@ jobs:
       - name: Prefetch sources unavailable upstream
         run: scripts/lib/prefetch-sources.sh LibreELEC.tv
 
-      # LibreELEC fetches ~300 tarballs from upstream mirrors (ftpmirror.gnu.org redirects to
-      # random mirrors, some of which 404) and a single failed download aborts `make image`.
-      # The build is incremental, so a re-run resumes where it stopped: retry a few times.
+      # Retries failed downloads (see the script). With handoff, the build stops 5 h after
+      # the job started, leaving time to pack and upload its state before the 6 h limit.
+      # AUTOREMOVE deletes each package's work tree once nothing depends on it any more,
+      # which keeps that state small enough to hand over.
       - name: Build LibreELEC image
+        id: build
         env:
           PROJECT: ${{ matrix.project }}
           DEVICE: ${{ matrix.device }}
           ARCH: ${{ matrix.arch }}
+          AUTOREMOVE: ${{ matrix.handoff && 'yes' || 'no' }}
         run: |
-          cd LibreELEC.tv
-          for attempt in 1 2 3; do
-            if make image; then
-              exit 0
-            fi
-            echo "::warning::make image failed (attempt ${attempt}/3), retrying in 60 s"
-            sleep 60
-          done
-          echo "::error::make image failed after 3 attempts"
-          exit 1
+          deadline=""
+          if [ "${{ matrix.handoff }}" = "true" ]; then
+            deadline=$(( JOB_START + 300 * 60 ))
+          fi
+          status=0
+          scripts/lib/ci-make-image.sh LibreELEC.tv $deadline || status=$?
+          if [ "$status" -eq 0 ]; then
+            echo "finished=true" >> "$GITHUB_OUTPUT"
+          elif [ "$status" -eq 3 ]; then
+            echo "finished=false" >> "$GITHUB_OUTPUT"
+          else
+            exit "$status"
+          fi
 
       - name: Save LibreELEC source tarballs
         if: always()
@@ -216,8 +201,37 @@ jobs:
           path: LibreELEC.tv/sources
           key: le-sources-${{ env.LIBREELEC_BRANCH }}-${{ matrix.name }}-${{ github.run_id }}
 
+      # The whole tree (LibreELEC checkout with the PiNAS packages, toolchain, built
+      # packages and stamps) is handed over, so the next job resumes with exactly the
+      # same sources. Tarballs travel through the cache above; ccache is left out.
+      - name: Pack build state for build-libreelec-resume
+        if: steps.build.outputs.finished == 'false'
+        run: |
+          state_dir=/mnt/le-state
+          if ! sudo mkdir -p "$state_dir"; then state_dir="$RUNNER_TEMP/le-state"; mkdir -p "$state_dir"; fi
+          sudo chown "$(id -u):$(id -g)" "$state_dir"
+          echo "STATE_DIR=$state_dir" >> "$GITHUB_ENV"
+          tar -C "$GITHUB_WORKSPACE" -I 'zstd -T0 -3' -cf "$state_dir/le-state.tar.zst" \
+            --exclude='LibreELEC.tv/sources' \
+            --exclude='LibreELEC.tv/build.*/.ccache' \
+            --exclude='LibreELEC.tv/build.*/.ccache-local' \
+            --exclude='LibreELEC.tv/build.*/.threads' \
+            LibreELEC.tv
+          ls -lh "$state_dir"
+          df -h
+
+      - name: Upload build state
+        if: steps.build.outputs.finished == 'false'
+        uses: actions/upload-artifact@v7
+        with:
+          name: le-build-state-${{ matrix.name }}
+          path: ${{ env.STATE_DIR }}/le-state.tar.zst
+          compression-level: 0  # already zstd-compressed
+          retention-days: 1
+          if-no-files-found: error
+
       - name: Name the virtual appliance after PiNAS
-        if: matrix.arch == 'x86_64'
+        if: matrix.arch == 'x86_64' && steps.build.outputs.finished == 'true'
         run: |
           cd LibreELEC.tv/target
           ova=$(ls LibreELEC-Generic.x86_64-*.ova | head -1)
@@ -227,6 +241,109 @@ jobs:
           ls -lh
 
       - name: Upload image
+        if: steps.build.outputs.finished == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: libreelec-pinas-image-${{ matrix.name }}
+          path: |
+            ${{ matrix.image_glob }}
+            LibreELEC.tv/target/*.sha256
+          retention-days: 7
+
+  build-libreelec-resume:
+    # Second half of the builds that do not fit in one 6 h job (see `handoff` above):
+    # picks up the build state packed by build-libreelec and finishes the image. When
+    # the first job already built the image, there is no state and this job does nothing.
+    needs: build-libreelec
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: x86_64
+            project: Generic
+            device: Generic
+            arch: x86_64
+            image_glob: |
+              LibreELEC.tv/target/*.img.gz
+              LibreELEC.tv/target/*.ova
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Read LibreELEC branch and PiNAS version
+        run: |
+          echo "LIBREELEC_BRANCH=$(tr -d '[:space:]' < libreelec/BRANCH)" >> "$GITHUB_ENV"
+          echo "PINAS_VERSION=$(tr -d '[:space:]' < VERSION)" >> "$GITHUB_ENV"
+
+      - name: Install build dependencies and free disk space
+        run: scripts/lib/ci-prepare-runner.sh
+
+      - name: Prepare build state directory
+        run: |
+          state_dir=/mnt/le-state
+          if ! sudo mkdir -p "$state_dir"; then state_dir="$RUNNER_TEMP/le-state"; mkdir -p "$state_dir"; fi
+          sudo chown "$(id -u):$(id -g)" "$state_dir"
+          echo "STATE_DIR=$state_dir" >> "$GITHUB_ENV"
+
+      - name: Download build state
+        id: state
+        continue-on-error: true  # no state: the image was finished by build-libreelec
+        uses: actions/download-artifact@v8
+        with:
+          name: le-build-state-${{ matrix.name }}
+          path: ${{ env.STATE_DIR }}
+
+      # Same absolute paths as in build-libreelec (same workspace), so the toolchain
+      # and the build stamps stay valid.
+      - name: Unpack build state
+        if: steps.state.outcome == 'success'
+        run: |
+          tar -C "$GITHUB_WORKSPACE" -I zstd -xf "$STATE_DIR/le-state.tar.zst"
+          rm -f "$STATE_DIR/le-state.tar.zst"
+          df -h
+
+      - name: Restore LibreELEC source tarballs
+        if: steps.state.outcome == 'success'
+        uses: actions/cache/restore@v6
+        with:
+          path: LibreELEC.tv/sources
+          key: le-sources-${{ env.LIBREELEC_BRANCH }}-${{ matrix.name }}-${{ github.run_id }}-resume
+          restore-keys: le-sources-${{ env.LIBREELEC_BRANCH }}-${{ matrix.name }}-
+
+      - name: Prefetch sources unavailable upstream
+        if: steps.state.outcome == 'success'
+        run: scripts/lib/prefetch-sources.sh LibreELEC.tv
+
+      - name: Finish LibreELEC image
+        if: steps.state.outcome == 'success'
+        env:
+          PROJECT: ${{ matrix.project }}
+          DEVICE: ${{ matrix.device }}
+          ARCH: ${{ matrix.arch }}
+          AUTOREMOVE: 'yes'
+        run: scripts/lib/ci-make-image.sh LibreELEC.tv
+
+      - name: Save LibreELEC source tarballs
+        if: always() && steps.state.outcome == 'success'
+        uses: actions/cache/save@v6
+        with:
+          path: LibreELEC.tv/sources
+          key: le-sources-${{ env.LIBREELEC_BRANCH }}-${{ matrix.name }}-${{ github.run_id }}-resume
+
+      - name: Name the virtual appliance after PiNAS
+        if: steps.state.outcome == 'success' && matrix.arch == 'x86_64'
+        run: |
+          cd LibreELEC.tv/target
+          ova=$(ls LibreELEC-Generic.x86_64-*.ova | head -1)
+          mv "$ova" "pinas-x86_64-${PINAS_VERSION}.ova"
+          rm -f LibreELEC-Generic.x86_64-*.ova.sha256
+          sha256sum "pinas-x86_64-${PINAS_VERSION}.ova" > "pinas-x86_64-${PINAS_VERSION}.ova.sha256"
+          ls -lh
+
+      - name: Upload image
+        if: steps.state.outcome == 'success'
         uses: actions/upload-artifact@v7
         with:
           name: libreelec-pinas-image-${{ matrix.name }}
@@ -237,7 +354,7 @@ jobs:
 
   release:
     # One draft release per VERSION, gathering the Pi image and the x86_64 image + OVA
-    needs: build-libreelec
+    needs: [build-libreelec, build-libreelec-resume]
     if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     steps:
