@@ -257,6 +257,9 @@ jobs:
     needs: build-libreelec
     runs-on: ubuntu-24.04
     timeout-minutes: 360
+    permissions:
+      actions: read   # list this run's artifacts to find the build state
+      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -270,17 +273,39 @@ jobs:
               LibreELEC.tv/target/*.ova
 
     steps:
+      # Only build-libreelec jobs stopped by their time budget upload a state. Look it up
+      # first instead of letting download-artifact fail: a failed download would show as
+      # an error annotation on every run where the first job finished the image.
+      - name: Look for a build state to resume
+        id: state
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STATE_NAME: le-build-state-${{ matrix.name }}
+        run: |
+          count=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/artifacts?name=${STATE_NAME}" \
+            --jq '[.artifacts[] | select(.expired | not)] | length')
+          if [ "$count" -gt 0 ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "No ${STATE_NAME}: build-libreelec already finished the image, nothing to resume."
+          fi
+
       - uses: actions/checkout@v7
+        if: steps.state.outputs.present == 'true'
 
       - name: Read LibreELEC branch and PiNAS version
+        if: steps.state.outputs.present == 'true'
         run: |
           echo "LIBREELEC_BRANCH=$(tr -d '[:space:]' < libreelec/BRANCH)" >> "$GITHUB_ENV"
           echo "PINAS_VERSION=$(tr -d '[:space:]' < VERSION)" >> "$GITHUB_ENV"
 
       - name: Install build dependencies and free disk space
+        if: steps.state.outputs.present == 'true'
         run: scripts/lib/ci-prepare-runner.sh
 
       - name: Prepare build state directory
+        if: steps.state.outputs.present == 'true'
         run: |
           state_dir=/mnt/le-state
           if ! sudo mkdir -p "$state_dir"; then state_dir="$RUNNER_TEMP/le-state"; mkdir -p "$state_dir"; fi
@@ -288,8 +313,7 @@ jobs:
           echo "STATE_DIR=$state_dir" >> "$GITHUB_ENV"
 
       - name: Download build state
-        id: state
-        continue-on-error: true  # no state: the image was finished by build-libreelec
+        if: steps.state.outputs.present == 'true'
         uses: actions/download-artifact@v8
         with:
           name: le-build-state-${{ matrix.name }}
@@ -298,14 +322,14 @@ jobs:
       # Same absolute paths as in build-libreelec (same workspace), so the toolchain
       # and the build stamps stay valid.
       - name: Unpack build state
-        if: steps.state.outcome == 'success'
+        if: steps.state.outputs.present == 'true'
         run: |
           tar -C "$GITHUB_WORKSPACE" -I zstd -xf "$STATE_DIR/le-state.tar.zst"
           rm -f "$STATE_DIR/le-state.tar.zst"
           df -h
 
       - name: Restore LibreELEC source tarballs
-        if: steps.state.outcome == 'success'
+        if: steps.state.outputs.present == 'true'
         uses: actions/cache/restore@v6
         with:
           path: LibreELEC.tv/sources
@@ -313,11 +337,11 @@ jobs:
           restore-keys: le-sources-${{ env.LIBREELEC_BRANCH }}-${{ matrix.name }}-
 
       - name: Prefetch sources unavailable upstream
-        if: steps.state.outcome == 'success'
+        if: steps.state.outputs.present == 'true'
         run: scripts/lib/prefetch-sources.sh LibreELEC.tv
 
       - name: Finish LibreELEC image
-        if: steps.state.outcome == 'success'
+        if: steps.state.outputs.present == 'true'
         env:
           PROJECT: ${{ matrix.project }}
           DEVICE: ${{ matrix.device }}
@@ -326,14 +350,14 @@ jobs:
         run: scripts/lib/ci-make-image.sh LibreELEC.tv
 
       - name: Save LibreELEC source tarballs
-        if: always() && steps.state.outcome == 'success'
+        if: always() && steps.state.outputs.present == 'true'
         uses: actions/cache/save@v6
         with:
           path: LibreELEC.tv/sources
           key: le-sources-${{ env.LIBREELEC_BRANCH }}-${{ matrix.name }}-${{ github.run_id }}-resume
 
       - name: Name the virtual appliance after PiNAS
-        if: steps.state.outcome == 'success' && matrix.arch == 'x86_64'
+        if: steps.state.outputs.present == 'true' && matrix.arch == 'x86_64'
         run: |
           cd LibreELEC.tv/target
           ova=$(ls LibreELEC-Generic.x86_64-*.ova | head -1)
@@ -343,7 +367,7 @@ jobs:
           ls -lh
 
       - name: Upload image
-        if: steps.state.outcome == 'success'
+        if: steps.state.outputs.present == 'true'
         uses: actions/upload-artifact@v7
         with:
           name: libreelec-pinas-image-${{ matrix.name }}
