@@ -12,6 +12,10 @@ PKG_LICENSE="GPL-2.0-or-later"
 PKG_SITE="https://github.com/kameka22/pinas"
 PKG_URL=""
 PKG_DEPENDS_TARGET="toolchain nfs-utils rpcbind"
+# The daemons are copied from nfs-utils' build tree. Declaring it as an unpack
+# dependency makes AUTOREMOVE (CI x86_64 handoff build) keep that tree until this
+# package is built, instead of deleting it right after nfs-utils is installed.
+PKG_DEPENDS_UNPACK="nfs-utils"
 PKG_LONGDESC="NFS server daemons (rpc.nfsd, rpc.mountd, exportfs, rpc.statd) for PiNAS"
 PKG_TOOLCHAIN="manual"
 
@@ -21,6 +25,9 @@ makeinstall_target() {
   local nfs_build="$(get_build_dir nfs-utils)"
   if [ -d "${nfs_build}/.${TARGET_NAME}/utils" ]; then
     nfs_build="${nfs_build}/.${TARGET_NAME}"
+  fi
+  if [ ! -x "${nfs_build}/utils/nfsd/nfsd" ]; then
+    die "pinas-nfs-server: nfs-utils build tree missing (${nfs_build}); was it removed by AUTOREMOVE?"
   fi
   mkdir -p ${INSTALL}/usr/sbin
 
