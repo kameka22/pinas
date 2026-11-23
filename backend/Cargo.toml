@@ -28,7 +28,7 @@ jsonwebtoken = { version = "11", features = ["rust_crypto"] }
 argon2 = "0.6"
 
 # System
-nix = { version = "0.31", features = ["fs", "mount", "user", "process", "signal"] }
+nix = { version = "0.32", features = ["fs", "mount", "user", "process", "signal"] }
 sysinfo = "0.40"
 
 # Logging
