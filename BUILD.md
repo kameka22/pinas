@@ -170,6 +170,19 @@ libreelec/packages/pinas/
 
 ---
 
+## Build d'image en CI (GitHub Actions)
+
+`.github/workflows/build-libreelec.yml` construit les images à chaque push sur `master` (ou à la main via *Run workflow*) : Raspberry Pi 5 (`.img.gz`) et x86_64 (`.img.gz` + `.ova`), puis un brouillon de release.
+
+Un job hébergé par GitHub est limité à 6 h. L'image Pi 5 tient dans un seul job (~2 h 30), mais l'image x86_64 en demande davantage en partant de zéro (LLVM, Mesa…). Elle est donc construite en deux jobs :
+
+1. `build-libreelec` (x86_64, `handoff: true`) lance `make image` avec `AUTOREMOVE=yes` (LibreELEC supprime le dossier de travail d'un paquet dès que plus rien n'en dépend) et l'arrête 5 h après le début du job (`scripts/lib/ci-make-image.sh`, code de sortie 3). Il archive alors `LibreELEC.tv` (checkout, paquets PiNAS, toolchain, paquets construits et leurs stamps ; sans `sources/` ni ccache) en zstd et le publie en artefact `le-build-state-x86_64` (conservé 1 jour).
+2. `build-libreelec-resume` récupère cet artefact au même chemin absolu, restaure le cache des archives sources et relance `make image` : les paquets déjà construits sont sautés grâce à leurs stamps. Il cherche d'abord l'artefact dans les artefacts du run (`gh api`, permission `actions: read`) : si le premier job a terminé l'image, il n'y en a pas et toutes les étapes sont sautées, sans erreur dans le journal.
+
+Les archives sources passent d'un job et d'un run à l'autre par `actions/cache` (`le-sources-<branche>-<cible>-…`). Préparation du runner (dépendances, espace disque) : `scripts/lib/ci-prepare-runner.sh`.
+
+---
+
 ## Dépannage
 
 | Problème | Cause | Solution |
